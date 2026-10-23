@@ -1,6 +1,6 @@
 # 2 Das Dashboard
 
-**Stand: 23.10.2026 · Version 0.3.1**
+**Stand: 23.10.2026 · Version 0.4.0**
 
 ![Dashboard mit laufendem Job](bilder/dashboard-job.png)
 
@@ -52,6 +52,8 @@ Die Verläufe füllen immer die ganze Breite. Sind noch keine 10 Minuten gemesse
 einem Update –, steht links unter dem Verlauf, seit wann gemessen wird („seit 14:02“), sonst
 „vor 10 Min.“. Der Monitor sichert den Verlauf alle 10 Sekunden; nach einem kurzen Neustart (Update,
 `systemctl restart`) geht es nahtlos weiter.
+
+![Kurz nach einem Neustart: „seit hh:mm“ unter den Verläufen, Schritt „3 von –“](bilder/dashboard-neustart.png)
 
 **Netzwerk** (eigener Block unter RAM und Swap) zeigt, was die VM gerade empfängt (↓) und sendet
 (↑), summiert über alle echten Netzwerkschnittstellen. Darunter der Verlauf der letzten

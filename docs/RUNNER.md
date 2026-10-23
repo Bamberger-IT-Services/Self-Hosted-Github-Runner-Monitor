@@ -1,6 +1,6 @@
 # Der selbst gehostete Runner
 
-**Stand: 23.10.2026 · Version 0.3.0**
+**Stand: 23.10.2026 · Version 0.4.0**
 
 Dieses Repository ist der eine Ort für den Runner der Organisation: Einrichtung der
 Runner-VM, Pflege, Fehlerhilfe und der Monitor. Die Regeln stehen in der gemeinsamen
