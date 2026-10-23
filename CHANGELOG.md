@@ -13,6 +13,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   (`anfragen.anfragen`, davon `anfragen.unveraendert`).
 
 ### Behoben
+- Live-Log: Verschwindet eine Seitendatei, während der Monitor sie sucht (der Runner räumt
+  hochgeladene Seiten auf), oder enthält sie einen ungültigen Zeitstempel, läuft der Log-Leser weiter;
+  Fehler stehen im Journal. Gleiches für den Journal-Leser. Neues Runbook „Live-Log bleibt leer“ (#57).
 - Höchstens 6 Live-Verbindungen je Sitzung, weitere bekommen 429 (#19, S-DOS-01).
 - Ein hängendes Netzlaufwerk (NFS, CIFS) hält die Messung nicht mehr an; es fehlt in der Plattenliste,
   bis es wieder antwortet (#26).
