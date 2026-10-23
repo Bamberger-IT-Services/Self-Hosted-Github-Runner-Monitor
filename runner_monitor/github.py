@@ -275,6 +275,8 @@ def neueste_version(klient: Klient, repo: str) -> dict:
         "url": daten.get("html_url", ""),
         "archiv": archiv,
         "pruefsumme": pruefsumme,
+        # Gleich nach dem Veröffentlichen hängt der Release-Workflow das Paket erst noch an (#63).
+        "bereit": bool(archiv and pruefsumme),
         "notizen": notizen[:6],
         "fehler": "",
     }
