@@ -108,6 +108,8 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `MONITOR_RUNNER_VERZ` | `/opt/actions-runner` | Ordner des Runners |
 | `MONITOR_SCHWELLE_FREI_GB` | 25 | Warnschwelle für „/“ |
 | `MONITOR_VM_NAME` | Hostname | Anzeigename |
+| `MONITOR_HTTPS` | aus | `1` nur hinter einem Reverse-Proxy mit TLS: Cookies mit `Secure`, HSTS ([HTTPS.md](HTTPS.md)) |
+| `MONITOR_ADRESSE` | `0.0.0.0` | `127.0.0.1`, wenn ein Proxy davor sitzt |
 | `RUNNER_LABELS` | `self-hosted,linux,x64` | Labels, falls GitHub nicht abgefragt werden kann |
 | `MONITOR_RELEASE_REPO` | dieses Repository | Quelle für Updates (nur für Forks ändern) |
 

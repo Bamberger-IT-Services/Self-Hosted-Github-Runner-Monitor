@@ -35,6 +35,7 @@ class Konfig:
     vm_name: str = ""
     # Nur für die Entwicklung auf dem Mac: keine Anmeldung, nur 127.0.0.1, Demo-Daten erlaubt.
     entwicklung: bool = False
+    https: bool = False  # hinter einem TLS-Proxy: Cookies mit Secure, HSTS (docs/HTTPS.md)
     weitere: dict = field(default_factory=dict)
 
     @property
@@ -136,5 +137,6 @@ def lade(datei: Path | None = None, umgebung: dict[str, str] | None = None) -> K
         release_repo=repo,
         vm_name=werte.get("MONITOR_VM_NAME", ""),
         entwicklung=entwicklung,
+        https=werte.get("MONITOR_HTTPS", "") in ("1", "ja", "true"),
         weitere={k: v for k, v in werte.items() if not k.startswith("MONITOR_")},
     )

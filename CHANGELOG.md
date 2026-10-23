@@ -4,6 +4,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Neu
+- **HTTPS über einen Reverse-Proxy** (#17): Anleitung `docs/HTTPS.md` mit Caddy; neue Einstellung
+  `MONITOR_HTTPS=1` setzt `Secure` an den Cookies und schickt HSTS.
+
 ### Geändert
 - Anmeldung und Einrichtung sperren die 10 000 häufigsten Passwörter (SecLists, MIT), auch mit
   angehängten Ziffern oder Zeichen (#16, S-AUTH-02).

@@ -68,6 +68,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 | Erstinstallation des Monitors | [docs/EINRICHTUNG.md](docs/EINRICHTUNG.md) |
 | Runner-VM: einrichten, umschalten, Umzug, Pflege, Fehlerhilfe | [docs/RUNNER.md](docs/RUNNER.md) |
 | Update und Rückweg | [docs/UPDATE.md](docs/UPDATE.md) |
+| HTTPS über einen Reverse-Proxy (Zugriff außerhalb des LAN) | [docs/HTTPS.md](docs/HTTPS.md) |
 | Runbooks für Störungen | [docs/runbooks/](docs/runbooks/README.md) |
 | Sicherheit, Datenschutz | [docs/sicherheit/bericht.md](docs/sicherheit/bericht.md), [docs/DATENSCHUTZ.md](docs/DATENSCHUTZ.md) |
 | Architekturentscheidungen | [docs/adr/](docs/adr/) · [DECISIONS.md](DECISIONS.md) |
