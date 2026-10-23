@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import tempfile
 import threading
@@ -34,13 +35,40 @@ CODE_ZEICHEN = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # ohne 0/O, 1/I
 CODE_GUELTIG = 60 * 60
 CODE_VERSUCHE = 10
 
-# Häufige Passwörter (Auszug). Ziel nach Anweisung 03 sind die 10.000 häufigsten → Issue #16.
+# Häufige Passwörter: die 10 000 häufigsten (SecLists, MIT – siehe daten/LIZENZ-haeufige-passwoerter.txt,
+# Anweisung 03, S-AUTH-02) plus eigene Ergänzungen für dieses Produkt.
+LISTE = Path(__file__).with_name("daten") / "haeufige-passwoerter.txt"
 HAEUFIG = {
     "passwort1234", "password1234", "123456789012", "qwertzuiop12", "qwertyuiop12",
     "adminadmin12", "administrator", "letmein12345", "willkommen12", "welcome12345",
     "passwortpasswort", "passwordpassword", "000000000000", "111111111111", "abcdefghijkl",
     "runnermonitor", "runner-monitor", "github-runner", "iloveyou1234", "sommer2026!!",
 }
+
+
+_liste: frozenset[str] | None = None
+
+
+def haeufige_passwoerter() -> frozenset[str]:
+    """Liste einmal laden (kleingeschrieben). Fehlt die Datei, gelten nur die eigenen Ergänzungen."""
+    global _liste
+    if _liste is None:
+        try:
+            woerter = {z.strip().lower() for z in LISTE.read_text(encoding="utf-8").splitlines() if z.strip()}
+        except OSError:
+            woerter = set()
+        _liste = frozenset(woerter | HAEUFIG)
+    return _liste
+
+
+def ist_haeufig(passwort: str) -> bool:
+    """Steht auf der Liste – auch mit angehängten Ziffern oder Zeichen („dragon2026!!!!“)."""
+    liste = haeufige_passwoerter()
+    klein = passwort.lower()
+    if klein in liste:
+        return True
+    stamm = re.sub(r"[\d\W_]+$", "", klein)
+    return len(stamm) >= 4 and stamm != klein and stamm in liste
 
 
 class ZugangFehler(ValueError):
@@ -78,7 +106,7 @@ def pruefe_passwort_regeln(passwort: str, nutzer: str) -> str | None:
     if len(passwort) > PASSWORT_MAX:
         return f"Das Passwort darf höchstens {PASSWORT_MAX} Zeichen haben."
     klein = passwort.lower()
-    if klein in HAEUFIG or (nutzer and nutzer.lower() in klein) or "runner" in klein and "monitor" in klein:
+    if ist_haeufig(passwort) or (nutzer and nutzer.lower() in klein) or "runner" in klein and "monitor" in klein:
         return "Dieses Passwort ist zu leicht zu erraten. Bitte ein anderes wählen."
     if len(set(passwort)) < 4:
         return "Dieses Passwort ist zu leicht zu erraten. Bitte ein anderes wählen."

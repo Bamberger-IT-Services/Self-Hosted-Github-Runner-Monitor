@@ -18,6 +18,14 @@ class PasswortTest(unittest.TestCase):
         # Keine Zusammensetzungsregeln: nur Kleinbuchstaben und Leerzeichen sind erlaubt
         self.assertIsNone(zugang.pruefe_passwort_regeln("blauer himmel über hohenlohe", "admin"))
 
+    def test_haeufige_passwoerter(self):
+        # Issue #16: die 10 000 häufigsten (SecLists) plus angehängte Ziffern/Zeichen
+        self.assertGreaterEqual(len(zugang.haeufige_passwoerter()), 10000)
+        for p in ("password123456", "dragon2026!!!!", "baseball12345", "Qwertyuiop12"):
+            self.assertIsNotNone(zugang.pruefe_passwort_regeln(p, "verwaltung"), p)
+        for p in ("Kartoffelsalat-mit-Gurke", "trustno1trustno1"):
+            self.assertIsNone(zugang.pruefe_passwort_regeln(p, "verwaltung"), p)
+
     def test_hash(self):
         h = zugang.hash_passwort("richtiges passwort")
         self.assertTrue(zugang.pruefe_hash("richtiges passwort", h))

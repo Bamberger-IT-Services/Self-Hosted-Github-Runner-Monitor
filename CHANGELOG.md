@@ -5,6 +5,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 ## [Unveröffentlicht]
 
 ### Geändert
+- Anmeldung und Einrichtung sperren die 10 000 häufigsten Passwörter (SecLists, MIT), auch mit
+  angehängten Ziffern oder Zeichen (#16, S-AUTH-02).
 - Keine internen Projektnamen mehr im Repository (#27); das Runner-Skript räumt alte wöchentliche
   Aufräum-Einträge jetzt per Muster ab.
 - **GitHub-Kontingent schonen** (#15): bedingte Anfragen mit ETag – unveränderte Antworten (304)
