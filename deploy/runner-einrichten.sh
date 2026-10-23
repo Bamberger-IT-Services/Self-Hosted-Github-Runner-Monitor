@@ -93,7 +93,7 @@ echo "5/5 Platz sichern"
 # 1) Vor JEDEM Job: unter 25 GB frei → alte Container, Images, Volumes und Build-Cache weg.
 # 2) Jede Nacht: gründlich aufräumen (Build-Cache auf 20 GB begrenzen) und freien Platz per
 #    fstrim an Proxmox zurückgeben (VM-Platte mit „Discard“ einstellen).
-rm -f /etc/cron.weekly/helios-runner-aufraeumen /etc/cron.weekly/runner-aufraeumen   # alte Namen
+rm -f /etc/cron.weekly/*runner-aufraeumen   # Vorgänger älterer Fassungen (wöchentlich, auch mit Präfix)
 cat > /usr/local/bin/runner-aufraeumen <<'SKRIPT'
 #!/bin/sh
 # Aufruf: runner-aufraeumen [mindest-frei-in-GB]  (ohne Angabe: immer gründlich)

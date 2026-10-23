@@ -5,6 +5,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 ## [Unveröffentlicht]
 
 ### Geändert
+- Keine internen Projektnamen mehr im Repository (#27); das Runner-Skript räumt alte wöchentliche
+  Aufräum-Einträge jetzt per Muster ab.
 - **GitHub-Kontingent schonen** (#15): bedingte Anfragen mit ETag – unveränderte Antworten (304)
   zählen nicht gegen das Kontingent; ruhige Repositories (über eine Stunde kein Push, nichts läuft
   oder wartet) fragt der Sammler nur alle 5 Minuten ab. `github.json` nennt die Zahl der Anfragen
@@ -66,7 +68,7 @@ Umsetzung von **Design v0.3.0** (`docs/design/v0.3.0/`, Abgleich in `docs/design
 - Kopfzeile: Knopf „Info & Hilfe“; mit Meldung entfällt „aktualisiert …“ immer.
 - Einrichtung im Browser neu nach Design (volle Kartenhöhe, Zurück/Weiter, „Alles eingerichtet“),
   Anmeldung mit VM-Name und Version im Fuß, Ausgabe von `einrichten.sh` in Abschnitten.
-- Entwickler-Dashboard nach dem Aufbau des Helios-Dashboards.
+- Entwickler-Dashboard nach dem gemeinsamen Aufbau der Entwicklerdashboards.
 - Design v1 aus dem Repository entfernt (liegt im Tag v0.1.2).
 
 ### Behoben

@@ -1,5 +1,5 @@
 /*
- * Inhalt des Runner-Monitor-Entwicklerdashboards (Aufbau nach dem Helios-Entwicklerdashboard).
+ * Inhalt des Runner-Monitor-Entwicklerdashboards (gemeinsamer Aufbau der Entwicklerdashboards).
  *
  * Diese Datei pflegt Claude am Ende jeder Arbeitsrunde (CLAUDE.md, Anweisung 00):
  * neuer Stand, offene Entscheidungen, wichtige Hinweise. index.html nicht für Inhalte ändern.
@@ -165,7 +165,7 @@ window.RUNNER_MONITOR = {
     { titel: "Oberfläche", text: "Ansprache „Sie“ in Anmeldung und Einrichtung, neutral im Dashboard, nie „du“ (E-10). CSP: keine Inline-Skripte, keine style=\"…\"-Attribute – Werte per element.style setzen." },
     { titel: "Produktive Schritte nur nach OK", text: "Release veröffentlichen, die VM umstellen und Einstellungen bei GitHub (z. B. #21) nur nach OK von Tobias." },
     { titel: "Doku im selben PR", text: "Jede Änderung an Bedienung, Einrichtung oder Betrieb passt im selben PR Handbuch, README, docs/EINRICHTUNG.md, docs/UPDATE.md, Runbooks und Sicherheitsbericht an. Nach jeder Arbeitsrunde dieses Dashboard (daten.js) pflegen." },
-    { titel: "Ein Ort für die Runner-VM", text: "Einrichtung, Umzug, Pflege und Fehlerhilfe des Runners stehen hier in docs/RUNNER.md; das Public-Repo (Anweisung 01) verweist hierher, Helios soll es auch (A-14).", datei: "docs/RUNNER.md" },
+    { titel: "Ein Ort für die Runner-VM", text: "Einrichtung, Umzug, Pflege und Fehlerhilfe des Runners stehen hier in docs/RUNNER.md; das Public-Repo (Anweisung 01) verweist hierher; Projekt-Repos mit eigenem Runner-Abschnitt sollen ebenfalls hierher verweisen.", datei: "docs/RUNNER.md" },
     { titel: "GitHub-Kontingent", text: "Je Abfrage eine Anfrage je Repository plus drei, aber bedingt (ETag): unveränderte Antworten (304) kosten kein Kontingent; ruhige Repositories (über 1 Std. kein Push, nichts läuft/wartet) nur alle 5 Min. (#15)." },
   ],
 
@@ -255,7 +255,7 @@ window.RUNNER_MONITOR = {
     { datum: "23.10.2026 22:18", text: "Release v0.3.1 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
     { datum: "23.10.2026 22:04", text: "0.3.1: Ursache für „Getrennt“ gefunden (Meldung Tobias von der VM): Jede Log-Zeile war eine eigene Nachricht, ein Build füllte die Warteschlange (2000), der Strom blieb danach stumm offen, der Browser verband nicht neu. Zeilen gebündelt, Strom endet bei Überlauf, Browser verbindet nach 10 s ohne Daten selbst neu, write() mit 60-s-Frist. Nachgestellt mit langsam lesendem Client." },
     { datum: "23.10.2026 21:31", text: "0.3.0: Design 0.3.0 pixelgenau umgesetzt (Dashboard mit Netz-Block, Info & Hilfe mit „Jetzt prüfen“ und Kopieren-Knöpfen, Live-Log mit Mitlaufen-Hinweis, Einrichtung und Anmeldung neu, einrichten.sh-Ausgabe). Design v1 entfernt, Design 0.3.0 unter docs/design/v0.3.0. Bildschirmfotos neu. Review: einrichten.sh ohne Docker, Klicks in sekündlich aktualisierten Karten, „Jetzt prüfen“ bei Uhrversatz, Anleitung „Kein Runner“." },
-    { datum: "23.10.2026 21:06", text: "Entwickler-Dashboard auf den Aufbau des Helios-Dashboards umgestellt." },
+    { datum: "23.10.2026 21:06", text: "Entwickler-Dashboard auf den gemeinsamen Aufbau der Entwicklerdashboards umgestellt." },
     { datum: "23.10.2026 18:16", text: "0.1.2: Knopf „Jetzt prüfen“ in Info › Updates (Auftrag release-pruefen an den Sammler, höchstens einmal je Minute). Release v0.1.1 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
     { datum: "23.10.2026 18:04", text: "Release v0.1.1 (OK Tobias): CHANGELOG, Release-Notiz, Doku-Stand, Bildschirmfotos neu. Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung hierher (PR #15)." },
     { datum: "23.10.2026 17:56", text: "Netzwerkauslastung ergänzt (Zeile „Netz“ in der Auslastung, /proc/net/dev ohne virtuelle Schnittstellen). PR #4 und Dependabot #2/#3 gemergt." },

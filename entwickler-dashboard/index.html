@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Runner-Monitor Entwicklerdashboard</title>
 <!--
-  Lokales Entwicklerdashboard für den Runner-Monitor (Aufbau nach dem Helios-Entwicklerdashboard).
+  Lokales Entwicklerdashboard für den Runner-Monitor (gemeinsamer Aufbau der Entwicklerdashboards).
   Öffnen per Doppelklick (file://) – braucht keinen Server.
   Inhalte stehen in daten.js (pflegt Claude nach jeder Arbeitsrunde). Antworten auf Entscheidungen speichert
   der Browser (localStorage) und „Antworten kopieren“ legt sie als Text für den Chat in die Zwischenablage.
@@ -230,7 +230,7 @@ ul.links small{color:var(--leise);font-family:ui-monospace,Menlo,monospace;font-
   const D = window.RUNNER_MONITOR;
   const $ = (id) => document.getElementById(id);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
-  // Eigene Schlüssel: Unter file:// teilen sich alle lokalen Dashboards (auch Helios) denselben Speicher.
+  // Eigene Schlüssel: Unter file:// teilen sich alle lokalen Dashboards (auch anderer Projekte) denselben Speicher.
   const SPEICHER = "runner-monitor-dashboard-antworten";
   const lesen = () => { try { return JSON.parse(localStorage.getItem(SPEICHER) || "{}"); } catch { return {}; } };
   const schreiben = (o) => { try { localStorage.setItem(SPEICHER, JSON.stringify(o)); } catch {} };
