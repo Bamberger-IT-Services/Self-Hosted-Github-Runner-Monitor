@@ -94,6 +94,9 @@ class ServerTest(unittest.TestCase):
         self.cookies.clear()
         r, _ = self.anfrage("GET", "/")
         self.assertEqual(r.headers["Location"], "/anmelden")
+        # Ohne JavaScript darf das Formular das Passwort nicht in die Adresse schreiben (ZAP 10024, #20)
+        r, seite = self.anfrage("GET", "/anmelden")
+        self.assertIn(b'method="post"', seite)
         r, _ = self.anfrage("GET", "/events")
         self.assertEqual(r.status, 401)
         r, b = self.anfrage("POST", "/api/anmelden", {"nutzer": "admin", "passwort": "falsch falsch falsch"})
@@ -123,6 +126,29 @@ class ServerTest(unittest.TestCase):
         r, _ = self.anfrage("POST", "/api/abmelden")
         r, _ = self.anfrage("GET", "/api/sitzung")
         self.assertEqual(r.status, 401)
+
+    def test_abgelehnter_koerper_bleibt_nicht_in_der_verbindung(self):
+        """POST ohne Origin wird vor dem Lesen des Körpers abgelehnt: Verbindung zu, kein Rest als nächste Anfrage (#20)."""
+        import socket
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as s:
+            koerper = b"nutzer=ZAP&passwort=ZAP"
+            s.sendall(b"POST /api/anmelden HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/x-www-form-urlencoded\r\n"
+                      b"Content-Length: " + str(len(koerper)).encode() + b"\r\n\r\n" + koerper +
+                      b"GET / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            antwort = b""
+            while chunk := s.recv(65536):
+                antwort += chunk
+        self.assertTrue(antwort.startswith(b"HTTP/1.1 403"))
+        self.assertIn(b"Connection: close", antwort)
+        self.assertNotIn(b"501", antwort)
+
+    def test_kaputte_anfrage_mit_sicherheitskopf(self):
+        import socket
+        with socket.create_connection(("127.0.0.1", self.port), timeout=5) as s:
+            s.sendall(b"UNSINN / HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            antwort = s.recv(65536)
+        self.assertIn(b"Content-Security-Policy", antwort)
+        self.assertIn(b"application/json", antwort)
 
     def live_strom_endet_bei_ueberlauf(self):
         """Kommt ein Browser nicht hinterher, endet der Strom (er verbindet neu), statt stumm offen zu bleiben."""

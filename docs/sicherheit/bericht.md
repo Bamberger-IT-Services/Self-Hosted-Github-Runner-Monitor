@@ -1,6 +1,6 @@
 # Sicherheitsbericht
 
-**Stand: 23.10.2026 · Version 0.3.0** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
+**Stand: 23.10.2026 · Version 0.6.0** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
 
 Einsatzrahmen: ein Monitor im **lokalen Netz** einer Runner-VM, ein Zugang, nur lesend.
 Erreichbar über HTTP auf Port 8090, die Firewall-Regel des Einrichtungsskripts lässt nur das
@@ -16,6 +16,8 @@ eigene Netz zu.
 | S-HOST-01 | Jobs laufen als `github-runner` mit `sudo` ohne Passwort und in der Gruppe `docker` – faktisch root. Ein bösartiger Workflow kann das GitHub-Token des Monitors lesen und den Monitor verändern | hoch (Eigenschaft der Runner-VM, nicht des Monitors) | akzeptiert: Token nur lesend und kurzlebig; Runner nur für eigene, private Repositories, nie für Pull Requests aus Forks | 23.10.2026 |
 | S-CSP-01 | CSP ohne Nonce/`strict-dynamic` (Anweisung 04 verlangt sie); stattdessen streng `script-src 'self'` ohne Inline-Skripte | niedrig | akzeptiert – gleich streng, da keine Inline-Skripte und keine fremden Quellen | 23.10.2026 |
 | S-UPD-01 | Updates wurden nur per SHA-256 aus demselben Release geprüft. Wer das Repository oder den Release-Prozess übernimmt, kann ein Update ausliefern | mittel | behoben ab 0.6: GitHub-Attestierung des Pakets, Prüfung mit `gh attestation verify` gegen Repository und Release-Workflow ([ADR-0005](../adr/0005-herkunft-per-github-attestierung.md), Issue #18); ohne GitHub-CLI auf der VM weiter nur Prüfsumme, mit `MONITOR_UPDATE_HERKUNFT=pflicht` dann kein Update | 23.10.2026 |
+| S-ZAP-01 | Ohne JavaScript schickte das Anmeldeformular Benutzername und Passwort per GET in der Adresse (ZAP-Regel 10024) – landet in Verlauf und Proxy-Logs | niedrig | behoben: Formular mit `method="post"` (Issue #20) | 23.10.2026 |
+| S-HTTP-01 | Wurde ein POST vor dem Lesen des Körpers abgelehnt (Herkunft, Inhaltstyp, Größe), blieb der Körper in der Verbindung und wurde als nächste Anfrage gelesen; Fehlerseiten der Standardbibliothek (kaputte Anfragezeile, unbekannte Methode) kamen ohne Sicherheits-Kopfzeilen | niedrig | behoben: Verbindung wird dann geschlossen (`Connection: close`), alle Fehler als JSON mit CSP und den übrigen Kopfzeilen (Issue #20) | 23.10.2026 |
 | S-DOS-01 | Ein angemeldeter Browser konnte beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | behoben: höchstens 6 Live-Verbindungen je Sitzung, weitere bekommen 429 (Issue #19); hängende Verbindungen enden nach 60 s, übergelaufene Warteschlangen beenden den Strom (seit 0.3.1) | 23.10.2026 |
 
 ## V1 Architektur
@@ -84,4 +86,25 @@ eigene Netz zu.
 | Wann | Was | Ergebnis |
 |---|---|---|
 | jeder PR | Unit-Tests inkl. Header, CSRF, Weiterleitungen, Einrichtung, Anmeldung, Entpacken; gitleaks | CI |
-| vor 0.1.0 | Abnahme auf einer Test-VM (Issue #14), OWASP ZAP Baseline (Issue #20) | offen |
+| 23.10.2026 | Abnahme auf der Test-VM (Issue #14) | erledigt |
+| 23.10.2026 · 0.6.0 | OWASP ZAP 2.17.0 Baseline (nur passive Regeln) gegen eine lokale Testinstanz, ohne und mit Anmeldung (Issue #20) | S-ZAP-01 und S-HTTP-01 behoben; danach nur noch die zwei unten bewerteten Hinweise |
+
+### ZAP-Baseline wiederholen
+
+Nur gegen eine lokale Testinstanz, nie gegen die produktive VM:
+
+```bash
+# Testinstanz (eigener Datenordner, nicht als root), Zugang anlegen, dann starten
+export MONITOR_DATEN_VERZ=./zap/daten MONITOR_LAUF_VERZ=./zap/lauf MONITOR_RUNNER_VERZ=./zap/runner MONITOR_ADRESSE=127.0.0.1 MONITOR_PORT=8091
+python3 -c "from runner_monitor import konfig, zugang; k=konfig.lade(); zugang.Zugang(k.zugang_datei, k.sitzungen_datei, k.sperren_datei).lege_an('pruefer', '<testpasswort>')"
+python3 -m runner_monitor &
+werkzeuge/zap-baseline.sh <zap-ordner> http://127.0.0.1:8091 ./zap/ohne
+werkzeuge/zap-baseline.sh <zap-ordner> http://127.0.0.1:8091 ./zap/mit "rm_sitzung=<cookie einer Testanmeldung>"
+```
+
+Bewertete Hinweise (Stand 0.6.0):
+
+| ZAP-Regel | Fundstelle | Bewertung |
+|---|---|---|
+| 10202 Absence of Anti-CSRF Tokens (mittel, Konfidenz niedrig) | Anmeldeformular | akzeptiert: CSRF-Schutz über `Origin`-Prüfung, `SameSite=Strict` und nur JSON-Körper; ein fremdes Formular bekommt 403/415. Ein Token im Formular brächte nichts dazu |
+| 10109 Modern Web Application (Info) | Dashboard | nur ein Hinweis für den Spider, kein Befund |

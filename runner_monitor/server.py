@@ -147,10 +147,23 @@ class Handler(BaseHTTPRequestHandler):
     def _weiter(self, ziel: str) -> None:
         self._kopf(HTTPStatus.FOUND, "text/plain; charset=utf-8", 0, {"Location": ziel})
 
-    def _fehler(self, status: int, text: str) -> None:
+    def _fehler(self, status: int, text: str, schliessen: bool = False) -> None:
         fehler_id = uuid.uuid4().hex[:8]
-        LOG.info("Fehler %s %s: %s %s", fehler_id, status, self.command, self.path)
-        self._json(status, {"fehler": text, "fehlerId": fehler_id})
+        LOG.info("Fehler %s %s: %s %s", fehler_id, status, self.command, getattr(self, "path", ""))
+        extra = None
+        if schliessen:
+            self.close_connection = True
+            extra = {"Connection": "close"}
+        self._json(status, {"fehler": text, "fehlerId": fehler_id}, extra)
+
+    def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
+        """Fehler, die schon beim Lesen der Anfrage entstehen (kaputte Anfragezeile, unbekannte Methode):
+        als JSON mit denselben Sicherheits-Kopfzeilen wie alle anderen Antworten (ZAP-Baseline, #20)."""
+        try:
+            text = HTTPStatus(code).phrase
+        except ValueError:
+            text = "Fehler"
+        self._fehler(code, text, schliessen=True)
 
     def _datei(self, pfad: Path) -> None:
         try:
@@ -176,18 +189,20 @@ class Handler(BaseHTTPRequestHandler):
         """JSON-Körper einer POST-Anfrage nach CSRF-Prüfung, sonst None (Antwort ist dann schon raus)."""
         herkunft = self.headers.get("Origin")
         host = self.headers.get("Host", "")
+        # Abgelehnt, bevor der Körper gelesen ist: Verbindung schließen, sonst liest der Server den
+        # ungelesenen Körper als nächste Anfrage (ZAP-Baseline, #20).
         if not herkunft or urlsplit(herkunft).netloc != host:
-            self._fehler(HTTPStatus.FORBIDDEN, "Anfrage abgelehnt (Herkunft)")
+            self._fehler(HTTPStatus.FORBIDDEN, "Anfrage abgelehnt (Herkunft)", schliessen=True)
             return None
         if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
-            self._fehler(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "Erwartet JSON")
+            self._fehler(HTTPStatus.UNSUPPORTED_MEDIA_TYPE, "Erwartet JSON", schliessen=True)
             return None
         try:
             laenge = int(self.headers.get("Content-Length") or "0")
         except ValueError:
             laenge = -1
         if not 0 <= laenge <= MAX_KOERPER:
-            self._fehler(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Anfrage zu groß")
+            self._fehler(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Anfrage zu groß", schliessen=True)
             return None
         try:
             daten = json.loads(self.rfile.read(laenge) or b"{}")

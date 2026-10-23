@@ -1,0 +1,37 @@
+# OWASP-ZAP-Baseline (nur passive Regeln) gegen eine lokale Testinstanz – Issue #20, Sicherheitsbericht › Prüfungen.
+# Nie gegen die produktive VM. Aufruf über werkzeuge/zap-baseline.sh (setzt die Werte ein).
+#   ZAP_ZIEL     z. B. http://127.0.0.1:8091
+#   ZAP_SITZUNG  leer (ohne Anmeldung) oder „rm_sitzung=…“ einer Testsitzung (mit Anmeldung)
+#   ZAP_BERICHT  Ordner für die Berichte
+env:
+  contexts:
+    - name: monitor
+      urls: ["${ZAP_ZIEL}"]
+      includePaths: ["${ZAP_ZIEL}.*"]
+  parameters:
+    failOnError: false
+    progressToStdout: false
+jobs:
+  - type: replacer
+    rules:
+      - description: Sitzung der Testinstanz
+        matchType: req_header
+        matchString: Cookie
+        replacementString: "${ZAP_SITZUNG}"
+  - type: spider
+    parameters: {context: monitor, url: "${ZAP_ZIEL}/", maxDuration: 2}
+  - type: requestor
+    requests:
+      - {url: "${ZAP_ZIEL}/", method: GET}
+      - {url: "${ZAP_ZIEL}/anmelden", method: GET}
+      - {url: "${ZAP_ZIEL}/einrichtung", method: GET}
+      - {url: "${ZAP_ZIEL}/api/health", method: GET}
+      - {url: "${ZAP_ZIEL}/api/sitzung", method: GET}
+      - {url: "${ZAP_ZIEL}/static/stil.css", method: GET}
+      - {url: "${ZAP_ZIEL}/static/dashboard.js", method: GET}
+  - type: passiveScan-wait
+    parameters: {maxDuration: 3}
+  - type: report
+    parameters: {template: traditional-md, reportDir: "${ZAP_BERICHT}", reportFile: zap-baseline}
+  - type: report
+    parameters: {template: traditional-json, reportDir: "${ZAP_BERICHT}", reportFile: zap-baseline}
