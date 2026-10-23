@@ -10,7 +10,7 @@ eigene Netz zu.
 
 | ID | Befund | Schwere | Status | Datum |
 |---|---|---|---|---|
-| S-NET-01 | Kein HTTPS: Passwort und Sitzungs-Cookie gehen im LAN unverschlüsselt; Cookie ohne `Secure`, kein HSTS | mittel | akzeptiert für den LAN-Betrieb. Wer von außen zugreift, setzt einen Reverse-Proxy mit TLS davor (Issue #17) | 23.10.2026 |
+| S-NET-01 | Kein HTTPS: Passwort und Sitzungs-Cookie gehen im LAN unverschlüsselt; Cookie ohne `Secure`, kein HSTS | mittel | akzeptiert für den LAN-Betrieb. Für Zugriff von außen: Reverse-Proxy mit TLS nach [HTTPS.md](../HTTPS.md), dazu `MONITOR_HTTPS=1` (Cookies mit `Secure`, HSTS) – Issue #17 | 23.10.2026 |
 | S-AUTH-01 | Keine Zwei-Faktor-Anmeldung (Abweichung von Anweisung 03) | mittel | akzeptiert, [ADR-0003](../adr/0003-nur-passwort.md) / E-01 | 23.10.2026 |
 | S-AUTH-02 | Liste gesperrter Passwörter war kurz (20 Einträge statt der 10 000 häufigsten) | niedrig | behoben: 10 000 häufigste aus SecLists (MIT) plus eigene Ergänzungen, auch mit angehängten Ziffern/Zeichen (Issue #16) | 23.10.2026 |
 | S-HOST-01 | Jobs laufen als `github-runner` mit `sudo` ohne Passwort und in der Gruppe `docker` – faktisch root. Ein bösartiger Workflow kann das GitHub-Token des Monitors lesen und den Monitor verändern | hoch (Eigenschaft der Runner-VM, nicht des Monitors) | akzeptiert: Token nur lesend und kurzlebig; Runner nur für eigene, private Repositories, nie für Pull Requests aus Forks | 23.10.2026 |

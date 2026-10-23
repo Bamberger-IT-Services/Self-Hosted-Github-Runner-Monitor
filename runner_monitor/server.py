@@ -129,6 +129,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(laenge))
         for k, v in SICHERHEITS_KOPF.items():
             self.send_header(k, v)
+        if self.app.k.https:
+            self.send_header("Strict-Transport-Security", "max-age=31536000")
         for k, v in (extra or {}).items():
             if isinstance(v, list):
                 for einzel in v:
@@ -197,8 +199,12 @@ class Handler(BaseHTTPRequestHandler):
             return None
         return daten
 
+    def _sicher(self) -> str:
+        """Hinter einem TLS-Proxy (MONITOR_HTTPS=1) gehen Cookies nur über HTTPS."""
+        return "; Secure" if self.app.k.https else ""
+
     def _sitzungs_cookie(self, wert: str, max_alter: int | None) -> str:
-        teile = [f"{COOKIE}={wert}", "Path=/", "HttpOnly", "SameSite=Strict"]
+        teile = [f"{COOKIE}={wert}", "Path=/", "HttpOnly", "SameSite=Strict"] + (["Secure"] if self.app.k.https else [])
         if max_alter is not None:
             teile.append(f"Max-Age={max_alter}")
         return "; ".join(teile)
@@ -395,7 +401,7 @@ class Handler(BaseHTTPRequestHandler):
             ergebnis = zugang.pruefe_code(app.k.einrichtungscode_datei, str(daten.get("code", ""))[:20])
             if ergebnis == "ok":
                 token = app.neue_einrichtung()
-                cookie = f"{COOKIE_EINRICHTUNG}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={zugang.CODE_GUELTIG}"
+                cookie = f"{COOKIE_EINRICHTUNG}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={zugang.CODE_GUELTIG}{self._sicher()}"
                 self._json(HTTPStatus.OK, {"ok": True}, {"Set-Cookie": cookie})
             else:
                 text = {
@@ -468,7 +474,7 @@ def _github_routen(handler: Handler, pfad: str, daten: dict) -> bool:
         app.k.einrichtungscode_datei.unlink(missing_ok=True)
         with app.sperre:
             app.einrichtung.clear()
-        handler._json(HTTPStatus.OK, {"ok": True}, {"Set-Cookie": f"{COOKIE_EINRICHTUNG}=; Path=/; Max-Age=0"})  # noqa: SLF001
+        handler._json(HTTPStatus.OK, {"ok": True}, {"Set-Cookie": f"{COOKIE_EINRICHTUNG}=; Path=/; Max-Age=0{handler._sicher()}"})  # noqa: SLF001
         return True
     org = str(daten.get("org", "")).strip()
     token = str(daten.get("token", "")).strip()
