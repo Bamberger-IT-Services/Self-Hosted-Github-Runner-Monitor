@@ -45,9 +45,10 @@ Projektanweisung etwas anderes sagt. **Keine Lizenz** (E-11): keine LICENSE-Date
 ```bash
 MONITOR_ENTWICKLUNG=1 MONITOR_DATEN_VERZ=./daten MONITOR_LAUF_VERZ=./lauf python3 -m runner_monitor   # → :8090/?demo
 python3 -m unittest discover -s tests -t .
-shellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh
+shellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh werkzeuge/zap-baseline.sh
 node werkzeuge/bilder.mjs     # Bildschirmfotos fürs Handbuch (nicht als root)
 werkzeuge/paket.sh            # Release-Paket nach dist/
+werkzeuge/zap-baseline.sh     # OWASP-ZAP-Baseline gegen eine lokale Testinstanz (Sicherheitsbericht › Prüfungen)
 ```
 
 Aufbau und Datenformate: `docs/FUNKTIONSWEISE.md`.

@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Sicherheit
+- OWASP-ZAP-Baseline gegen eine Testinstanz (#20), Ergebnis im Sicherheitsbericht; Werkzeug
+  `werkzeuge/zap-baseline.sh`. Behoben: Ohne JavaScript schickte das Anmeldeformular das Passwort in
+  der Adresse (S-ZAP-01); ein vorzeitig abgelehnter POST ließ seinen Körper in der Verbindung, und
+  Fehlerseiten der Standardbibliothek kamen ohne Sicherheits-Kopfzeilen (S-HTTP-01).
+
 ### Neu
 - **Herkunft der Updates** (#18, ADR-0005): Der Release-Workflow bestätigt jedes Paket per
   GitHub-Attestierung (Sigstore); der Update-Hilfsdienst prüft sie mit `gh attestation verify` und
