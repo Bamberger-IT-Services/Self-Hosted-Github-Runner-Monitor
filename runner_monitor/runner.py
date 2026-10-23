@@ -11,6 +11,7 @@ Quellen (alle ohne root lesbar, der Monitor-Benutzer ist in der Gruppe ``systemd
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 import threading
@@ -19,6 +20,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
+
+LOG = logging.getLogger("runner_monitor")
 
 UNIT_MUSTER = "actions.runner.*"
 
@@ -155,12 +158,16 @@ class JournalFolger(threading.Thread):
                 for zeile in prozess.stdout:
                     try:
                         ereignis = deute_journalzeile(json.loads(zeile))
+                        if ereignis:
+                            self.melde(ereignis)
                     except ValueError:
                         continue
-                    if ereignis:
-                        self.melde(ereignis)
+                    except Exception:  # noqa: BLE001 – ein Fehler darf das Mitlesen nie beenden (Issue #57)
+                        LOG.exception("Fehler beim Verarbeiten einer Journalzeile")
             except OSError:
                 pass
+            except Exception:  # noqa: BLE001
+                LOG.exception("Journal-Leser: unerwarteter Fehler, starte neu")
             time.sleep(5)
 
 
@@ -174,7 +181,10 @@ def deute_seitenzeile(zeile: str, ersatzzeit: float) -> tuple[float, str]:
     t = ZEITSTEMPEL.match(zeile)
     if not t:
         return ersatzzeit, zeile
-    zeit = datetime.strptime(t.group("zeit"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    try:
+        zeit = datetime.strptime(t.group("zeit"), "%Y-%m-%dT%H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:  # z. B. „2026-13-40T…“ – dann gilt die Ersatzzeit
+        return ersatzzeit, zeile[t.end():]
     return zeit, zeile[t.end():]
 
 
@@ -196,11 +206,21 @@ class SeitenFolger(threading.Thread):
         self.rest = ""
 
     def neueste(self) -> Path | None:
+        """Jüngste Seitendatei. Der Runner lädt Seiten hoch und löscht sie – eine Datei kann zwischen
+        Auflisten und stat() verschwinden; das darf den Leser nicht beenden (Issue #57)."""
         try:
             dateien = [p for p in self.verz.iterdir() if p.suffix == ".log"]
         except OSError:
             return None
-        return max(dateien, key=lambda p: p.stat().st_mtime, default=None)
+        beste, beste_zeit = None, -1.0
+        for p in dateien:
+            try:
+                zeit = p.stat().st_mtime
+            except OSError:
+                continue
+            if zeit > beste_zeit:
+                beste, beste_zeit = p, zeit
+        return beste
 
     def schritt(self) -> None:
         neu = self.neueste()
@@ -235,5 +255,9 @@ class SeitenFolger(threading.Thread):
 
     def run(self) -> None:  # pragma: no cover – Endlosschleife
         while True:
-            self.schritt()
+            try:
+                self.schritt()
+            except Exception:  # noqa: BLE001 – ein Fehler darf das Live-Log nie dauerhaft anhalten (Issue #57)
+                LOG.exception("Live-Log: Fehler beim Lesen von %s", self.datei or self.verz)
+                time.sleep(5)
             time.sleep(self.takt)
