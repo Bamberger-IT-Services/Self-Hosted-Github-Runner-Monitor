@@ -14,6 +14,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Der Segmentbalken steht immer; ohne Schrittliste von GitHub „3 von –“ mit gestricheltem Rest.
   Demo: `?schritte=lokal`.
 
+### Behoben
+- Demo zeigt als installierte Version die Version des Servers statt fest „0.1.0“ (#25).
+
 ## [0.3.1] – 23.10.2026
 
 ### Behoben
