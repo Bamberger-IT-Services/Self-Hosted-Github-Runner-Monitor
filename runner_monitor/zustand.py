@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import queue
 import socket
@@ -28,6 +29,7 @@ MAX_EREIGNISSE = 50
 VERLAUF = 600  # 10 Minuten bei 1 Wert je Sekunde
 VERLAUF_SICHERN = 10  # Sekunden zwischen zwei Sicherungen nach verlauf.json
 VERLAUF_LUECKE = 60  # größere Lücke (Monitor länger aus) → gesicherten Verlauf verwerfen
+GH_START_TOLERANZ = 120  # Sekunden: so viel früher darf GitHubs started_at vor dem lokalen Jobstart liegen
 
 
 def lies_json(pfad: Path, vorgabe=None):
@@ -91,6 +93,7 @@ class Zustand:
         self.netz_verlauf: deque[list[int]] = deque(maxlen=VERLAUF)  # [empfangen, gesendet] in B/s
         self.verlauf_start: float | None = None  # Zeit des ältesten Werts im Verlauf (Achse „seit hh:mm“)
         self._luecke = 0  # Sekunden seit dem letzten gesicherten Wert, beim ersten Messwert aufzufüllen
+        self._sichern_fehler = False  # Warnung nur beim Wechsel, nicht alle 10 s
         self.zeilen: deque[dict] = deque(maxlen=MAX_ZEILEN)
         self.ereignisse: deque[dict] = deque(maxlen=MAX_EREIGNISSE)
         self.letzte_jobs: deque[dict] = deque(maxlen=5)
@@ -98,6 +101,7 @@ class Zustand:
         self.schritt_nr = 0  # lokal: Zahl der Seitendateien in _diag/pages im laufenden Job
         self._schritt_hoch = 0  # höchster angezeigter Schritt im laufenden Job – die Zahl springt nie zurück
         self._schritt_job = ""  # Name des Jobs, zu dem _schritt_hoch gehört
+        self._beendet: tuple[str, float] | None = None  # (Name, Ende) des letzten Jobs – GitHub meldet ihn bis zu 30 s weiter
         self.job_zuordnung: dict[str, dict] = {}  # Jobname → {repo, workflow} aus der GitHub-Abfrage
         self.offline_seit: float | None = None
         self._dateistand: dict[Path, float] = {}
@@ -158,7 +162,13 @@ class Zustand:
                 Path(tmp).unlink(missing_ok=True)
                 raise
         except OSError as fehler:
-            LOG.warning("Verlauf nicht gesichert: %s", fehler)
+            if not self._sichern_fehler:
+                LOG.warning("Verlauf nicht gesichert (weitere Fehler werden nicht gemeldet): %s", fehler)
+            self._sichern_fehler = True
+        else:
+            if self._sichern_fehler:
+                LOG.info("Verlauf wird wieder gesichert")
+            self._sichern_fehler = False
 
     def lade_verlauf(self, jetzt: float | None = None) -> None:
         """Übernimmt einen gesicherten Verlauf, wenn er jünger als 10 Min. ist und die Lücke höchstens 60 s."""
@@ -166,20 +176,26 @@ class Zustand:
         d = lies_json(self.verlauf_datei)
         if not isinstance(d, dict):
             return
+        # Erst alles prüfen (Zahlen endlich, gleich lang), dann übernehmen – eine kaputte Datei
+        # darf den Start nie verhindern und nie halbe Verläufe hinterlassen.
         try:
             zeit = float(d["zeit"])
-            cpu, ram, netz = list(d["cpu"]), list(d["ram"]), [list(w)[:2] for w in d["netz"]]
-        except (KeyError, TypeError, ValueError):
+            cpu = [float(w) for w in d["cpu"]][-VERLAUF:]
+            ram = [float(w) for w in d["ram"]][-VERLAUF:]
+            netz = [[int(w[0]), int(w[1])] for w in d["netz"]][-VERLAUF:]
+            start = float(d.get("start", zeit - len(cpu)))
+        except (KeyError, TypeError, ValueError, IndexError, OverflowError):
+            return
+        if not all(math.isfinite(w) for w in [zeit, start, *cpu, *ram]) or not len(cpu) == len(ram) == len(netz):
             return
         luecke = jetzt - zeit
-        if not cpu or luecke < 0 or luecke > VERLAUF_LUECKE or jetzt - zeit > VERLAUF:
+        if not cpu or luecke < 0 or luecke > VERLAUF_LUECKE:
             return
         with self._sperre:
-            self.cpu_verlauf.extend(float(w) for w in cpu[-VERLAUF:])
-            self.ram_verlauf.extend(float(w) for w in ram[-VERLAUF:])
-            self.netz_verlauf.extend([int(a), int(b)] for a, b in netz[-VERLAUF:])
-            start = d.get("start")
-            self.verlauf_start = float(start) if isinstance(start, (int, float)) else zeit - len(cpu)
+            self.cpu_verlauf.extend(cpu)
+            self.ram_verlauf.extend(ram)
+            self.netz_verlauf.extend(netz)
+            self.verlauf_start = start
             self._luecke = int(luecke)
 
     def _haenge_an(self, cpu: float, ram: float, netz: list[int]) -> None:
@@ -220,6 +236,7 @@ class Zustand:
                 self.letzte_jobs.appendleft({"name": e.name, "ergebnis": e.ergebnis, "dauer": dauer, "ende": e.zeit,
                                              "repo": info.get("repo", ""), "workflow": info.get("workflow", "")})
                 self.job_lokal = None
+                self._beendet = (e.name, e.zeit)
                 eintrag = {"zeit": e.zeit, "art": "ende", "name": e.name, "ergebnis": e.ergebnis, "dauer": dauer, **info}
             elif e.art in ("dienst-gestartet", "dienst-gestoppt"):
                 if e.art == "dienst-gestoppt":
@@ -232,15 +249,31 @@ class Zustand:
 
     # ------------------------------------------------------------ Job-Schritt aus einer Quelle (Design 0.4.0)
 
-    def _gh_job(self) -> dict | None:
-        """Job aus der GitHub-Abfrage, sofern er zum lokal laufenden Job passt."""
-        gh = self.bereiche.get("_github")
-        gh_job = gh.get("job") if isinstance(gh, dict) else None
+    def _passt(self, gh_job: object) -> dict | None:
+        """Der Job aus der GitHub-Abfrage, sofern er zum lokal laufenden Job gehört.
+
+        Gleicher Name reicht nicht: Starten zwei Jobs „test“ kurz nacheinander, hält die bis zu 30 s
+        alte Abfrage noch den vorigen. Deshalb muss GitHubs Startzeit zum lokalen Start passen.
+        """
         if not isinstance(gh_job, dict):
             return None
-        if self.job_lokal and gh_job.get("name") != self.job_lokal.get("name"):
-            return None
+        if not self.job_lokal and self._beendet:
+            # Job gerade beendet: die Abfrage (bis zu 30 s alt) meldet ihn noch als laufend
+            name, ende = self._beendet
+            gh_start = gh_job.get("start")
+            if gh_job.get("name") == name and (not isinstance(gh_start, (int, float)) or gh_start < ende):
+                return None
+        if self.job_lokal:
+            if gh_job.get("name") != self.job_lokal.get("name"):
+                return None
+            gh_start, lokal_start = gh_job.get("start"), self.job_lokal.get("start")
+            if isinstance(gh_start, (int, float)) and isinstance(lokal_start, (int, float)) and gh_start < lokal_start - GH_START_TOLERANZ:
+                return None
         return gh_job
+
+    def _gh_job(self) -> dict | None:
+        gh = self.bereiche.get("_github")
+        return self._passt(gh.get("job") if isinstance(gh, dict) else None)
 
     def _schritt(self, gh_job: dict | None) -> dict:
         """{nr, von, name} für Status, Log-Chip und Trenner.
@@ -293,14 +326,13 @@ class Zustand:
             self.offline_seit = None
         job = None
         with self._sperre:
-            gh_job = gh.get("job")
-            if self.job_lokal or (gh_job and dienst["zustand"] == "aktiv"):
+            passend = self._passt(gh.get("job"))
+            if self.job_lokal or (passend and dienst["zustand"] == "aktiv"):
                 job = {
-                    "name": (self.job_lokal or {}).get("name") or (gh_job or {}).get("name", ""),
-                    "start": (self.job_lokal or {}).get("start") or (gh_job or {}).get("start"),
+                    "name": (self.job_lokal or {}).get("name") or (passend or {}).get("name", ""),
+                    "start": (self.job_lokal or {}).get("start") or (passend or {}).get("start"),
                     "repo": "", "workflow": "", "privat": False, "ref": None, "schritte": [],
                 }
-                passend = gh_job if gh_job and (not self.job_lokal or gh_job.get("name") == self.job_lokal.get("name")) else None
                 if passend:
                     job.update({k: passend.get(k) for k in ("repo", "workflow", "privat", "ref", "schritte", "url")})
                 job["schritt"] = self._schritt(passend)

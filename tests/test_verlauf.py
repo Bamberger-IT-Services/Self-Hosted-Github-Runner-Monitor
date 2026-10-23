@@ -60,7 +60,14 @@ class VerlaufTest(unittest.TestCase):
         z.lade_verlauf()
         z.verlauf_datei.write_text(json.dumps({"zeit": "x", "cpu": [1]}))
         z.lade_verlauf()
-        self.assertEqual(len(z.cpu_verlauf), 0)
+        jetzt = time.time()
+        for kaputt in ({"zeit": jetzt, "cpu": [1, None], "ram": [1, 2], "netz": [[1, 2], [3, 4]]},
+                       {"zeit": jetzt, "cpu": [1, 2], "ram": [1, 2], "netz": [[1, 2], [3]]},
+                       {"zeit": jetzt, "cpu": [1, 2], "ram": [1], "netz": [[1, 2], [3, 4]]},
+                       {"zeit": jetzt, "cpu": [1, float("nan")], "ram": [1, 2], "netz": [[1, 2], [3, 4]]}):
+            z.verlauf_datei.write_text(json.dumps(kaputt))
+            z.lade_verlauf(jetzt + 1)   # darf nie werfen und nichts halb übernehmen
+            self.assertEqual((len(z.cpu_verlauf), len(z.ram_verlauf), len(z.netz_verlauf)), (0, 0, 0))
 
     def test_voller_verlauf_bleibt_bei_600(self):
         z = neuer_zustand(self.verz)
