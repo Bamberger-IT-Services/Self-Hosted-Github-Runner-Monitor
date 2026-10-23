@@ -1,6 +1,7 @@
 name: Fehler melden
 description: Etwas funktioniert nicht wie erwartet.
-labels: [fehler]
+type: Bug
+projects: ["Bamberger-IT-Services/5"]
 body:
   - type: markdown
     attributes:

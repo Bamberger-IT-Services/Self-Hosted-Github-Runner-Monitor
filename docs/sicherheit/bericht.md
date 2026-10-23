@@ -10,13 +10,13 @@ eigene Netz zu.
 
 | ID | Befund | Schwere | Status | Datum |
 |---|---|---|---|---|
-| S-NET-01 | Kein HTTPS: Passwort und Sitzungs-Cookie gehen im LAN unverschlüsselt; Cookie ohne `Secure`, kein HSTS | mittel | akzeptiert für den LAN-Betrieb. Wer von außen zugreift, setzt einen Reverse-Proxy mit TLS davor (A-09) | 23.10.2026 |
+| S-NET-01 | Kein HTTPS: Passwort und Sitzungs-Cookie gehen im LAN unverschlüsselt; Cookie ohne `Secure`, kein HSTS | mittel | akzeptiert für den LAN-Betrieb. Wer von außen zugreift, setzt einen Reverse-Proxy mit TLS davor (Issue #17) | 23.10.2026 |
 | S-AUTH-01 | Keine Zwei-Faktor-Anmeldung (Abweichung von Anweisung 03) | mittel | akzeptiert, [ADR-0003](../adr/0003-nur-passwort.md) / E-01 | 23.10.2026 |
-| S-AUTH-02 | Liste gesperrter Passwörter ist kurz (20 Einträge plus Wiederholungen statt der 10 000 häufigsten) | niedrig | offen (A-08) | 23.10.2026 |
+| S-AUTH-02 | Liste gesperrter Passwörter ist kurz (20 Einträge plus Wiederholungen statt der 10 000 häufigsten) | niedrig | offen (Issue #16) | 23.10.2026 |
 | S-HOST-01 | Jobs laufen als `github-runner` mit `sudo` ohne Passwort und in der Gruppe `docker` – faktisch root. Ein bösartiger Workflow kann das GitHub-Token des Monitors lesen und den Monitor verändern | hoch (Eigenschaft der Runner-VM, nicht des Monitors) | akzeptiert: Token nur lesend und kurzlebig; Runner nur für eigene, private Repositories, nie für Pull Requests aus Forks | 23.10.2026 |
 | S-CSP-01 | CSP ohne Nonce/`strict-dynamic` (Anweisung 04 verlangt sie); stattdessen streng `script-src 'self'` ohne Inline-Skripte | niedrig | akzeptiert – gleich streng, da keine Inline-Skripte und keine fremden Quellen | 23.10.2026 |
-| S-UPD-01 | Updates werden nur per SHA-256 aus demselben Release geprüft, nicht signiert. Wer das Repository oder den Release-Prozess übernimmt, kann ein Update ausliefern | mittel | offen (A-10: Signatur mit Sigstore/minisign) | 23.10.2026 |
-| S-DOS-01 | Ein angemeldeter Browser kann beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | offen (A-11: Obergrenze je Sitzung). Seit 0.3.1 enden hängende Verbindungen: `write()` bricht nach 60 s ab, übergelaufene Warteschlangen beenden den Strom | 23.10.2026 |
+| S-UPD-01 | Updates werden nur per SHA-256 aus demselben Release geprüft, nicht signiert. Wer das Repository oder den Release-Prozess übernimmt, kann ein Update ausliefern | mittel | offen (Issue #18: Signatur mit Sigstore/minisign) | 23.10.2026 |
+| S-DOS-01 | Ein angemeldeter Browser kann beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | offen (Issue #19: Obergrenze je Sitzung). Seit 0.3.1 enden hängende Verbindungen: `write()` bricht nach 60 s ab, übergelaufene Warteschlangen beenden den Strom | 23.10.2026 |
 
 ## V1 Architektur
 
@@ -84,4 +84,4 @@ eigene Netz zu.
 | Wann | Was | Ergebnis |
 |---|---|---|
 | jeder PR | Unit-Tests inkl. Header, CSRF, Weiterleitungen, Einrichtung, Anmeldung, Entpacken; gitleaks | CI |
-| vor 0.1.0 | Abnahme auf einer Test-VM (A-03), OWASP ZAP Baseline (A-12) | offen |
+| vor 0.1.0 | Abnahme auf einer Test-VM (Issue #14), OWASP ZAP Baseline (Issue #20) | offen |

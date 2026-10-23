@@ -1,0 +1,40 @@
+# Anweisung 08 (Vorlage aus Bamberger-IT-Services/Public). Keine internen Namen, Adressen oder Tokens – öffentliches Repo.
+name: Aufgabe
+description: Funktion, Fehler oder Aufgabe für das Board
+projects: ["Bamberger-IT-Services/5"]
+body:
+  - type: textarea
+    id: ziel
+    attributes:
+      label: Ziel
+      description: Ein Satz aus Sicht der Nutzer. Was ist danach möglich?
+    validations:
+      required: true
+  - type: textarea
+    id: akzeptanz
+    attributes:
+      label: Akzeptanzkriterien
+      description: Prüfbar formuliert. Erst wenn alle erfüllt sind, ist das Issue erledigt.
+      value: |
+        - [ ]
+    validations:
+      required: true
+  - type: input
+    id: bereich
+    attributes:
+      label: Betroffene App bzw. Bereich
+  - type: input
+    id: design
+    attributes:
+      label: Design
+      description: Version und Bildschirm aus docs/design/vX/, falls die Aufgabe einen Entwurf umsetzt
+  - type: input
+    id: bezug
+    attributes:
+      label: Bezug
+      description: Entscheidung (E-nn), andere Issues, früher A-nn
+  - type: textarea
+    id: hinweise
+    attributes:
+      label: Hinweise
+      description: Randfälle, Links, Bildschirmfotos

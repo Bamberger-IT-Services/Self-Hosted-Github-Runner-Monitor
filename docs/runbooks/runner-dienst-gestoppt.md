@@ -1,7 +1,7 @@
 # Runbook: Runner-Dienst gestoppt oder offline
 
 **Wann:** Meldung „Runner-Dienst gestoppt“ (rot) oder „Runner offline bei GitHub“; Jobs bleiben in der Warteschlange.
-**Dauer:** ca. 5–15 Minuten · **Zuletzt geprüft:** 2026-10-23 (Version 0.1.0, nur am Schreibtisch – A-03)
+**Dauer:** ca. 5–15 Minuten · **Zuletzt geprüft:** 2026-10-23 (Version 0.1.0, nur am Schreibtisch – Issue #14)
 
 ## Voraussetzungen
 - SSH auf die Runner-VM mit sudo

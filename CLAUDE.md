@@ -1,10 +1,17 @@
 # CLAUDE.md – Runner-Monitor
 
 Es gelten die gemeinsamen Anweisungen:
-https://github.com/Bamberger-IT-Services/Public/tree/main/anweisungen (00–07, Vorlagen).
+https://github.com/Bamberger-IT-Services/Public/tree/main/anweisungen (00–08, Vorlagen).
 Kurz: mit Tobias auf Deutsch und per „du“; Entscheidungen per Auswahlfrage, eine je Nachricht;
-CI bei jedem PR; Doku im selben PR; `entwickler-dashboard/daten.js` nach jeder Arbeitsrunde
-(`stand` aus `TZ=Europe/Berlin date +"%d.%m.%Y %H:%M"`).
+CI bei jedem PR; Doku im selben PR; `entwickler-dashboard/daten.js` (Entscheidungen, Verlauf)
+nach jeder Arbeitsrunde (`stand` aus `TZ=Europe/Berlin date +"%d.%m.%Y %H:%M"`).
+
+**Aufgaben** stehen als Issues in diesem Repo, geordnet im Project
+[Self-Hosted-Github-Runner-Monitor Roadmap](https://github.com/orgs/Bamberger-IT-Services/projects/5)
+(Anweisung 08): nächstes Issue = oberstes in Ready ohne `agent:`-Label und ohne `blocked`; vor dem
+Start `agent:claude` und Status In Arbeit; Branch `issue-<nr>-<kurzname>`, PR mit `Closes #<nr>`.
+Bereichslabels: `area:monitor`, `area:einrichtung`, `area:runner`, `area:docs`. Das Project nutzt
+die Statusnamen der GitHub-Vorlage (Backlog, Ready, In progress, In review, Done).
 
 ## Projektregeln
 
@@ -28,6 +35,7 @@ CI bei jedem PR; Doku im selben PR; `entwickler-dashboard/daten.js` nach jeder A
 | 03 Zwei-Faktor | nur Passwort | ADR-0003, E-01 |
 | 04 CSP mit Nonce | `script-src 'self'` ohne Inline-Skripte | Sicherheitsbericht S-CSP-01 |
 | 04 Rate-Limit in Postgres | dateibasiert (`sperren.json`) | ADR-0001 |
+| 06/08 Design-Übergabe unter `handoff/` | Entwürfe unter `docs/design/vX/` (z. B. `docs/design/v0.3.0/`), Abgleich in `docs/design/README.md` | Projektstand seit Design v1 |
 
 **Kein Docker** für den Monitor, auch nicht als Zusatz (E-02, E-12) – gilt auch dann, wenn eine
 Projektanweisung etwas anderes sagt. **Keine Lizenz** (E-11): keine LICENSE-Datei anlegen.

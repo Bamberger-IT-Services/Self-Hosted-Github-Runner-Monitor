@@ -80,4 +80,4 @@ Geprüft mit Bildschirmfotos bei 1440 × 900 (Design und App nebeneinander), hel
 ## Vermerke für das nächste Design
 
 - Bei vielen Laufwerken scrollt die Plattenliste innerhalb der Karte.
-- Docker-Container werden gesammelt, aber nicht angezeigt (E-05, A-15).
+- Docker-Container werden gesammelt, aber nicht angezeigt (E-05, Issue #22).

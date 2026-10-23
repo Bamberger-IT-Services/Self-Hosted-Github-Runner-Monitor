@@ -24,4 +24,4 @@ Fortschritt in `update-status.json`, das die Oberfläche anzeigt.
 
 ## Folgen
 - Release-Workflow muss `runner-monitor-X.Y.Z.tar.gz` und `.sha256` anhängen (`.github/workflows/release.yml`).
-- Offen: Signatur statt nur Prüfsumme (S-UPD-01, A-10).
+- Offen: Signatur statt nur Prüfsumme (S-UPD-01, Issue #18).

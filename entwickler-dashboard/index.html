@@ -198,16 +198,8 @@ ul.links small{color:var(--leise);font-family:ui-monospace,Menlo,monospace;font-
   <div class="zwei">
     <section id="aufgaben">
       <h2>Aufgaben</h2>
-      <p class="unter">Was Claude gerade baut und was als Nächstes kommt. Nummer anklicken = kopieren. „In Bearbeitung“ heißt: Claude arbeitet gerade daran – bitte nicht ändern.</p>
-      <div class="leiste">
-        <div class="filter" id="aufgabenfilter" role="group" aria-label="Aufgaben filtern">
-          <button data-a="offen" aria-pressed="true">Offen<small id="na-offen"></small></button>
-          <button data-a="läuft" aria-pressed="false">In Bearbeitung<small id="na-läuft"></small></button>
-          <button data-a="erledigt" aria-pressed="false">Erledigt<small id="na-erledigt"></small></button>
-          <button data-a="alle" aria-pressed="false">Alle<small id="na-alle"></small></button>
-        </div>
-      </div>
-      <div class="karte" id="aufgabenliste"></div>
+      <p class="unter">Aufgaben stehen als Issues im GitHub-Project (Anweisung 08). Dort legt Tobias die Reihenfolge in „Ready“ fest; Claude nimmt das oberste Issue ohne <code>agent:</code>-Label.</p>
+      <div class="karte" id="board"></div>
     </section>
     <section id="hinweise">
       <h2>Merkzettel</h2>
@@ -385,29 +377,11 @@ ul.links small{color:var(--leise);font-family:ui-monospace,Menlo,monospace;font-
   $("leeren").onclick = () => { schreiben({}); zeigeEntscheidungen(); toast("Antworten geleert"); };
   zeigeEntscheidungen();
 
-  // --- Aufgaben, Hinweise, Links, Verlauf -----------------------------------
-  // Aufgaben: Standard „Offen“ (offen + in Bearbeitung), Erledigte nur auf Klick. „läuft“ = in Bearbeitung.
-  const inArbeit = (t) => t.status === "läuft" || t.status === "in_bearbeitung";
-  const STATUS_TEXT = { offen: "offen", läuft: "in Bearbeitung", in_bearbeitung: "in Bearbeitung", erledigt: "erledigt" };
-  const passt = { offen: (t) => t.status !== "erledigt", läuft: inArbeit, erledigt: (t) => t.status === "erledigt", alle: () => true };
-  let aFilter = "offen";
-  try { const g = localStorage.getItem("runner-monitor-dashboard-aufgabenfilter"); if (g && passt[g]) aFilter = g; } catch {}
-  function zeigeAufgaben() {
-    const liste = D.aufgaben.filter(passt[aFilter]).sort((a, b) => (inArbeit(b) - inArbeit(a)) || ((a.status === "erledigt") - (b.status === "erledigt")));
-    $("aufgabenliste").innerHTML = liste.map((t) => `
-    <div class="aufgabe${inArbeit(t) ? " in-arbeit" : ""}"><button class="id" data-kopie="${t.id}" title="Nummer kopieren">${t.id}</button>
-      <p>${t.wer === "Tobias" ? '<span class="wer">FÜR DICH</span>' : ""}${esc(t.text)}${t.link ? ` · <a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.linkText || "Link")}</a>` : ""}</p>
-      <span class="badge ${inArbeit(t) ? "läuft" : esc(t.status)}">${esc(STATUS_TEXT[t.status] || t.status)}</span></div>`).join("")
-      || '<p class="aufgabe" style="color:var(--gedaempft)">Keine Aufgaben in dieser Ansicht.</p>';
-    for (const k of Object.keys(passt)) { const n = $("na-" + k); if (n) n.textContent = D.aufgaben.filter(passt[k]).length; }
-    document.querySelectorAll("#aufgabenfilter button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.a === aFilter));
-  }
-  document.querySelectorAll("#aufgabenfilter button").forEach((b) => b.onclick = () => {
-    aFilter = b.dataset.a; try { localStorage.setItem("runner-monitor-dashboard-aufgabenfilter", aFilter); } catch {}
-    zeigeAufgaben();
-  });
-  zeigeAufgaben();
-  $("aufgabenliste").onclick = (e) => { const k = e.target.dataset.kopie; if (k) kopiere(k, `${k} kopiert`); };
+  // --- Aufgaben (Board), Hinweise, Links, Verlauf ----------------------------
+  const B = D.board || {};
+  $("board").innerHTML = B.url ? `
+    <div class="aufgabe"><p><a href="${esc(B.url)}" target="_blank" rel="noopener"><b>${esc(B.titel || "Board")}</b></a> – Backlog, Ready, In progress, In review, Done</p></div>
+    <div class="aufgabe"><p><a href="${esc(B.issues)}" target="_blank" rel="noopener">Alle Issues im Repo</a> · <a href="${esc(B.neu)}" target="_blank" rel="noopener">Neues Issue</a> (Vorlagen Aufgabe, Fehler, Idee)</p></div>` : '<p class="aufgabe">Kein Board eingetragen.</p>';
   $("hinweisliste").innerHTML = D.hinweise.map((h) => `
     <div class="hinweis" ${D.hinweise.indexOf(h) ? 'style="border-top:1px solid var(--rahmen-leise)"' : ""}>
       <b>${esc(h.titel)}</b><p>${esc(h.text)}${h.datei ? ` <a href="${datei(h.datei)}">Öffnen</a>` : ""}</p></div>`).join("");

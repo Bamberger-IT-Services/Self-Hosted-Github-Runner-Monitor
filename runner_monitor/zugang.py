@@ -34,7 +34,7 @@ CODE_ZEICHEN = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # ohne 0/O, 1/I
 CODE_GUELTIG = 60 * 60
 CODE_VERSUCHE = 10
 
-# Häufige Passwörter (Auszug). Ziel nach Anweisung 03 sind die 10.000 häufigsten → A-08.
+# Häufige Passwörter (Auszug). Ziel nach Anweisung 03 sind die 10.000 häufigsten → Issue #16.
 HAEUFIG = {
     "passwort1234", "password1234", "123456789012", "qwertzuiop12", "qwertyuiop12",
     "adminadmin12", "administrator", "letmein12345", "willkommen12", "welcome12345",
