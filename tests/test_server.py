@@ -110,6 +110,10 @@ class ServerTest(unittest.TestCase):
         r, _ = self.anfrage("POST", "/api/update/starten")
         self.assertEqual(r.status, 202)
         self.assertEqual(json.loads((self.k.auftraege_verz / "update").read_text())["version"], "99.0.0")
+        # „Jetzt prüfen“ legt nur einen Auftrag für den Sammler ab
+        r, _ = self.anfrage("POST", "/api/update/pruefen")
+        self.assertEqual(r.status, 202)
+        self.assertTrue((self.k.auftraege_verz / "release-pruefen").is_file())
         r, _ = self.anfrage("POST", "/api/abmelden")
         r, _ = self.anfrage("GET", "/api/sitzung")
         self.assertEqual(r.status, 401)

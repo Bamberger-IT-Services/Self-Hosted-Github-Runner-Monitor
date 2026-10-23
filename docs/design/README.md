@@ -1,6 +1,6 @@
 # Design
 
-**Stand: 23.10.2026 · Version 0.1.1**
+**Stand: 23.10.2026 · Version 0.1.2**
 
 **Design v1 (eingefroren 23.10.2026)** – Canvas „Runner-Monitor · Design v1“ in Claude Design
 (privat). Eine Kopie aller Bildschirme liegt in [`v1/`](v1/) (`*.dc.html`, Design-Canvas-Format).

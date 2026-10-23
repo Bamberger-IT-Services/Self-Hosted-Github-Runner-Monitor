@@ -326,6 +326,9 @@ body.dashboard { overflow: hidden; }
 .upd-schritte li.aktiv { font-weight: 600; }
 .upd-zusatz { color: var(--ink-muted); font-size: 12px; font-weight: 400; }
 .upd-dreh { animation: dreh 1s linear infinite; transform-origin: 50% 50%; }
+.upd-pruefen { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; flex-wrap: wrap; }
+.upd-pruefen .info-notiz { margin: 0; }
+.upd-pruefen .knopf:disabled { opacity: .6; cursor: default; }
 .upd-auto { display: flex; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; }
 .upd-auto input, .merken input { width: 16px; height: 16px; margin: 0; accent-color: var(--brand); }
 .knopf-reihe { display: flex; gap: 8px; margin-top: 12px; }

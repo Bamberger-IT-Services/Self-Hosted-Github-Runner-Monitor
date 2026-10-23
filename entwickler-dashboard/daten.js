@@ -3,9 +3,9 @@
 window.DATEN = {
   projekt: 'Runner-Monitor',
   repo: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor',
-  version: '0.1.1',
-  versionStatus: 'Release v0.1.1 veröffentlicht (23.10.2026); auf der Runner-VM läuft 0.1.0 im Test',
-  stand: '23.10.2026 18:04',
+  version: '0.1.2',
+  versionStatus: 'Release v0.1.2 veröffentlicht (23.10.2026); Update-Test auf der Runner-VM läuft',
+  stand: '23.10.2026 18:16',
   naechsteSchritte: [
     'Auf der VM das Update auf 0.1.1 per Knopf testen, danach Rückweg (A-03)',
     'Abnahme auf der Runner-VM weiterführen (A-03): Live-Log mit echtem Job, Update und Rückweg',
@@ -33,6 +33,7 @@ window.DATEN = {
     { id: 'A-17', titel: 'Klären: Projektanweisung sagt „Als Docker sollte es dennoch funktionieren“ – widerspricht E-02/ADR-0002 (kein Docker). Optionaler Container (privilegiert, --pid=host, Journal- und Runner-Mounts) zusätzlich zum systemd-Dienst?', status: 'erledigt', prio: 'mittel', bereich: 'Entscheidung', wer: 'Tobias', notiz: 'E-12: kein Docker, auch nicht zusätzlich' },
     { id: 'A-18', titel: 'Info-Blatt baute sich jede Sekunde neu auf; Live-Log ließ sich nicht hochscrollen; einrichten.sh token vergaß die Organisation', status: 'erledigt', prio: 'hoch', bereich: 'Code', notiz: 'Version 0.1.1' },
     { id: 'A-20', titel: 'Netzwerkauslastung in der Karte Auslastung (empfangen, gesendet, Spitze 10 Min.)', status: 'erledigt', prio: 'mittel', bereich: 'Code', notiz: 'Wunsch Tobias, Version 0.1.1' },
+    { id: 'A-21', titel: 'Knopf „Jetzt prüfen“ in Info › Updates (Release sofort abfragen)', status: 'erledigt', prio: 'mittel', bereich: 'Code', notiz: 'Wunsch Tobias, Version 0.1.2' },
     { id: 'A-19', titel: 'Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung auf dieses Repo, vorlagen/runner-einrichten.sh entfällt (Entscheidung „alles hierher verschieben“)', status: 'erledigt', prio: 'mittel', bereich: 'Public', wer: 'Claude', notiz: 'Public PR #15' },
   ],
 
@@ -60,6 +61,7 @@ window.DATEN = {
   ],
 
   verlauf: [
+    { datum: '23.10.2026 18:16', text: '0.1.2: Knopf „Jetzt prüfen“ in Info › Updates (Auftrag release-pruefen an den Sammler, höchstens einmal je Minute). Release v0.1.1 veröffentlicht (Workflow grün, Prüfsumme geprüft).' },
     { datum: '23.10.2026 18:04', text: 'Release v0.1.1 (OK Tobias): CHANGELOG, Release-Notiz, Doku-Stand, Bildschirmfotos neu. Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung hierher (PR #15).' },
     { datum: '23.10.2026 17:56', text: 'Netzwerkauslastung ergänzt (Zeile „Netz“ in der Auslastung, /proc/net/dev ohne virtuelle Schnittstellen). PR #4 und Dependabot #2/#3 gemergt.' },
     { datum: '23.10.2026 17:49', text: '0.1.1: Info-Blatt bleibt ruhig stehen, Live-Log lässt sich hochscrollen, Token-Befehl im Info-Menü, einrichten.sh token fragt die Organisation. Entscheidungen E-11 (keine Lizenz) und E-12 (kein Docker) nachgetragen.' },

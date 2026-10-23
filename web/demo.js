@@ -155,5 +155,5 @@ window.RM_DEMO = (() => {
     }, 1000);
   }
 
-  return { start, updateStarten: () => { upd = 'laeuft'; updSchritt = 0; api.empfange('update', update()); } };
+  return { start, updateStarten: () => { upd = 'laeuft'; updSchritt = 0; api.empfange('update', update()); }, pruefen: () => setTimeout(() => { const d = update(); d.neueste = { ...d.neueste, geprueft: jetzt() }; api.empfange('update', d); }, 1500) };
 })();

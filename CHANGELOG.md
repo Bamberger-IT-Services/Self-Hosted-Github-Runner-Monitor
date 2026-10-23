@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.1.2] – 23.10.2026
+
+### Neu
+- Info › Updates: Knopf **„Jetzt prüfen“** fragt GitHub sofort nach einer neuen Version statt erst
+  nach bis zu 6 Stunden (über den root-Sammler, höchstens einmal je Minute).
+
 ## [0.1.1] – 23.10.2026
 
 Erstes veröffentlichtes Release, enthält 0.1.0.

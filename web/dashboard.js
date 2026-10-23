@@ -16,7 +16,7 @@
     status: null, system: null, prozesse: [], platten: [], workflows: null, update: null,
     cpuH: [], ramH: [], netzH: [], ereignisse: [], zeilenN: 0, puffer: [],
     verbindung: 'verbindet', letzteDaten: 0,
-    umbruch: true, angehalten: false, hochgescrollt: false, wfOffen: false, info: null, kerneN: 0,
+    umbruch: true, angehalten: false, hochgescrollt: false, pruefung: null, wfOffen: false, info: null, kerneN: 0,
   };
 
   /* ------------------------------------------------------------ ANSI → Segmente */
@@ -89,7 +89,10 @@
       case 'prozesse': S.prozesse = d; renderProzesse(); break;
       case 'platten': S.platten = d; renderPlatten(); renderKopf(); break;
       case 'workflows': S.workflows = d; renderWorkflows(); renderKopf(); break;
-      case 'update': S.update = d; renderKopf(); if (S.info) renderInfo(); break;
+      case 'update':
+        S.update = d;
+        if (S.pruefung && S.pruefung.zustand === 'laeuft' && d.neueste && ms(d.neueste.geprueft) >= S.pruefung.start - 1000) S.pruefung = { zustand: 'fertig', bis: Date.now() + 8000 };
+        renderKopf(); if (S.info) renderInfo(); break;
       case 'log':
         if (d.neu) { S.ereignisse = []; $('term-innen').replaceChildren(); S.zeilenN = 0; S.puffer = []; }
         if (d.ereignisse && d.ereignisse.length) { S.ereignisse.push(...d.ereignisse); S.ereignisse = S.ereignisse.slice(-20); renderEreignisse(); }
@@ -479,6 +482,23 @@
     ];
   }
 
+  /* „Jetzt prüfen“: fragt GitHub sofort nach einer neuen Version (über den root-Sammler, höchstens
+     einmal je Minute). Zustand in S.pruefung: laeuft → fertig/frisch/keine-antwort, verschwindet nach einigen Sekunden. */
+  function pruefKnopf(u, us, neu) {
+    const p = S.pruefung, jetzt = Date.now();
+    if (p && p.bis && jetzt > p.bis) S.pruefung = null;
+    if (p && p.zustand === 'laeuft' && jetzt - p.start > 45000) S.pruefung = { zustand: 'keine-antwort', bis: jetzt + 30000 };
+    const q = S.pruefung;
+    const text = !q ? '' : q.zustand === 'laeuft' ? 'Frage GitHub nach neuen Versionen …'
+      : q.zustand === 'frisch' ? 'Gerade erst geprüft – Stand siehe oben.'
+      : q.zustand === 'keine-antwort' ? 'Keine Antwort vom Sammler. Auf der VM prüfen: journalctl -u runner-monitor-sammler -n 30'
+      : u.neueste && u.neueste.fehler ? `GitHub nicht erreichbar: ${esc(u.neueste.fehler)}`
+      : neu ? `Version ${esc(u.neueste.version)} ist verfügbar.` : 'Auf dem neuesten Stand.';
+    const cls = !q ? '' : q.zustand === 'keine-antwort' || (q.zustand === 'fertig' && u.neueste && u.neueste.fehler) ? 'fehler' : q.zustand === 'fertig' && !neu ? 'ok' : '';
+    const aus = (q && q.zustand === 'laeuft') || us.zustand === 'laeuft';
+    return `<div class="upd-pruefen"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''}>${q && q.zustand === 'laeuft' ? IC.dreh() : IC.update()}Jetzt prüfen</button>${text ? `<span class="info-notiz ${cls}" role="status">${text}</span>` : ''}</div>`;
+  }
+
   function oeffneInfo(id) {
     S.info = id || 'alle';
     const ebene = $('info-ebene');
@@ -513,6 +533,7 @@
       ['Geprüft', u.neueste && u.neueste.geprueft ? `${tm(u.neueste.geprueft) === tm(jetzt) ? 'heute' : tm(u.neueste.geprueft)} ${hm(u.neueste.geprueft)} bei GitHub · alle 6 Std.` : '–'],
       ['Runner', `${st.version ? 'actions-runner ' + esc(st.version) : '–'} · aktualisiert sich selbst`],
     ]);
+    upd += pruefKnopf(u, us, neu);
     if (neu && u.neueste.notizen && u.neueste.notizen.length) upd += `<div class="upd-neu"><div class="upd-neu-titel">Neu in ${esc(u.neueste.version)}</div><ul>${u.neueste.notizen.map(n => `<li>${esc(n)}</li>`).join('')}</ul><a href="${esc(u.neueste.url || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">Alle Änderungen auf GitHub ↗</a></div>`;
     if (us.zustand === 'laeuft' || us.zustand === 'fehler') {
       const nr = us.schritt || 1;
@@ -614,6 +635,14 @@
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
     else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; renderWorkflows(); }
     else if (a === 'abmelden') { if (!DEMO) await RM.sende('/api/abmelden'); location.href = '/anmelden'; }
+    else if (a === 'update-pruefen') {
+      const g = S.update && S.update.neueste && S.update.neueste.geprueft;
+      if (g && Date.now() - ms(g) < 60000) { S.pruefung = { zustand: 'frisch', bis: Date.now() + 5000 }; renderInfo(); return; }
+      S.pruefung = { zustand: 'laeuft', start: Date.now() }; renderInfo();
+      if (DEMO) { window.RM_DEMO.pruefen(); return; }
+      const r = await RM.sende('/api/update/pruefen');
+      if (!r.ok) { S.pruefung = { zustand: 'keine-antwort', bis: Date.now() + 30000 }; renderInfo(); }
+    }
     else if (a === 'update-starten') {
       b.disabled = true;
       if (DEMO) { window.RM_DEMO.updateStarten(); return; }

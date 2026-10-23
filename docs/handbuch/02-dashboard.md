@@ -1,6 +1,6 @@
 # 2 Das Dashboard
 
-**Stand: 23.10.2026 · Version 0.1.1**
+**Stand: 23.10.2026 · Version 0.1.2**
 
 ![Dashboard mit laufendem Job](bilder/dashboard-job.png)
 
