@@ -48,11 +48,13 @@ jobs:
           python-version: "3.12"
       - run: python -m unittest discover -s tests -t .
       - run: werkzeuge/paket.sh
-      - name: Herkunft bestätigen (GitHub-Attestierung, Sigstore)
-        uses: actions/attest@v4
-        with:
-          subject-path: dist/runner-monitor-*.tar.gz
       - name: An das Release hängen
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" dist/runner-monitor-*.tar.gz dist/runner-monitor-*.tar.gz.sha256 --clobber
+      # Nach dem Hochladen: Scheitert die Attestierung, bleibt das Update per Prüfsumme möglich
+      # und der Lauf ist rot. Prüfen auf der VM: gh attestation verify (ADR-0005).
+      - name: Herkunft bestätigen (GitHub-Attestierung, Sigstore)
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/runner-monitor-*.tar.gz

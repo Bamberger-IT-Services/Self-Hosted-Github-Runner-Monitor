@@ -28,5 +28,5 @@ Paar aus Archiv und Prüfsumme ausliefern.
 ## Folgen
 - Die GitHub-CLI ist eine Abhängigkeit des Update-Hilfsdienstes auf der VM (nicht des Monitors
   selbst, der bleibt bei der Python-Standardbibliothek). Installation: `docs/UPDATE.md`.
-- Releases vor 0.5 sind nicht attestiert; die Prüfung greift ab dem ersten attestierten Release.
+- Releases vor 0.6 sind nicht attestiert; die Prüfung greift ab dem ersten attestierten Release.
 - Der Release-Workflow braucht `id-token: write`, `attestations: write`, `artifact-metadata: write`.

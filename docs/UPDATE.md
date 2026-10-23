@@ -52,7 +52,7 @@ Archiv verworfen und nichts installiert. Runbook: [update-fehlgeschlagen](runboo
 
 ## Herkunft prüfen (empfohlen)
 
-Seit Version 0.5 bestätigt der Release-Workflow jedes Paket per GitHub-Attestierung
+Seit Version 0.6 bestätigt der Release-Workflow jedes Paket per GitHub-Attestierung
 ([ADR-0005](adr/0005-herkunft-per-github-attestierung.md)). Ist die GitHub-CLI auf der VM
 installiert, prüft der Update-Hilfsdienst damit, dass das Archiv aus diesem Repository und dessen
 Release-Workflow stammt – sonst verwirft er es. Ohne CLI prüft er nur die Prüfsumme und schreibt
