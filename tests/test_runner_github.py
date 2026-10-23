@@ -60,6 +60,29 @@ class SeitenTest(unittest.TestCase):
             self.assertEqual([a for a, _ in gemeldet], ["schritt", "zeilen"])
             self.assertEqual(len(gemeldet[1][1]), 5000)
 
+    def test_aufraeumen_waehrend_der_suche(self):
+        # Issue #57: Der Runner löscht hochgeladene Seiten – eine Datei verschwindet zwischen iterdir und stat
+        with tempfile.TemporaryDirectory() as verz:
+            pfad = Path(verz)
+            (pfad / "a.log").write_text("x\n")
+            (pfad / "b.log").write_text("y\n")
+            folger = runner.SeitenFolger(pfad, lambda art, wert: None)
+            echt = Path.stat
+
+            def stat(selbst, *a, **k):
+                if selbst.name == "a.log":
+                    raise FileNotFoundError(selbst)
+                return echt(selbst, *a, **k)
+
+            Path.stat = stat
+            try:
+                self.assertEqual(folger.neueste().name, "b.log")
+            finally:
+                Path.stat = echt
+
+    def test_ungueltiger_zeitstempel(self):
+        self.assertEqual(runner.deute_seitenzeile("2026-13-40T25:00:00Z text", 7.0), (7.0, "text"))
+
     def test_registrierung_mit_bom(self):
         with tempfile.TemporaryDirectory() as verz:
             (Path(verz) / ".runner").write_text('﻿{"agentName":"runner-vm-01","gitHubUrl":"https://github.com/beispiel-org"}', encoding="utf-8")
