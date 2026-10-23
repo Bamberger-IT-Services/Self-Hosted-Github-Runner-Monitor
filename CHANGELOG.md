@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.5.0] – 23.10.2026
+
 ### Neu
 - **HTTPS über einen Reverse-Proxy** (#17): Anleitung `docs/HTTPS.md` mit Caddy; neue Einstellung
   `MONITOR_HTTPS=1` setzt `Secure` an den Cookies und schickt HSTS.
