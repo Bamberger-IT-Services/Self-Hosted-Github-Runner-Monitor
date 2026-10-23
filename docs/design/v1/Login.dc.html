@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Runner-Monitor – Anmelden</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.lg{--surface:#ffffff;--surface-alt:#f6f6f6;--ink:#13212b;--ink-muted:#4f5d67;--border:#d9dee2;--border-strong:#8a96a0;--brand:#0e628f;--brand-strong:#0a4a6c;--on-brand:#ffffff;--danger:#b3261e;--mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;box-sizing:border-box;display:flex;flex-direction:column;background:var(--surface);color:var(--ink);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+.lg[data-thema="dunkel"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--border-strong:#62798c;--brand:#5aa9d6;--brand-strong:#86c2e4;--on-brand:#0c1a24;--danger:#f08a80}
+@media (prefers-color-scheme: dark){.lg[data-thema="system"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--border-strong:#62798c;--brand:#5aa9d6;--brand-strong:#86c2e4;--on-brand:#0c1a24;--danger:#f08a80}}
+.lg *{box-sizing:border-box}
+.lg button,.lg input{font:inherit;color:inherit}
+.lg :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.mitte{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px}
+.marke{display:flex;flex-direction:column;align-items:center;gap:10px}
+.vm-icon{width:48px;height:48px;border-radius:4px;background:var(--brand);color:var(--on-brand);display:grid;place-items:center}
+.marke-titel{font-size:22px;line-height:28px;font-weight:650;letter-spacing:-.018em}
+.marke-sub{font-size:14px;color:var(--ink-muted);font-family:var(--mono)}
+.karte{width:400px;background:var(--surface-alt);border-radius:4px;padding:28px 32px 26px}
+h1{margin:0 0 18px;font-size:20px;line-height:26px;font-weight:650;letter-spacing:-.015em}
+.feld{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.feld label{font-size:13px;font-weight:600}
+.feld input{height:40px;padding:0 12px;border:1px solid var(--border-strong);border-radius:2px;background:var(--surface);font-size:15px}
+.feld input.falsch{border-color:var(--danger)}
+.merken{display:flex;align-items:center;gap:8px;margin:4px 0 18px;font-size:13.5px}
+.merken input{width:16px;height:16px;accent-color:var(--brand);margin:0}
+.knopf{display:flex;align-items:center;justify-content:center;width:100%;height:42px;border-radius:2px;border:1px solid var(--brand);background:var(--brand);color:var(--on-brand);font-size:15px;font-weight:600;text-decoration:none;transition:transform .1s ease-out}
+.knopf:hover{background:var(--brand-strong);border-color:var(--brand-strong)}
+.knopf:active{transform:scale(.98)}
+.fehler{display:flex;gap:8px;align-items:flex-start;margin-bottom:16px;padding:10px 12px;border-radius:2px;color:var(--danger);background:color-mix(in srgb,var(--danger) 9%,var(--surface));border:1px solid color-mix(in srgb,var(--danger) 35%,transparent);font-size:13px;line-height:18px;animation:einbl .25s ease-out}
+.fehler span{color:var(--ink)}
+.fehler b{font-weight:650}
+@keyframes einbl{from{opacity:0}to{opacity:1}}
+.hilfe{width:400px;font-size:12.5px;line-height:18px;color:var(--ink-muted);text-align:center}
+.hilfe code{font-family:var(--mono);font-size:12px;padding:1px 5px;border-radius:2px;border:1px solid var(--border);background:var(--surface-alt);color:var(--ink)}
+.fuss{flex:0 0 48px;display:flex;align-items:center;justify-content:center;gap:16px;font-size:12px;color:var(--ink-muted)}
+.fuss a{color:var(--ink-muted)}
+</style>
+</helmet>
+<div class="lg" data-thema="{{thema}}" style="width: 1440px; height: 900px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; color: var(--ink)">
+  <main class="mitte">
+    <div class="marke">
+      <span class="vm-icon"><svg viewBox="0 0 16 16" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4.5" rx="1"></rect><rect x="2" y="9" width="12" height="4.5" rx="1"></rect><path d="M4.5 4.75h.01M4.5 11.25h.01M8 4.75h3.5M8 11.25h3.5"></path></svg></span>
+      <div class="marke-titel">Runner-Monitor</div>
+      <div class="marke-sub">runner-vm</div>
+    </div>
+    <section class="karte" aria-label="Anmelden">
+      <h1>Anmelden</h1>
+      <sc-if value="{{fehler}}" hint-placeholder-val="{{false}}">
+        <div class="fehler" role="alert"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true" style="flex: none; margin-top: 1px"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg><div><b>Benutzername oder Passwort stimmt nicht.</b> <span>{{fehlerText}}</span></div></div>
+      </sc-if>
+      <div class="feld"><label for="nutzer">Benutzername</label><input id="nutzer" autocomplete="username" value="{{nutzer}}" onChange="{{setNutzer}}"></div>
+      <div class="feld"><label for="pw">Passwort</label><input id="pw" class="{{pwCls}}" type="password" autocomplete="current-password" value="{{pw}}" onChange="{{setPw}}"></div>
+      <label class="merken"><input type="checkbox" checked="{{merken}}" onChange="{{toggleMerken}}">Angemeldet bleiben (30 Tage)</label>
+      <sc-if value="{{kannRein}}" hint-placeholder-val="{{false}}"><a class="knopf" href="Main.dc.html">Anmelden</a></sc-if>
+      <sc-if value="{{nichtRein}}" hint-placeholder-val="{{true}}"><button type="button" class="knopf" onClick="{{anmelden}}">Anmelden</button></sc-if>
+    </section>
+    <p class="hilfe">Passwort vergessen? Auf der VM neu setzen: <code>sudo ./einrichten.sh passwort</code></p>
+  </main>
+  <footer class="fuss"><span>Runner-Monitor 0.1</span><span>·</span><a href="https://bamberger-it-services.de">Bamberger IT Services</a></footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"fehler":{"editor":"boolean","default":false,"section":"Zustand"},"thema":{"editor":"enum","options":["system","hell","dunkel"],"default":"system","section":"Darstellung"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props || {};
+    const key = String(!!p.fehler);
+    if (!this.s || this.s.key !== key) this.s = { key: key, nutzer: 'admin', pw: p.fehler ? 'falsches-pw' : '', merken: true, versuche: p.fehler ? 1 : 0 };
+    const s = this.s, up = () => this.forceUpdate();
+    const rest = 5 - s.versuche;
+    const fehler = s.versuche > 0;
+    const ok = s.pw.length >= 12 && s.pw !== 'falsches-pw';
+    return {
+      thema: ['hell', 'dunkel'].indexOf(p.thema) >= 0 ? p.thema : 'system',
+      nutzer: s.nutzer, pw: s.pw, merken: s.merken,
+      setNutzer: (e) => { s.nutzer = e.target.value; up(); },
+      setPw: (e) => { s.pw = e.target.value; up(); },
+      toggleMerken: () => { s.merken = !s.merken; up(); },
+      anmelden: () => { s.versuche++; s.pw = ''; up(); },
+      fehler: fehler, pwCls: fehler && s.pw.length === 0 ? 'falsch' : '',
+      fehlerText: rest > 0 ? 'Noch ' + rest + (rest === 1 ? ' Versuch' : ' Versuche') + ', danach ist die Anmeldung 5 Minuten gesperrt.' : 'Die Anmeldung ist für 5 Minuten gesperrt.',
+      kannRein: ok, nichtRein: !ok
+    };
+  }
+}
+</script>
+</body>
+</html>

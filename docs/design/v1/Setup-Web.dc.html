@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Ersteinrichtung – im Browser</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.ew{--surface:#ffffff;--surface-alt:#f6f6f6;--ink:#13212b;--ink-muted:#4f5d67;--border:#d9dee2;--border-strong:#8a96a0;--track:#e2e6e9;--brand:#0e628f;--brand-strong:#0a4a6c;--on-brand:#ffffff;--success:#1f7a4d;--danger:#b3261e;--warning:#9a4d00;--mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;box-sizing:border-box;display:flex;flex-direction:column;background:var(--surface);color:var(--ink);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+.ew[data-thema="dunkel"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--border-strong:#62798c;--track:#20384c;--brand:#5aa9d6;--brand-strong:#86c2e4;--on-brand:#0c1a24;--success:#5cc08a;--danger:#f08a80;--warning:#f0a35e}
+@media (prefers-color-scheme: dark){.ew[data-thema="system"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--border-strong:#62798c;--track:#20384c;--brand:#5aa9d6;--brand-strong:#86c2e4;--on-brand:#0c1a24;--success:#5cc08a;--danger:#f08a80;--warning:#f0a35e}}
+.ew *{box-sizing:border-box}
+.ew button,.ew input{font:inherit;color:inherit}
+.ew :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.ok{color:var(--success)}.fehler{color:var(--danger)}.warn{color:var(--warning)}.mut{color:var(--ink-muted)}
+.kopf{flex:0 0 60px;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--border)}
+.vm-icon{width:32px;height:32px;border-radius:4px;background:var(--brand);color:var(--on-brand);display:grid;place-items:center}
+.kopf-titel{font-size:17px;font-weight:650;letter-spacing:-.015em}
+.kopf-sub{color:var(--ink-muted);font-size:14px}
+.kopf-rechts{margin-left:auto;font-size:13px;color:var(--ink-muted);font-family:var(--mono)}
+.mitte{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;padding:28px 0 32px}
+.stepper{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.st{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-muted)}
+.st-nr{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:650;border:1.5px solid var(--border-strong)}
+.st.aktiv{color:var(--ink);font-weight:600}
+.st.aktiv .st-nr{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.st.fertig .st-nr{border-color:var(--success);color:var(--success)}
+.st-linie{width:40px;height:1px;background:var(--border)}
+.karte{width:880px;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface-alt);border-radius:4px;padding:32px 40px 28px;animation:rein .35s cubic-bezier(.22,1,.36,1)}
+@keyframes rein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.eyebrow{font-size:12px;line-height:16px;font-weight:700;letter-spacing:1px;color:var(--brand);text-transform:uppercase}
+h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spacing:-.022em}
+.einl{margin:0 0 22px;font-size:15px;line-height:22px;color:var(--ink-muted);max-width:640px}
+.feld{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.feld label{font-size:13px;font-weight:600}
+.feld input{height:40px;padding:0 12px;border:1px solid var(--border-strong);border-radius:2px;background:var(--surface);font-size:15px}
+.feld input.gross{height:52px;font-family:var(--mono);font-size:24px;letter-spacing:.12em;text-transform:uppercase;width:280px}
+.feld input.mono{font-family:var(--mono);font-size:13px}
+.feld-hinweis{font-size:12.5px;line-height:18px;color:var(--ink-muted)}
+.feld-hinweis code,.code{font-family:var(--mono);font-size:12.5px;padding:1px 5px;border-radius:2px;background:var(--surface);border:1px solid var(--border)}
+.erkannt{display:flex;flex-direction:column;gap:8px;margin-bottom:24px;padding:14px 16px;border-radius:4px;background:var(--surface);border:1px solid var(--border)}
+.erkannt-titel{font-size:12px;font-weight:650;color:var(--ink-muted)}
+.zeile{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.fuss{margin-top:auto;padding-top:20px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border)}
+.luecke{flex:1}
+.knopf{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 18px;border-radius:2px;border:1px solid var(--border-strong);background:var(--surface);font-size:14px;font-weight:550;text-decoration:none;color:var(--ink);transition:transform .1s ease-out}
+.knopf.primaer{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.knopf.primaer:hover{background:var(--brand-strong);border-color:var(--brand-strong)}
+.knopf:active{transform:scale(.97)}
+.knopf.klein{height:34px;padding:0 14px;font-size:13px}
+.staerke{display:flex;gap:4px;margin-top:2px}
+.staerke span{flex:1;height:4px;border-radius:1px;background:var(--track)}
+.staerke span.an{background:var(--brand)}
+.zwei{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;min-height:0}
+.anl{padding:16px 18px;border-radius:4px;background:var(--surface);border:1px solid var(--border);align-self:start}
+.anl-titel{font-size:13px;font-weight:650;margin-bottom:8px}
+.anl ol{margin:0 0 12px;padding-left:20px;display:flex;flex-direction:column;gap:7px;font-size:13px;line-height:18px}
+.anl a{color:var(--brand);font-weight:600;font-size:13px}
+.optional{display:inline-block;margin-left:8px;padding:0 7px;border-radius:2px;border:1px solid var(--border-strong);font-size:12px;font-weight:550;color:var(--ink-muted);vertical-align:6px;letter-spacing:0}
+.pruef{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.fertig-ic{color:var(--success);margin-bottom:6px}
+.liste{display:flex;flex-direction:column;border-top:1px solid var(--border);margin-bottom:16px}
+.liste .zeile{min-height:44px;border-bottom:1px solid var(--border);gap:10px}
+.liste b{font-weight:600}
+@media (prefers-reduced-motion: reduce){.karte{animation:einbl .2s linear}@keyframes einbl{from{opacity:0}to{opacity:1}}}
+</style>
+</helmet>
+<div class="ew" data-thema="{{thema}}" style="width: 1440px; height: 900px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; color: var(--ink)">
+  <header class="kopf">
+    <span class="vm-icon"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4.5" rx="1"></rect><rect x="2" y="9" width="12" height="4.5" rx="1"></rect><path d="M4.5 4.75h.01M4.5 11.25h.01M8 4.75h3.5M8 11.25h3.5"></path></svg></span>
+    <span class="kopf-titel">Runner-Monitor</span><span class="kopf-sub">Einrichtung</span>
+    <span class="kopf-rechts">runner-vm · 192.0.2.25:8090</span>
+  </header>
+
+  <div class="mitte">
+    <nav class="stepper" aria-label="Schritte der Einrichtung">
+      <sc-for list="{{schritte}}" as="s" hint-placeholder-count="4">
+        <sc-if value="{{s.mitLinie}}" hint-placeholder-val="{{true}}"><span class="st-linie"></span></sc-if>
+        <span class="st {{s.cls}}" aria-current="{{s.aktuell}}">
+          <span class="st-nr"><sc-if value="{{s.fertig}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-label="erledigt" role="img"><path d="M3.5 8.4l3 3 6-6.6"></path></svg></sc-if><sc-if value="{{s.offenNr}}" hint-placeholder-val="{{true}}">{{s.nr}}</sc-if></span>{{s.titel}}
+        </span>
+      </sc-for>
+    </nav>
+
+    <sc-if value="{{is1}}" hint-placeholder-val="{{true}}">
+      <section class="karte" aria-label="Schritt 1: Einrichtungscode">
+        <div class="eyebrow">Schritt 1 von 4</div>
+        <h1>Einrichtung abschließen</h1>
+        <p class="einl">Das Skript auf der VM ist durchgelaufen. Gib den Einrichtungscode ein, den es am Ende angezeigt hat. So kann niemand sonst im Netz diesen Monitor übernehmen.</p>
+        <div class="erkannt">
+          <div class="erkannt-titel">Vom Skript erledigt</div>
+          <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg>Runner <b>&#160;runner-vm-01&#160;</b> gefunden, Dienst aktiv</div>
+          <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg>Monitor-Dienst läuft als eigener Benutzer, nicht als root</div>
+          <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg>Firewall aktiv: Port 8090 nur aus dem lokalen Netz 192.0.2.0/24, SSH bleibt erlaubt</div>
+        </div>
+        <div class="feld">
+          <label for="code">Einrichtungscode</label>
+          <input id="code" class="gross" placeholder="XXXX-XXXX" autocomplete="one-time-code" value="{{code}}" onChange="{{setCode}}">
+          <span class="feld-hinweis">Code verloren oder abgelaufen? Neuen Code auf der VM anzeigen: <code>sudo ./einrichten.sh code</code></span>
+        </div>
+        <div class="fuss"><span class="mut" style="font-size: 13px">Der Code gilt 60 Minuten.</span><span class="luecke"></span><button type="button" class="knopf primaer" onClick="{{weiter}}">Weiter</button></div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{is2}}" hint-placeholder-val="{{false}}">
+      <section class="karte" aria-label="Schritt 2: Zugang schützen">
+        <div class="eyebrow">Schritt 2 von 4</div>
+        <h1>Zugang schützen</h1>
+        <p class="einl">Der Monitor ist nur mit Benutzername und Passwort erreichbar. Damit meldest du dich gleich nach der Einrichtung an. Auf Wunsch bleibt der Browser 30 Tage angemeldet.</p>
+        <div style="width: 420px">
+          <div class="feld"><label for="nutzer">Benutzername</label><input id="nutzer" autocomplete="username" value="{{nutzer}}" onChange="{{setNutzer}}"></div>
+          <div class="feld"><label for="pw1">Passwort</label><input id="pw1" type="password" autocomplete="new-password" value="{{pw1}}" onChange="{{setPw1}}">
+            <div class="staerke" aria-hidden="true"><sc-for list="{{staerke}}" as="b" hint-placeholder-count="4"><span class="{{b.cls}}"></span></sc-for></div>
+            <span class="feld-hinweis {{staerkeCls}}">{{staerkeText}}</span>
+          </div>
+          <div class="feld"><label for="pw2">Passwort wiederholen</label><input id="pw2" type="password" autocomplete="new-password" value="{{pw2}}" onChange="{{setPw2}}">
+            <span class="feld-hinweis {{gleichCls}}">{{gleichText}}</span>
+          </div>
+        </div>
+        <p class="feld-hinweis" style="margin: 4px 0 0">Auf der VM wird nur ein Hash gespeichert, nur für root lesbar. Ändern später mit <code>sudo ./einrichten.sh passwort</code>.</p>
+        <div class="fuss"><button type="button" class="knopf" onClick="{{zurueck}}">Zurück</button><span class="luecke"></span><button type="button" class="knopf primaer" onClick="{{weiter}}">Weiter</button></div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{is3}}" hint-placeholder-val="{{false}}">
+      <section class="karte" aria-label="Schritt 3: GitHub anbinden">
+        <div class="eyebrow">Schritt 3 von 4</div>
+        <h1>GitHub anbinden<span class="optional">optional</span></h1>
+        <p class="einl">Mit einem nur lesenden Token zeigt der Monitor, welche Workflows je Repository laufen und warten, und ob GitHub den Runner sieht. Ohne Token funktioniert alles andere trotzdem.</p>
+        <div class="zwei">
+          <div>
+            <div class="feld"><label for="org">Organisation</label><input id="org" value="{{org}}" onChange="{{setOrg}}"><span class="feld-hinweis">Aus der Runner-Konfiguration erkannt.</span></div>
+            <div class="feld"><label for="token">Token</label><input id="token" class="mono" type="password" placeholder="github_pat_…" autocomplete="off" value="{{token}}" onChange="{{setToken}}"></div>
+            <button type="button" class="knopf klein" onClick="{{pruefen}}">{{pruefText}}</button>
+            <sc-if value="{{hatErgebnis}}" hint-placeholder-val="{{false}}">
+              <div class="pruef" role="status" style="margin-top: 12px">
+                <sc-for list="{{ergebnis}}" as="e" hint-placeholder-count="4">
+                  <div class="zeile">
+                    <sc-if value="{{e.ok}}" hint-placeholder-val="{{true}}"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-label="erfüllt" role="img"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if>
+                    <sc-if value="{{e.warn}}" hint-placeholder-val="{{false}}"><svg class="warn" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-label="Hinweis" role="img"><path d="M8 1.9l6.4 11.3H1.6z"></path><path d="M8 6.3v3.2M8 11.4v.1"></path></svg></sc-if>
+                    <span>{{e.text}}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+          <div class="anl">
+            <div class="anl-titel">So erstellst du das Token</div>
+            <ol>
+              <li>Auf GitHub ein „Fine-grained token“ anlegen (Link unten).</li>
+              <li>Resource owner: die Organisation. Repository access: <b>All repositories</b>.</li>
+              <li>Repository-Rechte: <b>Actions</b> und <b>Metadata</b> jeweils „Read-only“.</li>
+              <li>Organisations-Recht: <b>Self-hosted runners</b> „Read-only“, damit der Online-Status angezeigt wird.</li>
+              <li>Ablauf z. B. 90 Tage. Der Monitor warnt 14 Tage vorher.</li>
+              <li>Token kopieren und links einfügen.</li>
+            </ol>
+            <a href="https://github.com/settings/personal-access-tokens/new">Token-Seite auf GitHub öffnen ↗</a>
+          </div>
+        </div>
+        <div class="fuss"><button type="button" class="knopf" onClick="{{zurueck}}">Zurück</button><span class="luecke"></span><button type="button" class="knopf" onClick="{{ohneGithub}}">Ohne GitHub fortfahren</button><button type="button" class="knopf primaer" onClick="{{weiter}}">Weiter</button></div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{is4}}" hint-placeholder-val="{{false}}">
+      <section class="karte" aria-label="Schritt 4: Fertig">
+        <svg class="fertig-ic" viewBox="0 0 16 16" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.6"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg>
+        <h1>Alles eingerichtet</h1>
+        <p class="einl">Der Monitor läuft. Lege dir die Adresse als Lesezeichen an. Auf einem zweiten Bildschirm kann die Seite dauerhaft offen bleiben.</p>
+        <div class="liste">
+          <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><b>Zugang geschützt</b><span class="mut">Benutzer {{nutzer}}</span></div>
+          <div class="zeile"><sc-if value="{{githubOk}}" hint-placeholder-val="{{true}}"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if><sc-if value="{{githubAus}}" hint-placeholder-val="{{false}}"><svg class="mut" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5 8h6"></path></svg></sc-if><b>{{githubTitel}}</b><span class="mut">{{githubText}}</span></div>
+          <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><b>Firewall aktiv</b><span class="mut">Port 8090 nur aus 192.0.2.0/24</span></div>
+          <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><b>Runner wird überwacht</b><span class="mut">runner-vm-01</span></div>
+        </div>
+        <p class="feld-hinweis" style="margin: 0">Diese Einrichtung lässt sich nicht erneut im Browser aufrufen. Ändern auf der VM mit <code>sudo ./einrichten.sh</code>. Hilfe findest du später im Monitor unter „Info“.</p>
+        <div class="fuss"><button type="button" class="knopf" onClick="{{zurueck}}">Zurück</button><span class="luecke"></span><a class="knopf primaer" href="Login.dc.html">Zum Monitor anmelden</a></div>
+      </section>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"schritt":{"editor":"int","min":1,"max":4,"step":1,"default":1,"section":"Zustand"},"thema":{"editor":"enum","options":["system","hell","dunkel"],"default":"system","section":"Darstellung"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const p = this.props || {};
+    let start = parseInt(p.schritt, 10); if (!(start >= 1 && start <= 4)) start = 1;
+    if (!this.s || this.s.start !== start) {
+      this.s = { start: start, schritt: start, code: start > 1 ? 'K7QF-2M9D' : '', nutzer: 'admin', pw1: start > 2 ? 'Blau-Gold-Runner-2026' : '', pw2: start > 2 ? 'Blau-Gold-Runner-2026' : '',
+        org: 'beispiel-org', token: start > 3 ? 'github_pat_11ABCDEFG' : '', pruefung: start > 3 ? 'ok' : 'nein', ohne: false };
+    }
+    const s = this.s, up = () => this.forceUpdate();
+    const set = (k) => (e) => { s[k] = e.target.value; if (k === 'token') s.pruefung = 'nein'; up(); };
+    const TITEL = ['Code', 'Zugang', 'GitHub', 'Fertig'];
+    const schritte = TITEL.map((t, i) => ({ nr: i + 1, titel: t, mitLinie: i > 0, fertig: i + 1 < s.schritt, offenNr: i + 1 >= s.schritt, cls: i + 1 < s.schritt ? 'fertig' : (i + 1 === s.schritt ? 'aktiv' : ''), aktuell: i + 1 === s.schritt ? 'step' : 'false' }));
+    // Passwortstärke (nur Anzeige)
+    const pw = s.pw1, len = pw.length;
+    let punkte = 0; if (len >= 8) punkte++; if (len >= 12) punkte++; if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) punkte++; if (/[0-9]/.test(pw) || /[^A-Za-z0-9]/.test(pw)) punkte++;
+    if (len < 12) punkte = Math.min(punkte, 1);
+    const staerke = [0, 1, 2, 3].map((i) => ({ cls: i < punkte ? 'an' : '' }));
+    const staerkeText = len === 0 ? 'Mindestens 12 Zeichen.' : (len < 12 ? 'Noch ' + (12 - len) + ' Zeichen bis zur Mindestlänge.' : ['', 'Schwach', 'In Ordnung', 'Gut', 'Stark'][punkte] + ' · ' + len + ' Zeichen');
+    const gleich = s.pw2.length > 0 && s.pw1 === s.pw2;
+    const ergebnis = [
+      { ok: true, text: 'Token gültig, läuft ab am 21.01.2027' },
+      { ok: true, text: 'Organisation beispiel-org gefunden, 15 Repositories' },
+      { ok: true, text: 'Actions und Metadata: lesen' },
+      { warn: true, text: 'Self-hosted runners fehlt: Online-Status bleibt „unbekannt“ (optional)' }
+    ];
+    return {
+      thema: ['hell', 'dunkel'].indexOf(p.thema) >= 0 ? p.thema : 'system',
+      schritte: schritte, is1: s.schritt === 1, is2: s.schritt === 2, is3: s.schritt === 3, is4: s.schritt === 4,
+      code: s.code, nutzer: s.nutzer, pw1: s.pw1, pw2: s.pw2, org: s.org, token: s.token,
+      setCode: set('code'), setNutzer: set('nutzer'), setPw1: set('pw1'), setPw2: set('pw2'), setOrg: set('org'), setToken: set('token'),
+      staerke: staerke, staerkeText: staerkeText, staerkeCls: len > 0 && len < 12 ? 'warn' : '',
+      gleichText: s.pw2.length === 0 ? ' ' : (gleich ? '✓ Stimmt überein' : 'Stimmt noch nicht überein'), gleichCls: s.pw2.length === 0 ? '' : (gleich ? 'ok' : 'warn'),
+      pruefText: s.pruefung === 'laeuft' ? 'Prüfe …' : (s.pruefung === 'ok' ? 'Erneut prüfen' : 'Verbindung prüfen'),
+      pruefen: () => { s.pruefung = 'laeuft'; up(); setTimeout(() => { s.pruefung = 'ok'; up(); }, 900); },
+      hatErgebnis: s.pruefung === 'ok', ergebnis: ergebnis,
+      weiter: () => { if (s.schritt === 3) s.ohne = false; s.schritt = Math.min(4, s.schritt + 1); up(); },
+      zurueck: () => { s.schritt = Math.max(1, s.schritt - 1); up(); },
+      ohneGithub: () => { s.ohne = true; s.schritt = 4; up(); },
+      githubOk: !s.ohne, githubAus: s.ohne,
+      githubTitel: s.ohne ? 'GitHub nicht verbunden' : 'GitHub verbunden',
+      githubText: s.ohne ? 'später nachholen, Anleitung unter „Info“' : s.org + ' · Token bis 21.01.2027'
+    };
+  }
+}
+</script>
+</body>
+</html>
