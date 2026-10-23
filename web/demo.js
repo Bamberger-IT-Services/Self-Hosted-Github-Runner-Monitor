@@ -6,6 +6,9 @@ window.RM_DEMO = (() => {
   const GiB = 1024 ** 3, GB = 1e9;
   const jetzt = () => Date.now() / 1000;
   const zufall = (a, b) => a + Math.random() * (b - a);
+  // Versionen wie im Entwurf: installiert = Version des Servers (/api/health), verfügbar = nächste Minor-Version
+  let INST = '0.0.0', NEU = '0.1.0';
+  const naechste = (v) => { const t = v.split('.').map(Number); return `${t[0] || 0}.${(t[1] || 0) + 1}.0`; };
   let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600, schritteLokal = false;
   let cpuSchnitt = 40, job = null, schrittNr = 1, zeilenImSchritt = 0, updSchritt = 0;
   const START = jetzt() - 3 * 86400 - 4 * 3600;
@@ -34,7 +37,7 @@ window.RM_DEMO = (() => {
     const dienst = zustand === 'gestoppt' ? { zustand: 'gestoppt', seit: t - 760 } : { zustand: 'aktiv', seit: START + 3600 };
     const github = zustand === 'offline' || zustand === 'gestoppt' ? { zustand: 'offline', seit: t - 1240 } : gh === 'kein-token' ? { zustand: 'unbekannt', seit: null } : { zustand: 'online', seit: null };
     return {
-      vm: 'runner-vm', runner: 'runner-vm-01', eingerichtet: true, labels: ['self-hosted', 'linux', 'x64', 'docker'], version: '2.329.0', monitorVersion: '0.1.0',
+      vm: 'runner-vm', runner: 'runner-vm-01', eingerichtet: true, labels: ['self-hosted', 'linux', 'x64', 'docker'], version: '2.329.0', monitorVersion: INST,
       dienst, github,
       job: ['job', 'platte', 'volllast', 'getrennt'].includes(zustand) && job ? { ...JOB, schritte: schritteLokal ? [] : JOB.schritte, start: job.start, schritt: schritt(schrittNr) } : null,
       letzteJobs: [
@@ -59,10 +62,10 @@ window.RM_DEMO = (() => {
   };
   const update = () => {
     const t = jetzt();
-    const neueste = { geprueft: t - 3100, version: upd === 'aktuell' ? '0.1.0' : '0.2.0', veroeffentlicht: t - 2 * 86400, url: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases', notizen: ['Mehrere Runner auf einer VM', 'Log-Suche im Live-Log', 'Kleinere Korrekturen in der Einrichtung'] };
-    const st = upd === 'laeuft' ? { zustand: 'laeuft', schritt: Math.min(5, 1 + Math.floor(updSchritt / 4)), version: '0.2.0', zeit: t - updSchritt }
-      : upd === 'fehler' ? { zustand: 'fehler', schritt: 5, version: '0.2.0', zeit: t - 300, meldung: 'die neue Version hat nach dem Neustart nicht geantwortet' } : {};
-    return { installiert: '0.1.0', neueste, status: st, auto: false };
+    const neueste = { geprueft: t - 3100, version: upd === 'aktuell' ? INST : NEU, veroeffentlicht: t - 2 * 86400, url: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases', notizen: ['Mehrere Runner auf einer VM', 'Log-Suche im Live-Log', 'Kleinere Korrekturen in der Einrichtung'] };
+    const st = upd === 'laeuft' ? { zustand: 'laeuft', schritt: Math.min(5, 1 + Math.floor(updSchritt / 4)), version: NEU, zeit: t - updSchritt }
+      : upd === 'fehler' ? { zustand: 'fehler', schritt: 5, version: NEU, zeit: t - 300, meldung: 'die neue Version hat nach dem Neustart nicht geantwortet' } : {};
+    return { installiert: INST, neueste, status: st, auto: false };
   };
   const platten = () => {
     const frei = zustand === 'platte' ? 18.4 * GB : 61.2 * GB;
@@ -165,6 +168,9 @@ window.RM_DEMO = (() => {
 
   function start(a) {
     api = a;
+    fetch('/api/health').then(r => (r.ok ? r.json() : {})).then((d) => {
+      if (d.version) { INST = d.version; NEU = naechste(INST); api.empfange('status', status()); api.empfange('update', update()); }
+    }).catch(() => {});
     const p = new URLSearchParams(location.search);
     zustand = p.get('zustand') || zustand; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
@@ -181,7 +187,7 @@ window.RM_DEMO = (() => {
       if (takt % 2 === 0) api.empfange('prozesse', prozesse());
       if (takt % 2 === 0) logTakt();
       if (takt % 5 === 0) { api.empfange('workflows', workflows()); api.empfange('platten', platten()); }
-      if (upd === 'laeuft') { updSchritt++; if (updSchritt > 22) upd = 'erfolg-demo'; api.empfange('update', upd === 'erfolg-demo' ? { installiert: '0.2.0', neueste: { version: '0.2.0', geprueft: jetzt() }, status: { zustand: 'erfolg', zeit: jetzt() }, auto: false } : update()); }
+      if (upd === 'laeuft') { updSchritt++; if (updSchritt > 22) upd = 'erfolg-demo'; api.empfange('update', upd === 'erfolg-demo' ? { installiert: NEU, neueste: { version: NEU, geprueft: jetzt() }, status: { zustand: 'erfolg', zeit: jetzt() }, auto: false } : update()); }
     }, 1000);
   }
 
