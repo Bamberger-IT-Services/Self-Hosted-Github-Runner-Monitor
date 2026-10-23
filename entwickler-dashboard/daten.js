@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "23.10.2026 23:41",
+  stand: "24.10.2026 00:03",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -248,6 +248,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "24.10.2026 00:03", text: "0.6.0: #63 Update gleich nach dem Release (Paket noch nicht angehängt → „wird bereitgestellt“, neue Prüfung nach 2 Min.; Rückmeldung aus dem Betrieb beim Update auf 0.5.0), #18 Herkunft per GitHub-Attestierung (ADR-0005), #20 ZAP-Baseline mit zwei behobenen Befunden (S-ZAP-01, S-HTTP-01). Offen: #21 (blocked), #22–#24 brauchen ein Design." },
     { datum: "23.10.2026 23:41", text: "0.5.0: Backlog abgearbeitet – #26 Netzlaufwerke, #15 Kontingent (ETag), #27 interne Namen, #19 Verbindungsgrenze, #57 Live-Log-Leser robust (Rückmeldung aus dem Betrieb), #16 Passwortliste, #17 HTTPS-Anleitung. #11–#14 nach Prüfung auf der VM geschlossen. #18 (Attestierung, E: GitHub-Attestierung) auf eigenem Branch, noch nicht im Release." },
     { datum: "23.10.2026 23:11", text: "Review der 0.4.0-Änderungen eingearbeitet (PR #51: gleichnamiger Folgejob, robuste verlauf.json, Schrittblock ohne Neuaufbau). Epic #42 geschlossen, Release v0.4.0 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
     { datum: "23.10.2026 23:04", text: "0.4.0 nach Design 0.4.0: #43 Verlauf (PR #47), #44 Job-Schritte (PR #48), #25 Demo-Version (PR #49), #45 Version, Doku und Handbuch-Bilder (neues Bild dashboard-neustart.png)." },

@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.6.0] – 24.10.2026
+
 ### Sicherheit
 - OWASP-ZAP-Baseline gegen eine Testinstanz (#20), Ergebnis im Sicherheitsbericht; Werkzeug
   `werkzeuge/zap-baseline.sh`. Behoben: Ohne JavaScript schickte das Anmeldeformular das Passwort in
