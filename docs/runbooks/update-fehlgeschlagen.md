@@ -1,7 +1,7 @@
 # Runbook: Update fehlgeschlagen (Rückfall)
 
 **Wann:** Meldung „Update fehlgeschlagen“, oder der Monitor verhält sich nach einem Update falsch.
-**Dauer:** ca. 5 Minuten · **Zuletzt geprüft:** 2026-10-23 (Version 0.1.0, nur am Schreibtisch – A-03)
+**Dauer:** ca. 5 Minuten · **Zuletzt geprüft:** 2026-10-23 (Version 0.1.0, nur am Schreibtisch – Issue #14)
 
 Bei „Update fehlgeschlagen“ hat der Hilfsdienst die alte Version **schon wiederhergestellt** –
 es läuft nichts Kaputtes.

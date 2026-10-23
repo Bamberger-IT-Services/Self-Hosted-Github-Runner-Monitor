@@ -19,7 +19,7 @@
    sudo /opt/runner-monitor/aktuell/einrichten.sh token
    ```
 4. **403 / Kontingent:** die Abfrage setzt bis zum Reset aus (Uhrzeit unter Info ›
-   GitHub-Verbindung). Viele Repositories? Je Abfrage braucht der Monitor etwa eine Anfrage je Repository plus drei; 5000 Anfragen je Stunde reichen im 30-s-Takt für etwa 35 Repositories (A-07).
+   GitHub-Verbindung). Viele Repositories? Je Abfrage braucht der Monitor etwa eine Anfrage je Repository plus drei; 5000 Anfragen je Stunde reichen im 30-s-Takt für etwa 35 Repositories (Issue #15).
 5. **Keine Antwort:** DNS, Proxy, Firewall der VM nach außen prüfen.
 
 ## Prüfen, ob es geklappt hat

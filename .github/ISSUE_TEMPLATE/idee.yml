@@ -1,6 +1,7 @@
 name: Idee vorschlagen
 description: Eine neue Funktion oder Verbesserung.
-labels: [idee]
+type: Feature
+projects: ["Bamberger-IT-Services/5"]
 body:
   - type: textarea
     id: wunsch

@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "23.10.2026 22:18",
+  stand: "23.10.2026 22:43",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -152,8 +152,8 @@ window.RUNNER_MONITOR = {
   ],
 
   hinweise: [
-    { titel: "Version", text: "0.3.1 ist veröffentlicht (Live-Verbindung bleibt bei viel Log-Ausgabe stabil), davor v0.3.0 mit Design 0.3.0, v0.1.2 und v0.1.1. Der Abnahmetest auf der Runner-VM läuft (A-03).", datei: "CHANGELOG.md" },
-    { titel: "Nächste Schritte", text: "1) Auf der VM in Info › Updates „Jetzt prüfen“ und das Update auf 0.3.1 starten, danach Dashboard neu laden, danach den Rückweg testen (A-03). 2) Abnahme weiterführen: Live-Log mit echtem Job, Netz-Block mit echtem Verkehr (A-03). 3) Helios-Repo kürzen (A-14, Helios-Chat)." },
+    { titel: "Version", text: "0.3.1 ist veröffentlicht (Live-Verbindung bleibt bei viel Log-Ausgabe stabil), davor v0.3.0 mit Design 0.3.0, v0.1.2 und v0.1.1. Der Abnahmetest auf der Runner-VM läuft (#14). Arbeit an 0.4.0 (Design 0.4.0, Abweichungen im Betrieb #13).", datei: "CHANGELOG.md" },
+    { titel: "Nächste Schritte", text: "1) Reihenfolge in „Ready“ auf dem Board festlegen. 2) Abweichungen im Betrieb gegenüber Design 0.3.0 im Issue #13 sammeln – Grundlage für Design 0.4.0. 3) Abnahme auf der VM mit Rückweg (#14). Offen: wohin die frühere A-14 gehört (anderes Projekt-Repo)." },
     { titel: "Öffentliches Repository", text: "Keine echten IP-Adressen, Rechner-, Organisations- oder Personennamen und keine Tokens – auch nicht in Tests, Bildern, Logs oder diesem Dashboard. Platzhalter: runner-vm, runner-vm-01, beispiel-org, <ip-der-runner-vm>, Adressen aus 192.0.2.0/24 (RFC 5737)." },
     { titel: "Kein Docker (E-02, E-12)", text: "Der Monitor läuft nur als systemd-Dienst, auch nicht zusätzlich als Container – gilt auch dann, wenn eine Projektanweisung etwas anderes sagt („Als Docker sollte es dennoch funktionieren“ gilt nicht).", datei: "docs/adr/0002-systemd-statt-docker.md" },
     { titel: "Keine Lizenz (E-11)", text: "Keine LICENSE-Datei anlegen. Alle Rechte bei Bamberger IT Services, der Code ist nur zum Lesen öffentlich." },
@@ -163,10 +163,10 @@ window.RUNNER_MONITOR = {
     { titel: "CI", text: "Läuft bei jedem PR auf ubuntu-latest, nie auf dem eigenen Runner – sonst könnte jeder per Pull Request Code auf der VM ausführen. In der Runner-Gruppe „Default“ bleibt „Allow public repositories“ aus." },
     { titel: "Nur Standardbibliothek", text: "Python-Standardbibliothek und Vanilla-JS, keine Pakete ohne ADR. Playwright nur als Werkzeug für Bildschirmfotos (npm i --no-save)." },
     { titel: "Oberfläche", text: "Ansprache „Sie“ in Anmeldung und Einrichtung, neutral im Dashboard, nie „du“ (E-10). CSP: keine Inline-Skripte, keine style=\"…\"-Attribute – Werte per element.style setzen." },
-    { titel: "Produktive Schritte nur nach OK", text: "Release veröffentlichen, die VM umstellen und Einstellungen bei GitHub (z. B. A-13) nur nach OK von Tobias." },
+    { titel: "Produktive Schritte nur nach OK", text: "Release veröffentlichen, die VM umstellen und Einstellungen bei GitHub (z. B. #21) nur nach OK von Tobias." },
     { titel: "Doku im selben PR", text: "Jede Änderung an Bedienung, Einrichtung oder Betrieb passt im selben PR Handbuch, README, docs/EINRICHTUNG.md, docs/UPDATE.md, Runbooks und Sicherheitsbericht an. Nach jeder Arbeitsrunde dieses Dashboard (daten.js) pflegen." },
     { titel: "Ein Ort für die Runner-VM", text: "Einrichtung, Umzug, Pflege und Fehlerhilfe des Runners stehen hier in docs/RUNNER.md; das Public-Repo (Anweisung 01) verweist hierher, Helios soll es auch (A-14).", datei: "docs/RUNNER.md" },
-    { titel: "GitHub-Kontingent", text: "Je Abfrage etwa eine Anfrage je Repository plus drei; 5000 Anfragen je Stunde reichen im 30-s-Takt für etwa 35 Repositories. Bedingte Anfragen (ETag/304) sind A-07." },
+    { titel: "GitHub-Kontingent", text: "Je Abfrage etwa eine Anfrage je Repository plus drei; 5000 Anfragen je Stunde reichen im 30-s-Takt für etwa 35 Repositories. Bedingte Anfragen (ETag/304) sind #15." },
   ],
 
   /*
@@ -184,41 +184,19 @@ window.RUNNER_MONITOR = {
     { id: "E-08", thema: "Einrichtung", frage: "Wie läuft die Ersteinrichtung ab?", optionen: ["Skript → Code im Browser → Zugang → GitHub → Anmeldung", "Standardpasswort"], status: "entschieden", antwort: "Skript auf der VM (Dienste, Firewall, Runner-Erkennung, Code) → Browser (Code, Zugang, GitHub) → Anmeldung; Besitznachweis über die VM, kein Standardpasswort (Tobias, 23.10.2026)" },
     { id: "E-09", thema: "Stack", frage: "Stack nach Anweisung 02 (Next.js, Postgres) oder Python-Standardbibliothek?", optionen: ["Python-Standardbibliothek", "Next.js + TypeScript"], datei: "docs/adr/0001-python-standardbibliothek.md", status: "entschieden", antwort: "Python-Standardbibliothek, JSON-Dateien statt Postgres, ADR-0001 (Tobias, Vorgabe im Brief, 23.10.2026)" },
     { id: "E-10", thema: "Sprache", frage: "Ansprache: Design v1 nutzte teils „du“, die Anweisungen verlangen in Anmeldung und Einrichtung „Sie“.", optionen: ["„Sie“, Dashboard neutral", "„du“ wie im Entwurf"], status: "entschieden", antwort: "„Sie“ in Anmeldung und Einrichtung, im Dashboard neutral – die Anweisungen gehen dem Entwurf vor (Claude im Rahmen der Anweisungen, 23.10.2026)" },
-    { id: "E-11", thema: "Repository", frage: "Lizenz für das öffentliche Repository (A-05)? Ohne Lizenz sind alle Rechte vorbehalten.", optionen: ["MIT", "Keine Lizenz", "Apache-2.0"], status: "entschieden", antwort: "Keine Lizenz: alle Rechte bei Bamberger IT Services, der Code ist nur zum Lesen öffentlich (Tobias, Auswahlfrage, 23.10.2026)" },
+    { id: "E-11", thema: "Repository", frage: "Lizenz für das öffentliche Repository (#31)? Ohne Lizenz sind alle Rechte vorbehalten.", optionen: ["MIT", "Keine Lizenz", "Apache-2.0"], status: "entschieden", antwort: "Keine Lizenz: alle Rechte bei Bamberger IT Services, der Code ist nur zum Lesen öffentlich (Tobias, Auswahlfrage, 23.10.2026)" },
     { id: "E-12", thema: "Betrieb", frage: "Die Projektanweisung sagt „Als Docker sollte es dennoch funktionieren“ – zusätzlich einen Container (privilegiert, --pid=host, Journal- und Runner-Mounts) anbieten (A-17)?", optionen: ["Zusätzlich Docker", "Kein Docker"], datei: "docs/adr/0002-systemd-statt-docker.md", status: "entschieden", antwort: "Kein Docker-Container, auch nicht zusätzlich – nur systemd; der Satz in der Projektanweisung gilt nicht, bestätigt E-02 (Tobias, 23.10.2026)" },
     { id: "E-13", thema: "Design", frage: "Netzwerk-Variante im Design 0.3.0: Wo steht die Netzauslastung?", optionen: ["Variante A: eigener Block in der RAM-Spalte", "Andere Variante"], datei: "docs/design/README.md", status: "entschieden", antwort: "Variante A: eigener Block in der RAM-Spalte – Vorgabe im Design (Claude nach Design-Vorgabe, 23.10.2026)" },
   ],
 
-  /*
-   * Aufgaben – feste Nummern (A-01 …). status: "offen", "läuft" (in Bearbeitung) oder "erledigt".
-   * wer: "Tobias" zeigt „FÜR DICH“. bereich und prio stammen aus dem alten Dashboard (nur zur Ordnung).
-   */
-  aufgaben: [
-    { id: "A-01", status: "erledigt", bereich: "Design", prio: "hoch", text: "Design v1 einfrieren (Canvas + Kopie in docs/design/v1)" },
-    { id: "A-02", status: "erledigt", bereich: "Code", prio: "hoch", text: "Version 0.1.0 programmieren: Server, Sammler, Update-Hilfsdienst, Oberfläche, einrichten.sh, Doku, CI · 36 Unit-Tests, Browser-Rauchtest mit Playwright, shellcheck sauber", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/1", linkText: "PR #1" },
-    { id: "A-03", status: "läuft", wer: "Tobias", bereich: "Betrieb", prio: "hoch", text: "Abnahme auf der Runner-VM: einrichten.sh (frisch und über alte ttyd-Ansicht), Runner-Erkennung, Firewall, Einrichtung im Browser, Live-Log mit echtem Job, Update und Rückweg mit einem Test-Release · Stand 23.10.: Einrichtung auf der Runner-VM läuft, GitHub-Token funktioniert; Update per Knopf und Rückweg noch zu testen" },
-    { id: "A-04", status: "erledigt", bereich: "Repo", prio: "hoch", text: "Branch pushen, PR öffnen, CI grün, mergen · Push Tobias, Merge Claude; PR #1 am 23.10.2026 gemergt", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/1", linkText: "PR #1" },
-    { id: "A-05", status: "erledigt", bereich: "Repo", prio: "mittel", text: "Lizenz festlegen (öffentliches Repo ohne Lizenz = alle Rechte vorbehalten) · Entscheidung Tobias: E-11, keine Lizenz" },
-    { id: "A-06", status: "erledigt", bereich: "Release", prio: "hoch", text: "Erstes Release veröffentlichen (Tag, Release-Workflow hängt Paket + Prüfsumme an) · OK von Tobias; Releases v0.1.1 und v0.1.2 am 23.10.2026 veröffentlicht", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases", linkText: "Releases" },
-    { id: "A-07", status: "offen", bereich: "Code", prio: "mittel", text: "GitHub-Kontingent schonen: bedingte Anfragen (ETag/304) und ruhige Repositories seltener abfragen – heute reicht es für ca. 35 Repositories" },
-    { id: "A-08", status: "offen", bereich: "Sicherheit", prio: "niedrig", text: "Liste der 10 000 häufigsten Passwörter statt 20 Einträgen (S-AUTH-02)" },
-    { id: "A-09", status: "offen", bereich: "Doku", prio: "niedrig", text: "Anleitung HTTPS über Reverse-Proxy (z. B. Caddy) für Zugriff außerhalb des LAN (S-NET-01)" },
-    { id: "A-10", status: "offen", bereich: "Sicherheit", prio: "mittel", text: "Releases signieren (minisign/Sigstore) und im Update-Hilfsdienst prüfen (S-UPD-01)" },
-    { id: "A-11", status: "offen", bereich: "Sicherheit", prio: "niedrig", text: "SSE-Verbindungen je Sitzung begrenzen (S-DOS-01)" },
-    { id: "A-12", status: "offen", bereich: "Sicherheit", prio: "mittel", text: "OWASP ZAP Baseline gegen eine Testinstanz, Ergebnis in den Sicherheitsbericht" },
-    { id: "A-13", status: "offen", wer: "Tobias", bereich: "Repo", prio: "mittel", text: "GitHub-Einstellungen: Branch-Schutz main mit Pflicht-Check CI, „Private vulnerability reporting“ an, Issue-Labels fehler/idee · wartet auf OK von Tobias (Einstellungen bei GitHub nur nach OK)" },
-    { id: "A-14", status: "offen", bereich: "Helios", prio: "mittel", text: "Helios-Repo: docs/RUNNER.md kürzen und hierher verweisen, deploy/runner/runner-einrichten.sh entfernen · erledigt der Helios-Chat; im Helios-Repo liegt deploy/runner/runner-einrichten.sh noch" },
-    { id: "A-15", status: "offen", bereich: "Code", prio: "niedrig", text: "Später: Docker-Ansicht (Daten werden schon gesammelt)" },
-    { id: "A-16", status: "offen", bereich: "Code", prio: "niedrig", text: "Später: Mehrere Runner je VM" },
-    { id: "A-17", status: "erledigt", bereich: "Entscheidung", prio: "mittel", text: "Klären: Projektanweisung sagt „Als Docker sollte es dennoch funktionieren“ – widerspricht E-02/ADR-0002 (kein Docker). Optionaler Container (privilegiert, --pid=host, Journal- und Runner-Mounts) zusätzlich zum systemd-Dienst? · Entscheidung Tobias: E-12, kein Docker, auch nicht zusätzlich" },
-    { id: "A-18", status: "erledigt", bereich: "Code", prio: "hoch", text: "Info-Blatt baute sich jede Sekunde neu auf; Live-Log ließ sich nicht hochscrollen; einrichten.sh token vergaß die Organisation · Version 0.1.1", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/4", linkText: "PR #4" },
-    { id: "A-19", status: "erledigt", bereich: "Public", prio: "mittel", text: "Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung auf dieses Repo, vorlagen/runner-einrichten.sh entfällt (Entscheidung „alles hierher verschieben“)", link: "https://github.com/Bamberger-IT-Services/Public/pull/15", linkText: "Public PR #15" },
-    { id: "A-20", status: "erledigt", bereich: "Code", prio: "mittel", text: "Netzwerkauslastung in der Karte Auslastung (empfangen, gesendet, Spitze 10 Min.) · Wunsch Tobias, Version 0.1.1", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/5", linkText: "PR #5" },
-    { id: "A-21", status: "erledigt", bereich: "Code", prio: "mittel", text: "Knopf „Jetzt prüfen“ in Info › Updates (Release sofort abfragen) · Wunsch Tobias, Version 0.1.2", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/7", linkText: "PR #7" },
-    { id: "A-22", status: "erledigt", bereich: "Design", prio: "hoch", text: "Design 0.3.0 umsetzen und als v0.3.0 veröffentlichen · Netz als eigener Block in der RAM-Spalte (E-13); OK von Tobias, Release v0.3.0", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases", linkText: "Releases" },
-    { id: "A-24", status: "erledigt", bereich: "Code", prio: "hoch", text: "Dashboard bleibt bei Jobs mit viel Log-Ausgabe auf „Getrennt“ stehen, bis der Dienst neu startet · Ursache: Log-Zeilen einzeln verteilt, übergelaufene Warteschlange blieb stumm offen, Browser verband nicht neu. Korrektur in 0.3.1 (PR #9), Release v0.3.1 nach OK von Tobias", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/9", linkText: "PR #9" },
-    { id: "A-23", status: "erledigt", bereich: "Doku", prio: "mittel", text: "Entwickler-Dashboard nach Helios-Vorlage: gleiches Design und gleiche Abschnitte (Status, Starten, Fehlerhilfe, Protokolle, Wo finde ich was, Entscheidungen, Aufgaben, Merkzettel, Links, Verlauf), Daten in window.RUNNER_MONITOR" },
-  ],
+  /* Aufgaben stehen seit 23.10.2026 als Issues im GitHub-Project (Anweisung 08), nicht mehr hier.
+   * Die alte Liste A-01 … A-24 liegt in der Git-Historie; jedes Issue nennt seine alte Nummer („früher A-nn“). */
+  board: {
+    url: "https://github.com/orgs/Bamberger-IT-Services/projects/5",
+    titel: "Self-Hosted-Github-Runner-Monitor Roadmap",
+    issues: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/issues",
+    neu: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/issues/new/choose",
+  },
 
   /* Wo finde ich was: lokal, im Repository, auf der VM, im Monitor. Keine echten Adressen oder Rechnernamen. */
   orte: [
@@ -270,6 +248,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "23.10.2026 22:43", text: "Umstellung nach Anweisung 08: Aufgaben als Issues im Project „Self-Hosted-Github-Runner-Monitor Roadmap“ (17 offen im Backlog, 13 erledigt übernommen und geschlossen, Epic #11 „Design v0.3.0 vollständig umsetzen“ mit Sub-Issues #12 und #13). Labels, Milestone v0.4.0, Issue-Vorlagen, AGENTS.md. Aufgabenliste im Dashboard durch den Board-Link ersetzt." },
     { datum: "23.10.2026 22:18", text: "Release v0.3.1 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
     { datum: "23.10.2026 22:04", text: "0.3.1: Ursache für „Getrennt“ gefunden (Meldung Tobias von der VM): Jede Log-Zeile war eine eigene Nachricht, ein Build füllte die Warteschlange (2000), der Strom blieb danach stumm offen, der Browser verband nicht neu. Zeilen gebündelt, Strom endet bei Überlauf, Browser verbindet nach 10 s ohne Daten selbst neu, write() mit 60-s-Frist. Nachgestellt mit langsam lesendem Client." },
     { datum: "23.10.2026 21:31", text: "0.3.0: Design 0.3.0 pixelgenau umgesetzt (Dashboard mit Netz-Block, Info & Hilfe mit „Jetzt prüfen“ und Kopieren-Knöpfen, Live-Log mit Mitlaufen-Hinweis, Einrichtung und Anmeldung neu, einrichten.sh-Ausgabe). Design v1 entfernt, Design 0.3.0 unter docs/design/v0.3.0. Bildschirmfotos neu. Review: einrichten.sh ohne Docker, Klicks in sekündlich aktualisierten Karten, „Jetzt prüfen“ bei Uhrversatz, Anleitung „Kein Runner“." },
