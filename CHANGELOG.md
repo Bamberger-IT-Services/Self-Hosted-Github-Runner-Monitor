@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Geändert
+- **GitHub-Kontingent schonen** (#15): bedingte Anfragen mit ETag – unveränderte Antworten (304)
+  zählen nicht gegen das Kontingent; ruhige Repositories (über eine Stunde kein Push, nichts läuft
+  oder wartet) fragt der Sammler nur alle 5 Minuten ab. `github.json` nennt die Zahl der Anfragen
+  (`anfragen.anfragen`, davon `anfragen.unveraendert`).
+
 ### Behoben
 - Ein hängendes Netzlaufwerk (NFS, CIFS) hält die Messung nicht mehr an; es fehlt in der Plattenliste,
   bis es wieder antwortet (#26).

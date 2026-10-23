@@ -97,6 +97,8 @@ class Sammler:
         self.naechste_release = 0.0
         self.letztes_auto_update = ""
         self.letzte_manuelle_pruefung = 0.0
+        self._gh_speicher: dict = {}  # ETags und ruhige Repositories über die Durchläufe (Issue #15)
+        self._gh_speicher_token: tuple[str, str] = ("", "")
 
     def token(self) -> str:
         try:
@@ -148,7 +150,10 @@ class Sammler:
 
     def github(self) -> None:
         reg = runner.lies_registrierung(self.k.runner_verz)
-        ergebnis = github.abfrage(github.Klient(self.token()), self.org(), reg.get("name", ""), self.letzter_erfolg)
+        token, org = self.token(), self.org()
+        if (token, org) != self._gh_speicher_token:  # neues Token oder andere Organisation: neu anfangen
+            self._gh_speicher, self._gh_speicher_token = {}, (token, org)
+        ergebnis = github.abfrage(github.Klient(token, speicher=self._gh_speicher), org, reg.get("name", ""), self.letzter_erfolg)
         if ergebnis["abfrage"] == "ok":
             self.letzter_erfolg = ergebnis["abgefragt"]
         else:
