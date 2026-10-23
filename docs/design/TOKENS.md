@@ -1,6 +1,6 @@
 # Design-Tokens
 
-**Stand: 23.10.2026 · Version 0.1.2** · Quelle der Wahrheit: `:root` in [`web/stil.css`](../../web/stil.css)
+**Stand: 23.10.2026 · Version 0.3.0** · Quelle der Wahrheit: `:root` in [`web/stil.css`](../../web/stil.css)
 
 | Token | Hell | Dunkel | Verwendung |
 |---|---|---|---|
@@ -11,7 +11,8 @@
 | `--border` | #d9dee2 | #2a3f50 | Linien |
 | `--border-strong` | #8a96a0 | #62798c | Eingabefelder, hoher Kontrast |
 | `--track` | #e2e6e9 | #20384c | Balken-Hintergrund |
-| `--brand` | #0e628f | #5aa9d6 | Akzent, „Job läuft“, Knöpfe |
+| `--brand` | #0e628f | #5aa9d6 | Akzent, „Job läuft“, Knöpfe, Netz empfangen |
+| `--gold-ink` | #85602a | #d6ad72 | „wartet“, Netz gesendet |
 | `--success` | #1f7a4d | #5cc08a | Bereit, Erfolg |
 | `--danger` | #b3261e | #f08a80 | Gestoppt, Fehler |
 | `--warning` | #9a4d00 | #f0a35e | Offline, Platte knapp, Token läuft ab |

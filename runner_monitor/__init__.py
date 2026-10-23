@@ -8,4 +8,4 @@ Nur Python-Standardbibliothek (ADR-0001). Zwei Dienste:
   Schreibt nur JSON-Dateien nach ``/run/runner-monitor/``.
 """
 
-VERSION = "0.1.2"
+VERSION = "0.3.0"

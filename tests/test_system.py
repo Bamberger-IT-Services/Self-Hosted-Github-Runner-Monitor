@@ -59,6 +59,17 @@ class NetzTest(unittest.TestCase):
         self.assertEqual(system.netz_rate(vorher, jetzt, 0)["empfangen"], 0)
 
 
+class BeschreibungTest(unittest.TestCase):
+    def test_os_und_python(self):
+        import tempfile, sys
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "os-release"
+            f.write_text('NAME="Ubuntu"\nPRETTY_NAME="Ubuntu 24.04.1 LTS"\n')
+            self.assertEqual(system.beschreibung(f), f"Ubuntu 24.04.1 LTS, Python {sys.version_info.major}.{sys.version_info.minor}")
+            self.assertTrue(system.beschreibung(Path(d) / "fehlt").startswith("Python "))
+
+
 class CpuTest(unittest.TestCase):
     def test_auslastung_je_kern(self):
         vorher = system.lies_cpu_zeiten(STAT_VORHER)

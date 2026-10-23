@@ -4,6 +4,36 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.3.0] – 23.10.2026
+
+Umsetzung von **Design v0.3.0** (`docs/design/v0.3.0/`, Abgleich in `docs/design/README.md`).
+
+### Neu
+- Auslastung: **Netzwerk** als eigener Block in der RAM-Spalte mit Verlauf der letzten 10 Minuten
+  (empfangen als Fläche, gesendet als Linie, Skala nach der Spitze, mindestens 64 KB/s).
+- Live-Log: eigene Pille „Mitlaufen angehalten · n neue Zeilen“ mit **Zum Ende ↓** beim
+  Hochscrollen, dünne Scrollleiste; „Anhalten“ behält seine Pille.
+- Befehle in Info & Hilfe mit Knopf **Kopieren** (auch über http im LAN).
+- „Fehler gefunden oder Idee?“ zeigt Version, System, Runner und Browser.
+
+### Geändert
+- „Jetzt prüfen“ nach Design: eigene Zustände, Fehler als Hinweis mit Befehl, gesperrt während
+  eines Updates.
+- GitHub-Verbindung ist reine Übersicht; Token ändern steht in der Anleitung (sechs Schritte,
+  mehrzeiliger `curl`-Befehl).
+- Kopfzeile: Knopf „Info & Hilfe“; mit Meldung entfällt „aktualisiert …“ immer.
+- Einrichtung im Browser neu nach Design (volle Kartenhöhe, Zurück/Weiter, „Alles eingerichtet“),
+  Anmeldung mit VM-Name und Version im Fuß, Ausgabe von `einrichten.sh` in Abschnitten.
+- Entwickler-Dashboard nach dem Aufbau des Helios-Dashboards.
+- Design v1 aus dem Repository entfernt (liegt im Tag v0.1.2).
+
+### Behoben
+- `einrichten.sh` bricht nicht mehr still ab, wenn Docker fehlt oder die VM keine Standardroute hat.
+- Knöpfe in den Karten Runner-Status und Workflows verlieren Klicks und Fokus nicht mehr durch die
+  sekündliche Aktualisierung.
+- „Jetzt prüfen“ meldet bei abweichender Uhr von Browser und VM nicht mehr „Keine Antwort vom Sammler“.
+- Meldung „Kein Runner eingerichtet“ hat eine eigene Anleitung unter „Was tun, wenn …“.
+
 ## [0.1.2] – 23.10.2026
 
 ### Neu

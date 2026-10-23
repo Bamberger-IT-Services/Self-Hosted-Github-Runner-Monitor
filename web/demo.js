@@ -30,7 +30,7 @@ window.RM_DEMO = (() => {
   const status = () => {
     const t = jetzt();
     const dienst = zustand === 'gestoppt' ? { zustand: 'gestoppt', seit: t - 760 } : { zustand: 'aktiv', seit: START + 3600 };
-    const github = zustand === 'offline' ? { zustand: 'offline', seit: t - 1240 } : gh === 'kein-token' ? { zustand: 'unbekannt', seit: null } : { zustand: 'online', seit: null };
+    const github = zustand === 'offline' || zustand === 'gestoppt' ? { zustand: 'offline', seit: t - 1240 } : gh === 'kein-token' ? { zustand: 'unbekannt', seit: null } : { zustand: 'online', seit: null };
     return {
       vm: 'runner-vm', runner: 'runner-vm-01', eingerichtet: true, labels: ['self-hosted', 'linux', 'x64', 'docker'], version: '2.329.0', monitorVersion: '0.1.0',
       dienst, github,
@@ -77,13 +77,37 @@ window.RM_DEMO = (() => {
     const k = Array.from({ length: kerne }, () => Math.max(0, Math.min(100, cpuSchnitt + zufall(-22, 22))));
     const ram = (zustand === 'volllast' ? 29 : job ? 11.4 : 4.1) * GiB + zufall(-0.2, 0.2) * GiB;
     const d = { zeit: jetzt(), kerne: k, cpu: k.reduce((a, b) => a + b, 0) / kerne, last: [cpuSchnitt / 100 * kerne * 0.9, cpuSchnitt / 100 * kerne * 0.8, cpuSchnitt / 100 * kerne * 0.7], ram: { belegt: ram, gesamt: 32 * GiB }, swap: { belegt: 0.2 * GiB, gesamt: 4 * GiB }, start: START };
-    // Netz: beim Job lädt der Runner Images und Pakete, im Leerlauf nur ein paar KB/s
-    const rx = zustand === 'volllast' ? zufall(40e6, 95e6) : job ? zufall(2e6, 18e6) : zufall(1e3, 6e3);
-    d.netz = { empfangen: Math.round(rx), gesendet: Math.round(rx * zufall(0.05, 0.15)), schnittstellen: ['eth0'] };
-    if (erst) d.verlauf = { cpu: Array.from({ length: 600 }, (_, i) => 30 + 25 * Math.sin(i / 40) + zufall(-6, 6)), ram: Array.from({ length: 600 }, (_, i) => 30 + 6 * Math.sin(i / 90)), netz: Array.from({ length: 600 }, (_, i) => [Math.round(8e6 + 6e6 * Math.sin(i / 30)), Math.round(9e5)]) };
+    // Netz: beim Job lädt der Runner Images und Pakete, im Leerlauf nur ein paar KB/s (Werte wie im Design 0.3.0)
+    const voll = zustand === 'volllast', busy = voll || !!job || ['job', 'platte'].includes(zustand);
+    const rx = voll ? zufall(30e6, 58e6) : busy ? zufall(1.6e6, 3.1e6) : zufall(2.6e3, 6e3);
+    d.netz = { empfangen: Math.round(rx), gesendet: Math.round(rx * (busy ? zufall(0.09, 0.13) : zufall(0.18, 0.3))), schnittstellen: ['eth0'] };
+    if (erst) d.verlauf = verlauf(voll, busy);
     return d;
   }
-  const prozesse = () => PROZ.slice(0, 6).map(([befehl, benutzer], i) => ({ pid: 2140 + i * 317, benutzer, cpu: Math.max(0.1, cpuSchnitt * (0.9 - i * 0.16) * zufall(0.8, 1.2)), ram: Math.max(0.1, 7 - i + zufall(-0.5, 0.5)), befehl }));
+  /* 10 Minuten Vorgeschichte wie im Design: erst Ruhe, dann startet der Job (Images laden = Netzspitze). */
+  function verlauf(voll, busy) {
+    const cpu = [], ram = [], netz = [];
+    for (let i = 0; i < 600; i++) {
+      let c, r, rx;
+      if (busy) {
+        const zr = voll ? 28.9 : 11.5;
+        if (i < 170) { c = zufall(2, 8); r = 4.2; rx = zufall(2e3, 7e3); }
+        else if (i < 200) { const k = (i - 170) / 30; c = 8 + k * (voll ? 82 : 47); r = 4.2 + k * (zr - 4.2); rx = voll ? zufall(62e6, 86e6) : zufall(8e6, 13.5e6); }
+        else { c = voll ? ((i % 97) < 6 ? zufall(60, 75) : zufall(85, 99)) : zufall(45, 68); r = zr + zufall(-0.25, 0.25); rx = voll ? zufall(30e6, 58e6) : zufall(1.6e6, 3.1e6); }
+        if (i === 186) rx = voll ? 89.3e6 : 14.8e6;
+      } else {
+        c = (i % 143) < 4 ? zufall(12, 20) : zufall(1.5, 7); r = 4.2 + zufall(-0.04, 0.04);
+        rx = (i % 151) < 3 ? zufall(12e3, 18e3) : zufall(2.6e3, 6e3);
+      }
+      cpu.push(c); ram.push(r / 32 * 100); netz.push([Math.round(rx), Math.round(rx * (busy && i >= 170 ? zufall(0.02, 0.14) : zufall(0.2, 0.3)))]);
+    }
+    return { cpu, ram, netz };
+    return d;
+  }
+  // Ohne Job wie im Design: der Listener wartet, sonst ist es ruhig
+  const PROZ_RUHE = [[3091, 'github-runner', 0.7, 3.5, '/opt/actions-runner/bin/Runner.Listener run --startuptype service'], [3725, 'runner-monitor', 0.5, 2.0, 'python3 -m runner_monitor'], [2774, 'root', 0.3, 4.6, '/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock'], [3408, 'root', 0.1, 2.7, '/usr/bin/containerd'], [402, 'root', 0.0, 0.2, '/usr/lib/systemd/systemd-journald'], [655, 'root', 0.0, 0.1, 'sshd: /usr/sbin/sshd -D [listener]']];
+  const prozesse = () => (job ? PROZ.slice(0, 6).map(([befehl, benutzer], i) => ({ pid: 2140 + i * 317, benutzer, cpu: Math.max(0.1, cpuSchnitt * (0.9 - i * 0.16) * zufall(0.8, 1.2)), ram: Math.max(0.1, 7 - i + zufall(-0.5, 0.5)), befehl }))
+    : PROZ_RUHE.filter(p => zustand !== 'gestoppt' || !p[4].includes('Runner.')).map(([pid, benutzer, cpu, ram, befehl]) => ({ pid, benutzer, cpu: cpu > 0.05 ? cpu * zufall(0.85, 1.12) : cpu, ram, befehl })));
 
   function logTakt() {
     if (!job || !['job', 'platte', 'volllast'].includes(zustand)) return;

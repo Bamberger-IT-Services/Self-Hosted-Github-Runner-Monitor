@@ -40,23 +40,24 @@
       <div class="ausl-raster">
         <div class="ausl-spalte">
           <div class="gross-zeile"><span class="mess-label">CPU gesamt</span><span class="gross-wert"><span id="cpu">–</span><span class="einheit">%</span></span></div>
-          <div class="spark">
-            <svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="CPU-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="cpu-flaeche"/><path class="spark-linie" id="cpu-linie"/></svg>
+          <div class="spark spark-cpu">
+            <div class="spark-flaeche-box"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="CPU-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="cpu-flaeche"/><path class="spark-linie" id="cpu-linie"/></svg></div>
             <div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
           </div>
           <div class="kerne" id="kerne"></div>
         </div>
         <div class="ausl-spalte">
-          <div class="gross-zeile"><span class="mess-label">Arbeitsspeicher</span><span class="gross-wert"><span id="ram">–</span><span class="einheit" id="ram-gesamt"></span></span></div>
-          <div class="spark">
-            <svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="RAM-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="ram-flaeche"/><path class="spark-linie" id="ram-linie"/></svg>
-            <div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
+          <div class="gross-zeile"><span class="mess-label">Arbeitsspeicher</span><span class="gross-wert"><span id="ram">–</span><span class="einheit einheit-ram" id="ram-gesamt"></span></span></div>
+          <div class="spark spark-ram">
+            <div class="spark-flaeche-box"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="RAM-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="ram-flaeche"/><path class="spark-linie" id="ram-linie"/></svg></div>
           </div>
-          <div>
-            <div class="meter"><span class="m-l">RAM</span><span class="balken"><span class="fuell" id="ram-fuell"></span></span><span class="m-w" id="ram-pct"></span></div>
-            <div class="meter"><span class="m-l">Swap</span><span class="balken"><span class="fuell gedimmt" id="swap-fuell"></span></span><span class="m-w" id="swap"></span></div>
+          <div class="meter"><span class="m-l">RAM</span><span class="balken"><span class="fuell" id="ram-fuell"></span></span><span class="m-w" id="ram-pct"></span></div>
+          <div class="meter"><span class="m-l">Swap</span><span class="balken"><span class="fuell gedimmt" id="swap-fuell"></span></span><span class="m-w" id="swap"></span></div>
+          <div class="netz" role="group" aria-label="Netzwerk" title="Summe aller echten Netzwerkschnittstellen, ohne Docker und VPN">
+            <div class="netz-kopf"><span class="mess-label">Netzwerk</span><span class="nw" title="empfangen"><span class="pf-rx" aria-label="empfangen">↓</span><span id="netz-rx">–</span><i id="netz-rx-e"></i></span><span class="nw" title="gesendet"><span class="pf-tx" aria-label="gesendet">↑</span><span id="netz-tx">–</span><i id="netz-tx-e"></i></span></div>
+            <div class="netz-verlauf"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="Netzwerk-Verlauf der letzten 10 Minuten, empfangen und gesendet"><line class="spark-raster" x1="0" y1="2" x2="300" y2="2"/><path class="spark-flaeche" id="netz-rx-flaeche"/><path class="spark-linie" id="netz-rx-linie"/><path class="spark-tx" id="netz-tx-linie"/></svg></div>
+            <div class="spark-achse"><span>vor 10 Min.</span><span id="netz-spitze">Spitze –</span><span>jetzt</span></div>
           </div>
-          <div class="last netz" title="Summe aller echten Netzwerkschnittstellen, ohne Docker und VPN"><span class="m-l">Netz</span><span class="last-werte"><span><b id="netz-rx">–</b><i>↓ empfangen</i></span><span><b id="netz-tx">–</b><i>↑ gesendet</i></span><span><b class="mut" id="netz-spitze">–</b><i>Spitze 10 Min.</i></span></span></div>
           <div class="last"><span class="m-l">Last</span><span class="last-werte"><span><b id="l1">–</b><i>1 Min.</i></span><span><b id="l5">–</b><i>5 Min.</i></span><span><b id="l15">–</b><i>15 Min.</i></span><span><b class="mut" id="kerne-n">–</b><i>Kerne</i></span></span></div>
         </div>
       </div>
@@ -75,11 +76,12 @@
       </div>
       <div class="ereignisse" id="ereignisse" aria-label="Ereignisse"></div>
       <div class="term-rahmen">
-        <div class="term" id="term" role="log" aria-label="Ausgabe des laufenden Schritts">
+        <div class="term" id="term" role="log" aria-label="Ausgabe des laufenden Schritts" tabindex="0">
           <div id="term-innen"></div>
         </div>
         <div class="term-leer" id="term-leer"></div>
-        <div class="pause-hinweis" id="pause-hinweis" role="status" hidden><span id="pause-text"></span><button type="button" class="knopf" id="k-weiter">Weiter</button></div>
+        <div class="pause-hinweis" id="pause-hinweis" role="status" hidden><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><rect x="4" y="3" width="2.6" height="10" rx=".6" fill="currentColor"/><rect x="9.4" y="3" width="2.6" height="10" rx=".6" fill="currentColor"/></svg><span id="pause-text"></span><button type="button" class="knopf" id="k-weiter"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4.5 3v10l8-5z" fill="currentColor"/></svg>Weiter</button></div>
+        <div class="pause-hinweis scroll-hinweis" id="scroll-hinweis" role="status" hidden><span id="scroll-text"></span><button type="button" class="knopf zum-ende" id="k-zum-ende">Zum Ende ↓</button></div>
       </div>
     </section>
 

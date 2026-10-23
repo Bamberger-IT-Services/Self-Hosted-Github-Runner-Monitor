@@ -16,7 +16,7 @@
     status: null, system: null, prozesse: [], platten: [], workflows: null, update: null,
     cpuH: [], ramH: [], netzH: [], ereignisse: [], zeilenN: 0, puffer: [],
     verbindung: 'verbindet', letzteDaten: 0,
-    umbruch: true, angehalten: false, hochgescrollt: false, pruefung: null, wfOffen: false, info: null, kerneN: 0,
+    umbruch: true, angehalten: false, hoch: false, pruefung: null, wfOffen: false, info: null, kerneN: 0,
   };
 
   /* ------------------------------------------------------------ ANSI → Segmente */
@@ -91,12 +91,12 @@
       case 'workflows': S.workflows = d; renderWorkflows(); renderKopf(); break;
       case 'update':
         S.update = d;
-        if (S.pruefung && S.pruefung.zustand === 'laeuft' && d.neueste && ms(d.neueste.geprueft) >= S.pruefung.start - 1000) S.pruefung = { zustand: 'fertig', bis: Date.now() + 8000 };
+        if (S.pruefung && S.pruefung.zustand === 'laeuft' && d.neueste && d.neueste.geprueft && d.neueste.geprueft !== S.pruefung.vorher) S.pruefung = { zustand: 'fertig', bis: Date.now() + 8000 };
         renderKopf(); if (S.info) renderInfo(); break;
       case 'log':
         if (d.neu) { S.ereignisse = []; $('term-innen').replaceChildren(); S.zeilenN = 0; S.puffer = []; }
         if (d.ereignisse && d.ereignisse.length) { S.ereignisse.push(...d.ereignisse); S.ereignisse = S.ereignisse.slice(-20); renderEreignisse(); }
-        if (d.zeilen && d.zeilen.length) { if (S.angehalten) { S.puffer.push(...d.zeilen); renderPause(); } else haengeAn(d.zeilen); }
+        if (d.zeilen && d.zeilen.length) { if (S.angehalten || S.hoch) { S.puffer.push(...d.zeilen); renderPause(); } else haengeAn(d.zeilen); }
         renderLeer(); break;
       default: break;
     }
@@ -222,13 +222,17 @@
       const wf = [j.workflow, j.name].filter(Boolean).map(esc).join(' · ');
       return `<div class="jobzeile"><span class="erg ${e[0]}">${e[1]}${e[2]}</span><span class="jz-name">${esc(j.repo || '')}${j.repo ? ' ' : ''}<span class="jz-wf">${j.repo ? '· ' : ''}${wf}</span></span><span class="r">${j.dauer != null ? dauer(j.dauer) : '–'}</span><span class="jz-ende">${hm(j.ende)}</span></div>`;
     }).join('');
-    $('status').innerHTML = `
+    const html = `
       <div class="karte-kopf"><span class="karte-titel">Runner-Status</span><div class="pillen">${pillD}${pillG}</div></div>
       <div class="zustand ${kopf[0]}">${kopf[1]}<span class="zustand-titel">${kopf[2]}</span></div>
       ${mitte}
       <div class="letzte"><div class="letzte-titel">Letzte Jobs</div>${letzte || '<div class="leer">Seit dem Start des Monitors noch keine Jobs.</div>'}</div>`;
+    // nur bei Änderung neu schreiben – sonst gehen Klicks und Fokus auf Knöpfen der Karte verloren
+    const karte = $('status');
+    if (karte.dataset.html === html) return;
+    karte.innerHTML = html; karte.dataset.html = html;
     // Spaltenzahl der Schritt-Segmente per CSSOM (CSP erlaubt keine style-Attribute)
-    const segs = $('status').querySelector('.segmente');
+    const segs = karte.querySelector('.segmente');
     if (segs) segs.style.gridTemplateColumns = `repeat(${segs.dataset.spalten}, minmax(0, 1fr))`;
   }
 
@@ -238,7 +242,7 @@
     if (el.contains(document.activeElement) && el.dataset.letzte && Date.now() - Number(el.dataset.letzte) < 5000) return;
     el.dataset.letzte = String(Date.now());
     const jetzt = Date.now();
-    let inhalt = '', fuss = '';
+    let inhalt = '', fuss = '', zeitText = '';
     if (w.abfrage === 'kein-token') {
       inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">Kein GitHub-Token eingerichtet</div><div class="leer-text">Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.</div><div class="leer-pfad">/etc/runner-monitor/github-token</div><button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">Anleitung: Token einrichten ›</button></div>`;
       fuss = '<div class="wf-zeit">Abfrage aus</div>';
@@ -265,21 +269,28 @@
         if (tage <= 14) fuss += `<div class="hinweis warn">${IC.schluessel()}<div>${tage > 0 ? `Token läuft in ${tage} ${mehrzahl(tage, 'Tag', 'Tagen')} ab` : 'Token ist abgelaufen'} <span>(${datum(w.tokenAblauf)}). Danach bleibt dieser Bereich leer.</span></div></div>`;
       }
       const nx = w.naechste ? Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000)) : null;
-      fuss += `<div class="wf-zeit">${alt ? `Letzte erfolgreiche Abfrage ${w.abgefragt ? zeit(w.abgefragt) : '–'}` : `Abgefragt ${zeit(w.abgefragt)}${S.verbindung === 'verbunden' && nx != null ? ` · nächste in ${nx} s` : ''}`}</div>`;
+      zeitText = alt ? `Letzte erfolgreiche Abfrage ${w.abgefragt ? zeit(w.abgefragt) : '–'}` : `Abgefragt ${zeit(w.abgefragt)}${S.verbindung === 'verbunden' && nx != null ? ` · nächste in ${nx} s` : ''}`;
+      fuss += '<div class="wf-zeit"></div>';
     }
     const meta = w.abfrage === 'kein-token' ? esc(w.org) : `${esc(w.org)} · ${w.repos.length} Repositories`;
-    el.innerHTML = `<div class="karte-kopf"><span class="karte-titel">Workflows</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
+    const html = `<div class="karte-kopf"><span class="karte-titel">Workflows</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
+    // nur bei Änderung neu schreiben; die sekündlich wechselnde Zeitzeile per textContent
+    if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    const zt = el.querySelector('.wf-zeit'); if (zt && zeitText && zt.textContent !== zeitText) zt.textContent = zeitText;
   }
 
   /* ------------------------------------------------------------ Auslastung */
   // 600 Werte = 10 Minuten, 120 Stützpunkte zu je 5 s. Kürzerer Verlauf liegt rechtsbündig („jetzt“ rechts).
-  function spark(h) {
+  /* 600 Sekundenwerte → 120 Punkte. max = Skala (100 % bzw. die Netz-Spitze), agg 'max' hält kurze
+     Spitzen sichtbar (Netz), sonst Mittelwert (CPU, RAM). */
+  function spark(h, max = 100, agg = 'mittel') {
     const N = 600, n = 120, b = N / n, off = N - Math.min(h.length, N), daten = h.slice(-N), pts = [];
     for (let i = 0; i < n; i++) {
-      let s = 0, c = 0;
-      for (let g = i * b; g < (i + 1) * b; g++) { const j = g - off; if (j >= 0 && j < daten.length) { s += daten[j]; c++; } }
+      let s = 0, c = 0, mx = 0;
+      for (let g = i * b; g < (i + 1) * b; g++) { const j = g - off; if (j >= 0 && j < daten.length) { s += daten[j]; c++; if (daten[j] > mx) mx = daten[j]; } }
       if (!c) continue;
-      pts.push(`${(i * 300 / (n - 1)).toFixed(1)},${(45 - Math.max(0, Math.min(100, s / c)) / 100 * 43).toFixed(1)}`);
+      const v = agg === 'max' ? mx : s / c;
+      pts.push(`${(i * 300 / (n - 1)).toFixed(1)},${(45 - Math.max(0, Math.min(1, v / max)) * 43).toFixed(1)}`);
     }
     if (!pts.length) return ['', ''];
     const linie = 'M' + pts.join(' L');
@@ -288,12 +299,12 @@
 
   /* Bytes je Sekunde, dezimal wie bei Netzwerken üblich (1 MB/s = 1 000 000 B/s). */
   function rate(b) {
-    if (!b || b < 1000) return [zahl(b || 0, 0), 'B/s'];
-    if (b < 1e6) return [zahl(b / 1e3, b < 1e4 ? 1 : 0), 'KB/s'];
-    if (b < 1e9) return [zahl(b / 1e6, b < 1e8 ? 1 : 0), 'MB/s'];
-    return [zahl(b / 1e9, 2), 'GB/s'];
+    for (const [e, f] of [['GB/s', 1e9], ['MB/s', 1e6], ['KB/s', 1e3]]) {
+      if (b >= f * 0.9995) { const v = b / f; return [zahl(v, v < 99.95 ? 1 : 0), e]; }
+    }
+    return [zahl(Math.round(b || 0), 0), 'B/s'];
   }
-  function setzeRate(id, b) { const [w, e] = rate(b); $(id).innerHTML = `${w}<small>${e}</small>`; }
+  function setzeRate(id, b) { const [w, e] = rate(b); $(id).textContent = w; $(id + '-e').textContent = e; }
   function renderSystem() {
     const d = S.system; if (!d) return;
     const n = d.kerne.length;
@@ -302,21 +313,25 @@
     const k = $('kerne');
     if (S.kerneN !== n) {
       S.kerneN = n;
-      k.style.gridTemplateRows = `repeat(${Math.ceil(n / 2)}, minmax(12px, 22px))`;
+      k.style.gridTemplateRows = `repeat(${Math.ceil(n / 2)}, minmax(12px, 24px))`;
       k.innerHTML = d.kerne.map((_, i) => `<div class="kern"><span class="kern-l">${i + 1}</span><span class="balken"><span class="fuell"></span></span><span class="kern-w"></span></div>`).join('');
     }
     [...k.children].forEach((row, i) => { feder(row.children[1].firstChild, d.kerne[i] / 100); row.children[2].textContent = `${zahl(d.kerne[i], 0)} %`; });
     const [cl, cf] = spark(S.cpuH), [rl, rf] = spark(S.ramH);
     $('cpu-linie').setAttribute('d', cl); $('cpu-flaeche').setAttribute('d', cf);
     $('ram-linie').setAttribute('d', rl); $('ram-flaeche').setAttribute('d', rf);
-    $('ram').textContent = `${zahl(d.ram.belegt / GiB, 1)} GB`; $('ram-gesamt').textContent = ` / ${zahl(d.ram.gesamt / GiB, 0)} GB`;
+    $('ram').textContent = `${zahl(d.ram.belegt / GiB, 1)} GB`; $('ram-gesamt').textContent = `/ ${zahl(d.ram.gesamt / GiB, 0)} GB`;
     feder($('ram-fuell'), d.ram.gesamt ? d.ram.belegt / d.ram.gesamt : 0);
     $('ram-pct').textContent = `${zahl(d.ram.gesamt ? d.ram.belegt / d.ram.gesamt * 100 : 0, 0)} %`;
     feder($('swap-fuell'), d.swap.gesamt ? d.swap.belegt / d.swap.gesamt : 0);
     $('swap').textContent = `${zahl(d.swap.belegt / GiB, 1)} / ${zahl(d.swap.gesamt / GiB, 1)} GB`;
     if (d.netz) {
       setzeRate('netz-rx', d.netz.empfangen); setzeRate('netz-tx', d.netz.gesendet);
-      setzeRate('netz-spitze', S.netzH.reduce((m, [rx, tx]) => Math.max(m, rx, tx), 0));
+      // Skala nach der Spitze der letzten 10 Minuten, mindestens 64 KB/s – so bleibt der Leerlauf ruhig.
+      const spitze = S.netzH.reduce((m, [rx, tx]) => Math.max(m, rx, tx), 0), skala = Math.max(spitze, 64e3);
+      const [rl2, rf2] = spark(S.netzH.map(w => w[0]), skala, 'max'), [tl] = spark(S.netzH.map(w => w[1]), skala, 'max');
+      $('netz-rx-linie').setAttribute('d', rl2); $('netz-rx-flaeche').setAttribute('d', rf2); $('netz-tx-linie').setAttribute('d', tl);
+      const [w, e] = rate(spitze); $('netz-spitze').textContent = `Spitze ${w} ${e}`;
     }
     $('l1').textContent = zahl(d.last[0], 2); $('l5').textContent = zahl(d.last[1], 2); $('l15').textContent = zahl(d.last[2], 2); $('kerne-n').textContent = n;
   }
@@ -408,12 +423,17 @@
     k.innerHTML = S.angehalten ? `${IC.dreieck(12)}Weiter` : `${IC.pause()}Anhalten`;
     k.setAttribute('aria-pressed', String(S.angehalten));
     $('term').classList.toggle('pausiert', S.angehalten);
+    const neu = `${S.puffer.length} ${mehrzahl(S.puffer.length, 'neue Zeile', 'neue Zeilen')}`;
     $('pause-hinweis').hidden = !S.angehalten;
-    $('pause-text').textContent = `Angehalten · ${S.puffer.length} ${mehrzahl(S.puffer.length, 'neue Zeile', 'neue Zeilen')}`;
+    $('pause-text').textContent = `Angehalten · ${neu}`;
+    // Hochgescrollt ist ein eigener Zustand mit eigener Pille (Design 0.3.0), „Anhalten“ hat Vorrang.
+    $('scroll-hinweis').hidden = !(S.hoch && !S.angehalten);
+    $('scroll-text').textContent = `Mitlaufen angehalten · ${neu}`;
   }
+  function leerePuffer() { const p = S.puffer; S.puffer = []; if (p.length) haengeAn(p); }
   function umschaltenPause() {
-    S.angehalten = !S.angehalten; S.hochgescrollt = false;
-    if (!S.angehalten) { const p = S.puffer; S.puffer = []; if (p.length) haengeAn(p); $('term').scrollTop = 0; }
+    S.angehalten = !S.angehalten;
+    if (!S.angehalten && !S.hoch) { leerePuffer(); $('term').scrollTop = 0; }
     renderPause(); renderLeer();
   }
   function setzeUmbruch(an) {
@@ -427,13 +447,13 @@
     const knapp = (S.platten || []).some(p => p.schwelleFrei && p.frei < p.schwelleFrei);
     const tokenAblauf = w.tokenAblauf && (ms(w.tokenAblauf) - Date.now()) < 14 * 86400000;
     return [
-      { id: 'token', titel: 'GitHub-Token einrichten oder erneuern', aktiv: ['kein-token', 'token-ungueltig', 'keine-rechte'].includes(w.abfrage) || tokenAblauf, wann: 'Wenn „Kein GitHub-Token“, „Token ungültig“ oder „Token läuft ab“ gemeldet wird.', schritte: [
+      { id: 'token', titel: 'GitHub-Token einrichten oder erneuern', aktiv: ['kein-token', 'token-ungueltig', 'keine-rechte'].includes(w.abfrage) || tokenAblauf, wann: 'Wenn „Kein GitHub-Token“, „ohne Zugriff“ oder „Token läuft ab“ gemeldet wird. Schritt 1 bis 4 auf github.com, Schritt 5 und 6 auf der VM.', schritte: [
         ['Auf github.com: Profilbild › Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.'],
         ['Resource owner: die Organisation, nicht das eigene Konto. Repository access: All repositories. Ablauf zum Beispiel 1 Jahr.'],
-        ['Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status des Runners zusätzlich Organization › Self-hosted runners „Read-only“.'],
-        ['Verlangt die Organisation eine Freigabe, das Token unter Organisation › Settings › Personal access tokens › Pending requests freigeben. Vorher meldet der Monitor „ohne Zugriff“.'],
-        ['Auf der VM das Token eintragen (Eingabe bleibt unsichtbar, nur root kann die Datei lesen). Das Skript fragt auch nach der Organisation – Enter behält die bisherige:', `${SKRIPT} token`],
-        ['Die nächste Abfrage (spätestens nach 30 s) übernimmt es. Prüfen, ob GitHub das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):', `sudo bash -c 'curl -s -o /dev/null -w "%{http_code}\\n" -H "Authorization: Bearer $(cat /etc/runner-monitor/github-token)" "https://api.github.com/orgs/${w.org || 'ORGANISATION'}/repos?per_page=1"'`],
+        ['Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status zusätzlich Organization › Self-hosted runners „Read-only“.'],
+        ['Verlangt die Organisation eine Freigabe: Organisation › Settings › Personal access tokens › Pending requests. Vorher meldet der Monitor „ohne Zugriff“.'],
+        ['Auf der VM eintragen, die Eingabe bleibt unsichtbar. Das Skript fragt auch nach der Organisation, Enter behält die bisherige:', `${SKRIPT} token`],
+        ['Prüfen, ob GitHub das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):', `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "Authorization: Bearer $(sudo cat /etc/runner-monitor/github-token)" \\\n  "https://api.github.com/orgs/${w.org || 'beispiel-org'}/repos?per_page=1"`],
       ] },
       { id: 'github', titel: 'GitHub nicht erreichbar', aktiv: ['nicht-erreichbar', 'kontingent', 'fehler'].includes(w.abfrage), wann: 'Wenn die Abfrage der Workflows fehlschlägt. Die Karte zeigt dann den letzten Stand.', schritte: [
         ['Zuerst den Status von GitHub prüfen: githubstatus.com.'],
@@ -445,13 +465,19 @@
         ['Status und letzte Meldungen ansehen:', "systemctl status 'actions.runner.*'"],
         ['Dienst starten:', "sudo systemctl start 'actions.runner.*'"],
         ['Startet er nicht, das Protokoll prüfen:', "journalctl -u 'actions.runner.*' -n 50"],
-        ['Wartende Jobs laufen danach von selbst an. Woran es lag, steht in den Logs – siehe „Runner-Logs abrufen“.'],
+        ['Wartende Jobs laufen danach von selbst an.'],
+        ['Woran es lag, steht in den Logs – siehe „Runner-Logs abrufen“.'],
+      ] },
+      { id: 'runner', titel: 'Kein Runner eingerichtet', aktiv: st.dienst.zustand === 'fehlt', cls: 'warn', wann: 'Wenn auf dieser VM kein GitHub-Runner gefunden wird.', schritte: [
+        ['Registrierungs-Token holen: GitHub › Organisation › Settings › Actions › Runners › „New self-hosted runner“ (1 Stunde gültig).'],
+        ['Runner auf der VM einrichten – das Skript fragt Organisation, Token und Labels ab:', `${SKRIPT} runner`],
+        ['Der Monitor erkennt den Runner danach von selbst.'],
       ] },
       { id: 'offline', titel: 'Runner offline bei GitHub', aktiv: st.github.zustand === 'offline', cls: 'fehler', wann: 'Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.', schritte: [
         ['Netz der VM prüfen:', 'curl -sI https://github.com | head -1'],
         ['Dienst neu starten, damit er sich neu anmeldet:', "sudo systemctl restart 'actions.runner.*'"],
         ['Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:', `${SKRIPT} runner --umziehen`],
-        ['Warum die Verbindung fehlt, steht im Diagnoseprotokoll – siehe „Runner-Logs abrufen“.'],
+        ['Warum die Verbindung fehlt, steht im Diagnoseprotokoll des Runners – siehe „Runner-Logs abrufen“.'],
       ] },
       { id: 'logs', titel: 'Runner-Logs abrufen (Diagnose)', aktiv: st.dienst.zustand === 'gestoppt' || st.github.zustand === 'offline', cls: st.dienst.zustand === 'gestoppt' ? 'fehler' : 'warn', wann: 'Wenn der Runner-Dienst stoppt, abstürzt, offline ist oder Jobs nicht annimmt. Alle Befehle auf der VM ausführen.', schritte: [
         ['Dienst-Protokoll: Start, Stopp, Abstürze, Job-Start und -Ende. Die letzten 100 Zeilen:', "journalctl -u 'actions.runner.*' -n 100 --no-pager"],
@@ -460,13 +486,13 @@
         ['Protokoll des letzten Jobs (Worker), wenn ein Job abbricht oder hängt:', 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Worker_*.log | head -1)"'],
         ['Ausgabe der einzelnen Schritte, eine Datei je Schritt:', 'ls -lt /opt/actions-runner/_diag/pages/ | head'],
         ['Logs abgeschlossener Jobs liegen bei GitHub: Repository › Actions › Lauf öffnen › Job › „Download log archive“.'],
-        ['Alles gebündelt zum Weitergeben:', "sudo tar czf ~/runner-diag.tgz -C /opt/actions-runner _diag\njournalctl -u 'actions.runner.*' --since today > ~/runner-journal.txt"],
+        ['Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:', "sudo tar czf ~/runner-diag.tgz -C /opt/actions-runner _diag\njournalctl -u 'actions.runner.*' --since today > ~/runner-journal.txt"],
       ] },
-      { id: 'platte', titel: 'Platte knapp', aktiv: knapp, wann: 'Wenn auf „/“ weniger als die Aufräumschwelle (25 GB) frei ist.', schritte: [
+      { id: 'platte', titel: 'Platte knapp', aktiv: knapp, wann: 'Wenn auf „/“ weniger als 25 GB frei sind.', schritte: [
         ['Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:', 'sudo runner-aufraeumen'],
         ['Wer belegt den Platz?', 'docker system df'],
         ['Freien Platz an Proxmox zurückgeben:', 'sudo fstrim -av'],
-        ['Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern (Runbook docs/runbooks/platte-voll.md).'],
+        ['Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.'],
       ] },
       { id: 'monitor', titel: 'Verbindung zum Monitor unterbrochen', aktiv: S.verbindung === 'getrennt', cls: 'fehler', wann: 'Wenn diese Seite keine Daten mehr von der VM bekommt. Sie zeigt dann den letzten Stand.', schritte: [
         ['Die Seite versucht es selbst weiter. Ist die VM im Netz erreichbar?', `ping ${st.vm || 'runner-vm'}`],
@@ -488,15 +514,45 @@
     const p = S.pruefung, jetzt = Date.now();
     if (p && p.bis && jetzt > p.bis) S.pruefung = null;
     if (p && p.zustand === 'laeuft' && jetzt - p.start > 45000) S.pruefung = { zustand: 'keine-antwort', bis: jetzt + 30000 };
-    const q = S.pruefung;
-    const text = !q ? '' : q.zustand === 'laeuft' ? 'Frage GitHub nach neuen Versionen …'
-      : q.zustand === 'frisch' ? 'Gerade erst geprüft – Stand siehe oben.'
-      : q.zustand === 'keine-antwort' ? 'Keine Antwort vom Sammler. Auf der VM prüfen: journalctl -u runner-monitor-sammler -n 30'
-      : u.neueste && u.neueste.fehler ? `GitHub nicht erreichbar: ${esc(u.neueste.fehler)}`
-      : neu ? `Version ${esc(u.neueste.version)} ist verfügbar.` : 'Auf dem neuesten Stand.';
-    const cls = !q ? '' : q.zustand === 'keine-antwort' || (q.zustand === 'fertig' && u.neueste && u.neueste.fehler) ? 'fehler' : q.zustand === 'fertig' && !neu ? 'ok' : '';
-    const aus = (q && q.zustand === 'laeuft') || us.zustand === 'laeuft';
-    return `<div class="upd-pruefen"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''}>${q && q.zustand === 'laeuft' ? IC.dreh() : IC.update()}Jetzt prüfen</button>${text ? `<span class="info-notiz ${cls}" role="status">${text}</span>` : ''}</div>`;
+    const q = S.pruefung, zst = q ? q.zustand : 'ruhe', updLaeuft = us.zustand === 'laeuft';
+    const fehlerGh = zst === 'fertig' && u.neueste && u.neueste.fehler;
+    const ICO = {
+      dreh: '<svg class="upd-dreh" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 106.5 6.5"/></svg>',
+      ruhe: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 11-1.61-3.89"/><path d="M13.5 2.5v3h-3"/></svg>',
+      ok: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M5.2 8.2l1.9 1.9 3.7-4"/></svg>',
+      neu: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M8 4.8v6M5.4 8.6L8 11.2l2.6-2.6"/></svg>',
+      x: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>',
+    };
+    let text = '';
+    if (zst === 'laeuft') text = '<span class="pruef-text mut">Frage GitHub nach neuen Versionen …</span>';
+    else if (zst === 'frisch') text = '<span class="pruef-text mut">Gerade erst geprüft – Stand siehe oben.</span>';
+    else if (zst === 'fertig' && !fehlerGh) text = neu ? `<span class="pruef-text laeuft">${ICO.neu}Version ${esc(u.neueste.version)} ist verfügbar.</span>` : `<span class="pruef-text ok">${ICO.ok}Auf dem neuesten Stand.</span>`;
+    else if (updLaeuft) text = '<span class="pruef-text mut">Gesperrt, solange das Update läuft.</span>';
+    const aus = zst === 'laeuft' || updLaeuft;
+    let html = `<div class="pruef"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''} title="GitHub sofort nach einer neuen Version fragen (sonst alle 6 Std.)">${zst === 'laeuft' ? ICO.dreh : ICO.ruhe}Jetzt prüfen</button><span aria-live="polite" class="pruef-live">${text}</span></div>`;
+    if (fehlerGh) html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div>GitHub nicht erreichbar: <span>${esc(u.neueste.fehler)}. Der nächste automatische Versuch folgt in 6 Std.</span></div></div>`;
+    if (zst === 'keine-antwort') html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div class="hinweis-voll">Keine Antwort vom Sammler. <span>Auf der VM prüfen:</span>${codeBox('journalctl -u runner-monitor-sammler -n 30')}</div></div>`;
+    return html;
+  }
+
+  /* Befehlsblock mit Knopf „Kopieren“. Über http im LAN gibt es navigator.clipboard nicht (nur in
+     sicheren Kontexten), deshalb Rückfall auf execCommand('copy') mit unsichtbarem Textfeld. */
+  function codeBox(code) {
+    return `<div class="code-box"><pre class="code">${esc(code)}</pre><button type="button" class="kopier" data-aktion="kopieren" data-code="${esc(code)}">Kopieren</button></div>`;
+  }
+  async function kopiere(knopf) {
+    const text = knopf.dataset.code || '';
+    let ok = false;
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } } catch (f) { ok = false; }
+    if (!ok) {
+      const t = document.createElement('textarea');
+      t.value = text; t.setAttribute('readonly', ''); t.className = 'kopier-puffer';
+      document.body.appendChild(t); t.select();
+      try { ok = document.execCommand('copy'); } catch (f) { ok = false; }
+      t.remove();
+    }
+    knopf.textContent = ok ? 'Kopiert ✓' : 'Bitte markieren';
+    clearTimeout(knopf._zeit); knopf._zeit = setTimeout(() => { knopf.textContent = 'Kopieren'; }, 1600);
   }
 
   function oeffneInfo(id) {
@@ -553,7 +609,7 @@
 
     const anl = anleitungen().map(a => {
       const offen = S.info === a.id;
-      return `<div class="anl"><button type="button" class="anl-kopf" data-aktion="anleitung" data-anleitung="${a.id}" aria-expanded="${offen}">${IC.chev(offen)}<span class="anl-titel">${a.titel}</span>${a.aktiv ? `<span class="pill ${a.cls || 'warn'}">jetzt aktiv</span>` : ''}</button>${offen ? `<p class="anl-wann">${a.wann}</p><ol class="anl-schritte">${a.schritte.map(([text, code]) => `<li><span>${esc(text)}</span>${code ? `<pre class="code">${esc(code)}</pre>` : ''}</li>`).join('')}</ol>` : ''}</div>`;
+      return `<div class="anl"><button type="button" class="anl-kopf" data-aktion="anleitung" data-anleitung="${a.id}" aria-expanded="${offen}">${IC.chev(offen)}<span class="anl-titel">${a.titel}</span>${a.aktiv ? `<span class="pill ${a.cls || 'warn'}">jetzt aktiv</span>` : ''}</button>${offen ? `<p class="anl-wann">${a.wann}</p><ol class="anl-schritte">${a.schritte.map(([text, code]) => `<li><span>${esc(text)}</span>${code ? codeBox(code) : ''}</li>`).join('')}</ol>` : ''}</div>`;
     }).join('');
 
     const tage = w.tokenAblauf ? Math.ceil((ms(w.tokenAblauf) - jetzt) / 86400000) : null;
@@ -567,7 +623,7 @@
       ['Nächste Abfrage', '<span data-tick="naechste"></span>'],
       ['API-Kontingent', kont.limit ? `${zahl(kont.frei)} von ${zahl(kont.limit)} frei, Reset ${hm(kont.reset)}` : '–'],
       ['Token-Datei', '/etc/runner-monitor/github-token'],
-    ]) + `<p class="info-notiz">Token oder Organisation ändern geht nur auf der VM, die Seite ist nur zum Anschauen. Das Skript fragt das Token verdeckt ab und startet die Dienste neu:</p><pre class="code">${esc(SKRIPT)} token</pre><p class="info-notiz">Schritt für Schritt: „Was tun, wenn …“ › <button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">GitHub-Token einrichten oder erneuern</button></p>`;
+    ]);
     const ueber = kv([
       ['Version', esc(u.installiert || st.monitorVersion || '–')],
       ['Adresse', esc(location.host)],
@@ -584,8 +640,13 @@
       modi: `<div class="info-zeile"><span class="mut">Modus</span><div class="segment" role="group" aria-label="Hell oder dunkel">${modi}</div></div><p class="info-notiz">„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.</p>`,
       anl,
       gh,
-      ueber: `<p class="info-text">Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.</p>${ueber}<p class="info-text">Ersteller: Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>Quellcode und Doku: <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
-      issue: `<p class="info-text">Fehler und Wünsche landen als Issue im öffentlichen GitHub-Repository. Die Knöpfe öffnen eine vorbereitete Vorlage mit Version, Runner-Version und Browser.</p><div class="knopf-reihe"><a class="knopf" href="${issue('fehler.yml')}" rel="noopener" target="_blank">${IC.kaefer()}Fehler melden ↗</a><a class="knopf" href="${issue('idee.yml')}" rel="noopener" target="_blank">Idee vorschlagen ↗</a></div><p class="info-notiz">Vor dem Absenden prüfen: keine IP-Adressen, Rechnernamen, Tokens oder Passwörter in das Issue schreiben – das Repository ist öffentlich.</p>`,
+      ueber: `<p class="info-text">Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung mit Netzwerk, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.</p>${ueber}<p class="info-text umbruch">Ersteller: Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>Quellcode und Doku: <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
+      issue: `<p class="info-text">Der Monitor ist ein offenes Projekt. Fehler und Wünsche landen als Issue im GitHub-Repository. Der Knopf öffnet GitHub mit einer vorbereiteten Vorlage, in der die technischen Angaben schon stehen:</p>${kv([
+        ['Version', `Runner-Monitor ${esc(u.installiert || st.monitorVersion || '–')}`],
+        ['System', esc(st.system || '–')],
+        ['Runner', st.version ? `actions-runner ${esc(st.version)}` : '–'],
+        ['Browser', 'wird automatisch ergänzt'],
+      ])}<div class="knopf-reihe"><a class="knopf" href="${issue('fehler.yml')}" rel="noopener" target="_blank">${IC.kaefer()}Fehler melden ↗</a><a class="knopf" href="${issue('idee.yml')}" rel="noopener" target="_blank">Idee vorschlagen ↗</a></div><p class="info-notiz">Vor dem Absenden prüfen: Keine IP-Adressen, Rechnernamen, Tokens oder Passwörter in das Issue schreiben, das Repository ist öffentlich. Log-Ausschnitte nur gekürzt einfügen.</p>`,
     };
   }
 
@@ -593,8 +654,8 @@
       <div class="info-scrim" data-aktion="info-zu"></div>
       <aside class="info" role="dialog" aria-modal="true" aria-labelledby="info-titel" tabindex="-1">
         <div class="info-kopf">
-          <div><div class="vm-eyebrow" data-teil="eyebrow"></div><h2 class="info-titel" id="info-titel">Info &amp; Hilfe</h2></div>
-          <div class="knopf-reihe"><button type="button" class="knopf" data-aktion="abmelden">Abmelden</button><button type="button" class="knopf" data-aktion="info-zu">Schließen</button></div>
+          <div class="info-kopf-text"><div class="vm-eyebrow" data-teil="eyebrow"></div><h2 class="info-titel" id="info-titel">Info &amp; Hilfe</h2></div>
+          <div class="info-kopf-knoepfe"><button type="button" class="knopf" data-aktion="abmelden">Abmelden</button><button type="button" class="knopf" data-aktion="info-zu">Schließen</button></div>
         </div>
         <div class="info-body">
           <section class="info-abschnitt"><h3 class="info-h">Updates</h3><div data-teil="upd"></div></section>
@@ -633,12 +694,13 @@
     else if (a === 'info-zu') schliesseInfo();
     else if (a === 'anleitung') { S.info = S.info === b.dataset.anleitung ? 'alle' : b.dataset.anleitung; renderInfo(); }
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
-    else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; renderWorkflows(); }
+    else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; renderWorkflows(); }
     else if (a === 'abmelden') { if (!DEMO) await RM.sende('/api/abmelden'); location.href = '/anmelden'; }
+    else if (a === 'kopieren') kopiere(b);
     else if (a === 'update-pruefen') {
       const g = S.update && S.update.neueste && S.update.neueste.geprueft;
       if (g && Date.now() - ms(g) < 60000) { S.pruefung = { zustand: 'frisch', bis: Date.now() + 5000 }; renderInfo(); return; }
-      S.pruefung = { zustand: 'laeuft', start: Date.now() }; renderInfo();
+      S.pruefung = { zustand: 'laeuft', start: Date.now(), vorher: g || null }; renderInfo();
       if (DEMO) { window.RM_DEMO.pruefen(); return; }
       const r = await RM.sende('/api/update/pruefen');
       if (!r.ok) { S.pruefung = { zustand: 'keine-antwort', bis: Date.now() + 30000 }; renderInfo(); }
@@ -660,16 +722,17 @@
     const folgt = { system: 'hell', hell: 'dunkel', dunkel: 'system' }[RM.thema()];
     RM.setzeThema(folgt); renderModus(); renderInfo();
   });
-  $('k-info').innerHTML = `${IC.info()}Info`;
+  $('k-info').innerHTML = `${IC.info()}Info &amp; Hilfe`;
   $('k-info').addEventListener('click', () => oeffneInfo('alle'));
   $('k-pause').addEventListener('click', umschaltenPause);
   /* Im Log hochscrollen hält das Mitlaufen an (neue Zeilen werden gesammelt), zurück nach
      unten läuft es wieder mit. Wegen column-reverse ist scrollTop unten 0 und oben negativ. */
   $('term').addEventListener('scroll', () => {
-    const oben = Math.abs($('term').scrollTop) > 8;
-    if (oben && !S.angehalten) { S.angehalten = true; S.hochgescrollt = true; renderPause(); }
-    else if (!oben && S.angehalten && S.hochgescrollt) umschaltenPause();
+    const oben = Math.abs($('term').scrollTop) > 6;
+    if (oben && !S.hoch) { S.hoch = true; renderPause(); }
+    else if (!oben && S.hoch) { S.hoch = false; if (!S.angehalten) leerePuffer(); renderPause(); renderLeer(); }
   }, { passive: true });
+  $('k-zum-ende').addEventListener('click', () => $('term').scrollTo({ top: 0, behavior: reduziert.matches ? 'auto' : 'smooth' }));
   $('k-weiter').addEventListener('click', umschaltenPause);
   $('k-umbrechen').addEventListener('click', () => setzeUmbruch(true));
   $('k-abschneiden').addEventListener('click', () => setzeUmbruch(false));

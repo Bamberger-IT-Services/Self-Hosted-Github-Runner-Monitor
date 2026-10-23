@@ -1,6 +1,6 @@
 # Sicherheitsbericht
 
-**Stand: 23.10.2026 · Version 0.1.2** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
+**Stand: 23.10.2026 · Version 0.3.0** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
 
 Einsatzrahmen: ein Monitor im **lokalen Netz** einer Runner-VM, ein Zugang, nur lesend.
 Erreichbar über HTTP auf Port 8090, die Firewall-Regel des Einrichtungsskripts lässt nur das
@@ -43,6 +43,7 @@ eigene Netz zu.
 ## V4 Zugriff
 
 - Ein Zugang, alles nur lesend. Ändernde Aktionen: Update starten, Auto-Update schalten, abmelden.
+- Ohne Anmeldung erreichbar: Anmeldung, Einrichtung (nur mit Code), statische Dateien und `/api/health`. Seit 0.3.0 nennt `/api/health` neben der Version auch den Namen der VM (die Anmeldeseite zeigt ihn, Design 0.3.0) – im LAN hinter ufw unkritisch.
 
 ## V5 Eingaben
 

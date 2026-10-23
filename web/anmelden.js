@@ -4,7 +4,11 @@
 (() => {
   const { $, IC, esc, hm } = RM;
   $('marke-icon').innerHTML = IC.server(28);
-  $('marke-host').textContent = location.host;
+  $('marke-host').textContent = location.hostname;
+  fetch('/api/health').then(r => (r.ok ? r.json() : {})).then((d) => {
+    if (d.vm) $('marke-host').textContent = d.vm;
+    if (d.version) $('fuss-version').textContent = `Runner-Monitor ${d.version}`;
+  }).catch(() => {});
   const form = $('formular'), knopf = $('absenden'), box = $('meldung');
   let sperreBis = 0, uhr = 0;
 
@@ -38,7 +42,9 @@
       return;
     }
     const rest = d.verbleibend;
-    zeige(d.fehler || 'Anmeldung fehlgeschlagen.', rest != null && rest <= 3 ? `Noch ${rest} ${rest === 1 ? 'Versuch' : 'Versuche'}, dann wird die Anmeldung 5 Minuten gesperrt.` : '');
+    let text = '';
+    if (rest != null) text = rest > 0 ? `Noch ${rest} ${rest === 1 ? 'Versuch' : 'Versuche'}, danach ist die Anmeldung 5 Minuten gesperrt.` : 'Die Anmeldung ist für 5 Minuten gesperrt.';
+    zeige(d.fehler || 'Anmeldung fehlgeschlagen.', text);
   });
   $('nutzer').focus();
 })();

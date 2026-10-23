@@ -1,6 +1,6 @@
 # Runner-Monitor
 
-**Stand: 23.10.2026 · Version 0.1.2** (erstes Release, Abnahme auf der VM läuft)
+**Stand: 23.10.2026 · Version 0.3.0** (Design v0.3.0, Abnahme auf der VM läuft)
 
 Live-Dashboard für einen **selbst gehosteten GitHub-Actions-Runner** auf einer Linux-VM.
 Ein Blick zeigt, ob der Runner bereit ist, welcher Job gerade läuft, wie ausgelastet die VM
@@ -11,7 +11,7 @@ laufenden Schritts als Live-Log.
 
 - **Runner-Status:** Dienst aktiv/gestoppt, online/offline bei GitHub, laufender Job mit
   Repository, Workflow, Schritt und Laufzeit, die letzten fünf Jobs.
-- **Auslastung:** CPU gesamt und je Kern, RAM, Swap, Netz (empfangen/gesendet), Last, Verlauf der letzten 10 Minuten.
+- **Auslastung:** CPU gesamt und je Kern, RAM, Swap, Netzwerk (empfangen/gesendet mit Verlauf), Last, Verlauf der letzten 10 Minuten.
 - **Prozesse und Platten:** die sechs größten Prozesse, alle Laufwerke mit Aufräumschwelle.
 - **Workflows je Repository:** was läuft, was wartet (über ein nur lesendes GitHub-Token).
 - **Live-Log:** Ausgabe des laufenden Schritts mit ANSI-Farben und Schritt-Trennern.
@@ -31,8 +31,8 @@ schon laufen – oder das Skript richtet ihn mit ein.
 
 ```bash
 # 1. Neueste Version holen und entpacken (Release-Seite: Assets › runner-monitor-X.Y.Z.tar.gz)
-curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/latest/download/runner-monitor-0.1.2.tar.gz
-tar xzf runner-monitor-0.1.2.tar.gz && cd runner-monitor-0.1.2
+curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/latest/download/runner-monitor-0.3.0.tar.gz
+tar xzf runner-monitor-0.3.0.tar.gz && cd runner-monitor-0.3.0
 
 # 2. Einrichtungsskript: Dienste, Firewall (Port 8090 nur aus dem LAN), Runner-Suche
 sudo ./einrichten.sh
@@ -71,7 +71,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 | Runbooks für Störungen | [docs/runbooks/](docs/runbooks/README.md) |
 | Sicherheit, Datenschutz | [docs/sicherheit/bericht.md](docs/sicherheit/bericht.md), [docs/DATENSCHUTZ.md](docs/DATENSCHUTZ.md) |
 | Architekturentscheidungen | [docs/adr/](docs/adr/) · [DECISIONS.md](DECISIONS.md) |
-| Design v1 und Abgleich mit dem Code | [docs/design/README.md](docs/design/README.md) |
+| Design v0.3.0 und Abgleich mit dem Code | [docs/design/README.md](docs/design/README.md) |
 | Änderungen | [CHANGELOG.md](CHANGELOG.md) · [docs/releases/](docs/releases/) |
 | Aufgaben, Entscheidungen, Verlauf | [entwickler-dashboard/index.html](entwickler-dashboard/index.html) |
 
@@ -79,6 +79,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 
 | Version | Datum | Handbuch | Release-Notiz |
 |---|---|---|---|
+| 0.3 | 23.10.2026 (0.3.0) | [v0.3.0/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.3.0/docs/handbuch) | [v0.3.0](docs/releases/v0.3.0.md) |
 | 0.1 | 23.10.2026 (0.1.2) | [v0.1.2/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.1.2/docs/handbuch) | [v0.1.2](docs/releases/v0.1.2.md) |
 
 ## Nichtfunktionale Anforderungen

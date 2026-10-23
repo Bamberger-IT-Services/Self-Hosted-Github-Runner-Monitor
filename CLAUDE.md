@@ -15,7 +15,7 @@ CI bei jedem PR; Doku im selben PR; `entwickler-dashboard/daten.js` nach jeder A
 - Nur Python-Standardbibliothek und Vanilla-JS. Keine Pakete ohne ADR.
 - Oberfläche: Ansprache „Sie“ in Anmeldung und Einrichtung, neutral im Dashboard, nie „du“.
 - CSP: keine Inline-Skripte, keine `style="…"`-Attribute; Werte per `element.style` setzen.
-- Design-Grundlage: Design v1 (`docs/design/`). Bei Widerspruch gelten die Anweisungen; Abgleich
+- Design-Grundlage: Design v0.3.0 (`docs/design/v0.3.0/`, pixelgenau umsetzen). Bei Widerspruch gelten die Anweisungen; Abgleich
   in `docs/design/README.md` pflegen.
 - Produktive Schritte (Release veröffentlichen, VM umstellen, Einstellungen bei GitHub) nur nach OK von Tobias.
 
