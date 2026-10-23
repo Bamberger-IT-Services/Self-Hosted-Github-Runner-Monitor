@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "23.10.2026 23:04",
+  stand: "23.10.2026 23:11",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -152,8 +152,8 @@ window.RUNNER_MONITOR = {
   ],
 
   hinweise: [
-    { titel: "Version", text: "0.3.1 ist veröffentlicht (Live-Verbindung bleibt bei viel Log-Ausgabe stabil), davor v0.3.0 mit Design 0.3.0, v0.1.2 und v0.1.1. 0.4.0 setzt Design 0.4.0 um (Verlauf über die ganze Breite und über Neustarts, Job-Schritte aus einer Quelle); Release nach OK. Der Abnahmetest auf der Runner-VM läuft (#14).", datei: "CHANGELOG.md" },
-    { titel: "Nächste Schritte", text: "1) Release v0.4.0 (nach OK) und auf der VM einspielen. 2) Im Betrieb prüfen, ob Verlauf und Schritte wie im Entwurf aussehen (#13). 3) Reihenfolge in „Ready“ festlegen. 4) Abnahme mit Rückweg (#14). Offen: wohin die frühere A-14 gehört (anderes Projekt-Repo)." },
+    { titel: "Version", text: "0.3.1 ist veröffentlicht (Live-Verbindung bleibt bei viel Log-Ausgabe stabil), davor v0.3.0 mit Design 0.3.0, v0.1.2 und v0.1.1. 0.4.0 setzt Design 0.4.0 um (Verlauf über die ganze Breite und über Neustarts, Job-Schritte aus einer Quelle); Release v0.4.0 veröffentlicht. Der Abnahmetest auf der Runner-VM läuft (#14).", datei: "CHANGELOG.md" },
+    { titel: "Nächste Schritte", text: "1) v0.4.0 auf der VM einspielen („Jetzt prüfen“), Dashboard neu laden. 2) Im Betrieb prüfen, ob Verlauf und Schritte wie im Entwurf aussehen (#13). 3) Reihenfolge in „Ready“ festlegen. 4) Abnahme mit Rückweg (#14). Offen: wohin die frühere A-14 gehört (anderes Projekt-Repo)." },
     { titel: "Öffentliches Repository", text: "Keine echten IP-Adressen, Rechner-, Organisations- oder Personennamen und keine Tokens – auch nicht in Tests, Bildern, Logs oder diesem Dashboard. Platzhalter: runner-vm, runner-vm-01, beispiel-org, <ip-der-runner-vm>, Adressen aus 192.0.2.0/24 (RFC 5737)." },
     { titel: "Kein Docker (E-02, E-12)", text: "Der Monitor läuft nur als systemd-Dienst, auch nicht zusätzlich als Container – gilt auch dann, wenn eine Projektanweisung etwas anderes sagt („Als Docker sollte es dennoch funktionieren“ gilt nicht).", datei: "docs/adr/0002-systemd-statt-docker.md" },
     { titel: "Keine Lizenz (E-11)", text: "Keine LICENSE-Datei anlegen. Alle Rechte bei Bamberger IT Services, der Code ist nur zum Lesen öffentlich." },
@@ -248,6 +248,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "23.10.2026 23:11", text: "Review der 0.4.0-Änderungen eingearbeitet (PR #51: gleichnamiger Folgejob, robuste verlauf.json, Schrittblock ohne Neuaufbau). Epic #42 geschlossen, Release v0.4.0 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
     { datum: "23.10.2026 23:04", text: "0.4.0 nach Design 0.4.0: #43 Verlauf (PR #47), #44 Job-Schritte (PR #48), #25 Demo-Version (PR #49), #45 Version, Doku und Handbuch-Bilder (neues Bild dashboard-neustart.png)." },
     { datum: "23.10.2026 22:50", text: "Design 0.4.0 übernommen (docs/design/v0.4.0, Design 0.3.0 nur noch im Tag v0.3.1). Epic #42 mit #43 Verlauf, #44 Job-Schritte, #45 Version und Doku, Milestone v0.4.0." },
     { datum: "23.10.2026 22:43", text: "Umstellung nach Anweisung 08: Aufgaben als Issues im Project „Self-Hosted-Github-Runner-Monitor Roadmap“ (17 offen im Backlog, 13 erledigt übernommen und geschlossen, Epic #11 „Design v0.3.0 vollständig umsetzen“ mit Sub-Issues #12 und #13). Labels, Milestone v0.4.0, Issue-Vorlagen, AGENTS.md. Aufgabenliste im Dashboard durch den Board-Link ersetzt." },
