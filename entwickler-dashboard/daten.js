@@ -166,7 +166,7 @@ window.RUNNER_MONITOR = {
     { titel: "Produktive Schritte nur nach OK", text: "Release veröffentlichen, die VM umstellen und Einstellungen bei GitHub (z. B. #21) nur nach OK von Tobias." },
     { titel: "Doku im selben PR", text: "Jede Änderung an Bedienung, Einrichtung oder Betrieb passt im selben PR Handbuch, README, docs/EINRICHTUNG.md, docs/UPDATE.md, Runbooks und Sicherheitsbericht an. Nach jeder Arbeitsrunde dieses Dashboard (daten.js) pflegen." },
     { titel: "Ein Ort für die Runner-VM", text: "Einrichtung, Umzug, Pflege und Fehlerhilfe des Runners stehen hier in docs/RUNNER.md; das Public-Repo (Anweisung 01) verweist hierher, Helios soll es auch (A-14).", datei: "docs/RUNNER.md" },
-    { titel: "GitHub-Kontingent", text: "Je Abfrage etwa eine Anfrage je Repository plus drei; 5000 Anfragen je Stunde reichen im 30-s-Takt für etwa 35 Repositories. Bedingte Anfragen (ETag/304) sind #15." },
+    { titel: "GitHub-Kontingent", text: "Je Abfrage eine Anfrage je Repository plus drei, aber bedingt (ETag): unveränderte Antworten (304) kosten kein Kontingent; ruhige Repositories (über 1 Std. kein Push, nichts läuft/wartet) nur alle 5 Min. (#15)." },
   ],
 
   /*

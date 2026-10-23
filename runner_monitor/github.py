@@ -17,6 +17,11 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 API = "https://api.github.com"
+# Kontingent schonen (Issue #15): bedingte Anfragen mit ETag (304 zählt nicht gegen das Kontingent)
+# und ruhige Repositories seltener abfragen.
+SPEICHER_MAX = 2000          # höchstens so viele ETags merken
+RUHIG_AB = 3600              # Repository gilt als ruhig, wenn der letzte Push länger her ist …
+RUHIG_TAKT = 300             # … und nichts läuft oder wartet: Läufe dann nur alle 5 Minuten abfragen
 LAEUFT = {"in_progress"}
 WARTET = {"queued", "waiting", "pending", "requested"}
 
@@ -53,10 +58,16 @@ def token_ablauf(kopfzeile: str | None) -> float | None:
 
 
 class Klient:
-    def __init__(self, token: str = "", zeitlimit: float = 15.0) -> None:
+    """GitHub-REST-Klient. ``speicher`` (vom Sammler über die Durchläufe gehalten) merkt sich ETags
+    und Antworten; eine unveränderte Antwort kommt dann als 304 und kostet kein Kontingent."""
+
+    def __init__(self, token: str = "", zeitlimit: float = 15.0, speicher: dict | None = None) -> None:
         self.token = token.strip()
         self.zeitlimit = zeitlimit
         self.letzter_kopf: dict = {}
+        self.speicher = speicher if speicher is not None else {}
+        self.etags = self.speicher.setdefault("etags", {})
+        self.zaehler = {"anfragen": 0, "unveraendert": 0}
 
     def hole(self, pfad: str, parameter: dict | None = None) -> Antwort:
         url = API + pfad
@@ -69,6 +80,10 @@ class Klient:
         })
         if self.token:
             anfrage.add_header("Authorization", f"Bearer {self.token}")
+        gemerkt = self.etags.get(url)
+        if gemerkt:
+            anfrage.add_header("If-None-Match", gemerkt[0])
+        self.zaehler["anfragen"] += 1
         try:
             with urllib.request.urlopen(anfrage, timeout=self.zeitlimit) as antwort:  # noqa: S310 – feste https-Adresse
                 kopf = {k.lower(): v for k, v in antwort.headers.items()}
@@ -76,6 +91,10 @@ class Klient:
         except urllib.error.HTTPError as fehler:
             kopf = {k.lower(): v for k, v in (fehler.headers or {}).items()}
             self.letzter_kopf = kopf
+            if fehler.code == 304 and gemerkt:
+                # unverändert: gemerkte Antwort, kostet kein Kontingent
+                self.zaehler["unveraendert"] += 1
+                return Antwort(gemerkt[1], {**gemerkt[2], **kopf})
             if fehler.code == 401:
                 raise GitHubFehler("token-ungueltig", "Token ungültig oder abgelaufen (401)") from fehler
             if fehler.code in (403, 429) and kopf.get("x-ratelimit-remaining") == "0":
@@ -86,6 +105,11 @@ class Klient:
         except (urllib.error.URLError, TimeoutError, OSError) as fehler:
             raise GitHubFehler("nicht-erreichbar", str(fehler)) from fehler
         self.letzter_kopf = kopf
+        etag = kopf.get("etag")
+        if etag:
+            if len(self.etags) >= SPEICHER_MAX and url not in self.etags:
+                self.etags.clear()
+            self.etags[url] = (etag, daten, {k: v for k, v in kopf.items() if k.startswith("github-authentication")})
         return Antwort(daten, kopf)
 
     def kontingent(self) -> dict:
@@ -175,11 +199,19 @@ def abfrage(klient: Klient, org: str, runner_name: str, letzter_erfolg: float | 
                 break
             seite += 1
 
+        ruhige = klient.speicher.setdefault("ruhig", {})  # Repo → {"zeit", "laeuft", "wartet"} der letzten Abfrage
         for repo in repos:
             name = repo.get("name", "")
+            alt = ruhige.get(name)
+            gepusht = iso_zu_unix(repo.get("pushed_at")) or 0
+            if alt and not alt["laeuft"] and not alt["wartet"] and jetzt - gepusht > RUHIG_AB and jetzt - alt["zeit"] < RUHIG_TAKT:
+                # ruhig: letzten Stand übernehmen, erst nach RUHIG_TAKT wieder fragen
+                ergebnis["repos"].append({"name": name, "privat": bool(repo.get("private")), "laeuft": 0, "wartet": 0})
+                continue
             laeufe = klient.hole(f"/repos/{org}/{name}/actions/runs", {"per_page": 30}).daten
             runs = laeufe.get("workflow_runs", []) if isinstance(laeufe, dict) else []
             laeuft, wartet = zaehle_laeufe(runs)
+            ruhige[name] = {"zeit": jetzt, "laeuft": laeuft, "wartet": wartet}
             ergebnis["repos"].append({"name": name, "privat": bool(repo.get("private")), "laeuft": laeuft, "wartet": wartet})
             if ergebnis["job"] is None and laeuft:
                 for lauf in runs:
@@ -208,10 +240,13 @@ def abfrage(klient: Klient, org: str, runner_name: str, letzter_erfolg: float | 
             ergebnis["runner"] = {"zustand": "unbekannt", "grund": "Recht „Self-hosted runners: read“ fehlt"}
 
         ergebnis["letzterErfolg"] = jetzt
+        for name in set(ruhige) - {r.get("name", "") for r in repos}:
+            del ruhige[name]  # gelöschte oder archivierte Repositories vergessen
     except GitHubFehler as fehler:
         ergebnis["abfrage"] = "nicht-erreichbar" if fehler.art in ("nicht-erreichbar", "fehler") else fehler.art
         ergebnis["fehler"] = str(fehler)
     ergebnis["kontingent"] = klient.kontingent()
+    ergebnis["anfragen"] = dict(klient.zaehler)  # davon „unveraendert“ = 304, ohne Kontingent
     return ergebnis
 
 

@@ -19,7 +19,7 @@
    sudo /opt/runner-monitor/aktuell/einrichten.sh token
    ```
 4. **403 / Kontingent:** die Abfrage setzt bis zum Reset aus (Uhrzeit unter Info ›
-   GitHub-Verbindung). Viele Repositories? Je Abfrage braucht der Monitor etwa eine Anfrage je Repository plus drei; 5000 Anfragen je Stunde reichen im 30-s-Takt für etwa 35 Repositories (Issue #15).
+   GitHub-Verbindung). Viele Repositories? Der Monitor fragt bedingt (ETag): Unveränderte Antworten (304) kosten kein Kontingent, ruhige Repositories (über eine Stunde kein Push, nichts läuft oder wartet) fragt er nur alle 5 Minuten. Reicht es trotzdem nicht, `MONITOR_ORG` auf eine kleinere Organisation setzen.
 5. **Keine Antwort:** DNS, Proxy, Firewall der VM nach außen prüfen.
 
 ## Prüfen, ob es geklappt hat
