@@ -56,3 +56,53 @@ class AktualisiererTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class HerkunftTest(unittest.TestCase):
+    """Issue #18: GitHub-Attestierung des Archivs mit `gh attestation verify` (ADR-0005)."""
+
+    def setUp(self):
+        import os
+        from runner_monitor import konfig
+        self.tmp = tempfile.TemporaryDirectory()
+        d = Path(self.tmp.name)
+        self.bin = d / "bin"
+        self.bin.mkdir()
+        self.token = d / "github-token"
+        self.archiv = d / "a.tar.gz"
+        self.archiv.write_bytes(b"x")
+        self.pfad = os.environ.get("PATH", "")
+        os.environ["PATH"] = str(self.bin)
+        self.konfig = lambda **w: konfig.lade(datei=d / "fehlt.env", umgebung={"MONITOR_TOKEN_DATEI": str(self.token), **w})
+
+    def tearDown(self):
+        import os
+        os.environ["PATH"] = self.pfad
+        self.tmp.cleanup()
+
+    def gh(self, code: int):
+        skript = self.bin / "gh"
+        skript.write_text(f"#!/bin/sh\necho \"$@\" > {self.bin}/aufruf\necho 'verification failed' >&2\nexit {code}\n")
+        skript.chmod(0o755)
+
+    def test_ohne_cli_nur_pruefsumme(self):
+        self.assertTrue(a.herkunft_pruefen(self.konfig(), self.archiv).startswith("nicht geprüft (GitHub-CLI fehlt"))
+
+    def test_pflicht_ohne_cli_bricht_ab(self):
+        with self.assertRaises(a.UpdateFehler):
+            a.herkunft_pruefen(self.konfig(MONITOR_UPDATE_HERKUNFT="pflicht"), self.archiv)
+
+    def test_bestaetigt(self):
+        self.gh(0)
+        self.token.write_text("t")
+        self.assertEqual(a.herkunft_pruefen(self.konfig(), self.archiv), "geprüft")
+        aufruf = (self.bin / "aufruf").read_text()
+        self.assertIn("attestation verify", aufruf)
+        self.assertIn("--signer-workflow Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/.github/workflows/release.yml", aufruf)
+
+    def test_nicht_bestaetigt_bricht_immer_ab(self):
+        self.gh(1)
+        self.token.write_text("t")
+        with self.assertRaises(a.UpdateFehler) as f:
+            a.herkunft_pruefen(self.konfig(), self.archiv)
+        self.assertIn("Herkunft nicht bestätigt", str(f.exception))

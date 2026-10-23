@@ -50,6 +50,35 @@ Hilfsdienst die alte Version **automatisch** wieder her. Oben steht dann „Upda
 – Version X wurde wiederhergestellt“ mit dem Grund. Stimmt die Prüfsumme nicht, wird das
 Archiv verworfen und nichts installiert. Runbook: [update-fehlgeschlagen](runbooks/update-fehlgeschlagen.md).
 
+## Herkunft prüfen (empfohlen)
+
+Seit Version 0.5 bestätigt der Release-Workflow jedes Paket per GitHub-Attestierung
+([ADR-0005](adr/0005-herkunft-per-github-attestierung.md)). Ist die GitHub-CLI auf der VM
+installiert, prüft der Update-Hilfsdienst damit, dass das Archiv aus diesem Repository und dessen
+Release-Workflow stammt – sonst verwirft er es. Ohne CLI prüft er nur die Prüfsumme und schreibt
+eine Warnung ins Journal.
+
+GitHub-CLI einmal installieren (offizielles Paket-Repository, siehe cli.github.com):
+
+```bash
+sudo mkdir -p -m 755 /etc/apt/keyrings
+wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+sudo apt update && sudo apt install -y gh
+gh --version    # 2.49 oder neuer
+```
+
+Die Prüfung nutzt das GitHub-Token des Monitors (`/etc/runner-monitor/github-token`), eine
+Anmeldung mit `gh auth login` ist nicht nötig. Nur mit bestätigter Herkunft aktualisieren:
+`MONITOR_UPDATE_HERKUNFT=pflicht` in `/etc/runner-monitor/konfig.env`.
+
+Von Hand prüfen:
+
+```bash
+gh attestation verify runner-monitor-X.Y.Z.tar.gz --repo Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor
+```
+
 ## Zurück auf die vorige Version
 
 ```bash
