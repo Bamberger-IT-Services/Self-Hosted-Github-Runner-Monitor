@@ -108,6 +108,7 @@ class ServerTest(unittest.TestCase):
         r, _ = self.anfrage("GET", "/api/sitzung")
         self.assertEqual(r.status, 200)
         self.live_strom_endet_bei_ueberlauf()
+        self.grenze_je_sitzung()
         # Update nur, wenn ein neueres Release bekannt ist
         r, _ = self.anfrage("POST", "/api/update/starten")
         self.assertEqual(r.status, 409)
@@ -142,6 +143,35 @@ class ServerTest(unittest.TestCase):
         self.assertLessEqual(rest.count(b"event: system"), 2000)
         c.close()
         self.assertEqual(v.anzahl, 0)
+
+    def grenze_je_sitzung(self):
+        """S-DOS-01 / Issue #19: höchstens SSE_JE_SITZUNG Live-Verbindungen je Sitzung."""
+        kopf = {"Host": f"127.0.0.1:{self.port}", "Cookie": f"rm_sitzung={self.cookies['rm_sitzung']}"}
+        offen = []
+        for _ in range(server.SSE_JE_SITZUNG):
+            c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+            c.request("GET", "/events", headers=kopf)
+            self.assertEqual(c.getresponse().status, 200)
+            offen.append(c)
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("GET", "/events", headers=kopf)
+        r = c.getresponse()
+        self.assertEqual(r.status, 429)
+        r.read()
+        c.close()
+        offen.pop().close()  # ein Fenster zu → wieder Platz
+        for _ in range(200):
+            if self.app.stroeme and sum(self.app.stroeme.values()) < server.SSE_JE_SITZUNG:
+                break
+            # Der Server merkt das Schließen beim nächsten Schreiben; anstoßen mit einer Nachricht
+            self.app.zustand.verteiler.sende("status", {})
+            threading.Event().wait(0.02)
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("GET", "/events", headers=kopf)
+        self.assertEqual(c.getresponse().status, 200)
+        c.close()
+        for o in offen:
+            o.close()
 
 
 if __name__ == "__main__":
