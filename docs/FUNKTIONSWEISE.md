@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 23.10.2026 · Version 0.1.1**
+**Stand: 23.10.2026 · Version 0.1.2**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -50,7 +50,8 @@ Drei systemd-Dienste, alle in Python 3 nur mit der Standardbibliothek ([ADR-0001
 **Warum zwei Benutzer?** Der Webserver ist das, was aus dem Netz erreichbar ist. Er läuft
 ohne Rechte und kann weder das GitHub-Token lesen noch Software installieren. Was root-Rechte
 braucht, erledigen die beiden root-Dienste – sie nehmen von der Oberfläche nur eng umrissene
-Aufträge an (ein Token zum Ablegen, eine Versionsnummer zum Aktualisieren) und prüfen sie selbst.
+Aufträge an (ein Token zum Ablegen, eine Versionsnummer zum Aktualisieren, `release-pruefen` für
+„Jetzt prüfen“ – der Sammler fragt dann sofort, höchstens einmal je Minute) und prüfen sie selbst.
 
 ## Woher die Daten kommen
 

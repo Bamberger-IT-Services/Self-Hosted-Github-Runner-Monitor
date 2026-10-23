@@ -290,6 +290,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if pfad == "/api/update/starten":
             self._update_starten()
+        elif pfad == "/api/update/pruefen":
+            # Nur ein Auftrag an den root-Sammler; der fragt GitHub ab (höchstens einmal je Minute).
+            zugang._schreibe(app.k.auftraege_verz / "release-pruefen", {"zeit": time.time()})  # noqa: SLF001
+            self._json(HTTPStatus.ACCEPTED, {"ok": True})
         elif pfad == "/api/update/auto":
             einst = lies_json(app.k.einstellungen_datei, {}) or {}
             einst["autoUpdate"] = bool(daten.get("an"))

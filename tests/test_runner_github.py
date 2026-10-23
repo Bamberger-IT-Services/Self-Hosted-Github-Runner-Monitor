@@ -55,6 +55,29 @@ class SeitenTest(unittest.TestCase):
             self.assertEqual(runner.lies_registrierung(Path(verz) / "fehlt"), {})
 
 
+class ReleasePruefenTest(unittest.TestCase):
+    def test_auftrag_holt_abfrage_vor_und_bremst(self):
+        import tempfile
+        from pathlib import Path
+        from runner_monitor import konfig
+        with tempfile.TemporaryDirectory() as verz:
+            d = Path(verz)
+            k = konfig.lade(datei=d / "fehlt.env", umgebung={"MONITOR_DATEN_VERZ": str(d / "daten"), "MONITOR_LAUF_VERZ": str(d / "lauf")})
+            k.auftraege_verz.mkdir(parents=True)
+            s = sammler.Sammler(k)
+            s.naechste_release = 10_000.0
+            (k.auftraege_verz / "release-pruefen").write_text("{}")
+            s.auftrag_release_pruefen(jetzt=1000.0)
+            self.assertEqual(s.naechste_release, 0.0)
+            self.assertFalse((k.auftraege_verz / "release-pruefen").exists())
+            # zweiter Klick innerhalb einer Minute: Auftrag weg, keine neue Abfrage
+            s.naechste_release = 10_000.0
+            (k.auftraege_verz / "release-pruefen").write_text("{}")
+            s.auftrag_release_pruefen(jetzt=1030.0)
+            self.assertEqual(s.naechste_release, 10_000.0)
+            self.assertFalse((k.auftraege_verz / "release-pruefen").exists())
+
+
 class GitHubTest(unittest.TestCase):
     def test_zaehlen(self):
         runs = [{"status": "in_progress"}, {"status": "queued"}, {"status": "waiting"}, {"status": "completed"}]

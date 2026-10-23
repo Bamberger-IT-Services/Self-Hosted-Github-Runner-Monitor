@@ -1,8 +1,10 @@
 # Update und Rückweg
 
-**Stand: 23.10.2026 · Version 0.1.1**
+**Stand: 23.10.2026 · Version 0.1.2**
 
-Der Monitor prüft alle 6 Stunden, ob es auf GitHub ein neueres Release gibt. Dann erscheint
+Der Monitor prüft alle 6 Stunden, ob es auf GitHub ein neueres Release gibt – sofort geht es mit
+**Info › Updates › „Jetzt prüfen“** (höchstens einmal je Minute, auf der VM alternativ
+`sudo systemctl restart runner-monitor-sammler`). Gibt es eins, erscheint
 oben die Meldung **„Version X.Y.Z verfügbar“**. Vorher die Release-Notiz lesen
 (`docs/releases/vX.Y.Z.md` oder „Was ist neu?“). Steht dort ein einmaliger Schritt, kommt er
 nach dem Update dran.

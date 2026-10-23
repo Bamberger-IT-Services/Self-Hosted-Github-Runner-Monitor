@@ -29,6 +29,7 @@ LOG = logging.getLogger("runner_monitor.sammler")
 TAKT_DOCKER = 2
 TAKT_GITHUB = 30
 TAKT_RELEASE = 6 * 3600
+MANUELL_MIN_ABSTAND = 60  # „Jetzt prüfen“ schont das GitHub-Kontingent
 
 
 def schreibe_oeffentlich(pfad: Path, daten: object) -> None:
@@ -95,6 +96,7 @@ class Sammler:
         self.naechste_github = 0.0
         self.naechste_release = 0.0
         self.letztes_auto_update = ""
+        self.letzte_manuelle_pruefung = 0.0
 
     def token(self) -> str:
         try:
@@ -110,6 +112,7 @@ class Sammler:
         return einst.get("org") or self.k.org
 
     def auftraege(self) -> None:
+        self.auftrag_release_pruefen()
         datei = self.k.auftraege_verz / "github-token"
         if not datei.is_file():
             return
@@ -129,6 +132,19 @@ class Sammler:
         os.replace(tmp, self.k.token_datei)
         LOG.info("Neues GitHub-Token übernommen")
         self.naechste_github = 0
+
+    def auftrag_release_pruefen(self, jetzt: float | None = None) -> None:
+        """„Jetzt prüfen“ aus Info › Updates: nächste Release-Abfrage sofort, höchstens einmal je Minute."""
+        datei = self.k.auftraege_verz / "release-pruefen"
+        if not datei.is_file():
+            return
+        datei.unlink(missing_ok=True)
+        jetzt = time.time() if jetzt is None else jetzt
+        if jetzt - self.letzte_manuelle_pruefung < MANUELL_MIN_ABSTAND:
+            return  # zu kurz hintereinander – die Oberfläche zeigt dann den letzten Stand
+        self.letzte_manuelle_pruefung = jetzt
+        self.naechste_release = 0.0
+        LOG.info("Update-Prüfung von Hand angestoßen")
 
     def github(self) -> None:
         reg = runner.lies_registrierung(self.k.runner_verz)
