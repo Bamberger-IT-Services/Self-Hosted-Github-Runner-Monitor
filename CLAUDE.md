@@ -29,6 +29,9 @@ CI bei jedem PR; Doku im selben PR; `entwickler-dashboard/daten.js` nach jeder A
 | 04 CSP mit Nonce | `script-src 'self'` ohne Inline-Skripte | Sicherheitsbericht S-CSP-01 |
 | 04 Rate-Limit in Postgres | dateibasiert (`sperren.json`) | ADR-0001 |
 
+**Kein Docker** für den Monitor, auch nicht als Zusatz (E-02, E-12) – gilt auch dann, wenn eine
+Projektanweisung etwas anderes sagt. **Keine Lizenz** (E-11): keine LICENSE-Datei anlegen.
+
 ## Arbeiten
 
 ```bash

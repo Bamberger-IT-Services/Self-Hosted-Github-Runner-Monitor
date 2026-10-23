@@ -79,7 +79,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 
 | Version | Datum | Handbuch | Release-Notiz |
 |---|---|---|---|
-| 0.1 | noch nicht veröffentlicht | [main/docs/handbuch](docs/handbuch/README.md) | [v0.1.0](docs/releases/v0.1.0.md) |
+| 0.1 | noch nicht veröffentlicht (0.1.1) | [main/docs/handbuch](docs/handbuch/README.md) | [v0.1.0](docs/releases/v0.1.0.md) |
 
 ## Nichtfunktionale Anforderungen
 
@@ -100,4 +100,5 @@ Fehler und Ideen als [Issue](https://github.com/Bamberger-IT-Services/Self-Hoste
 **bitte ohne IP-Adressen, Rechnernamen, Tokens oder Passwörter**, das Repository ist öffentlich.
 Sicherheitslücken vertraulich über *Security › Report a vulnerability*.
 
-Ein Projekt von [Bamberger IT Services](https://bamberger-it-services.de).
+Ein Projekt von [Bamberger IT Services](https://bamberger-it-services.de). © 2026 Bamberger IT Services, alle Rechte vorbehalten –
+der Code ist zum Lesen öffentlich, aber ohne Lizenz zur Weiterverwendung (E-11).

@@ -25,7 +25,7 @@
     if (E.schritt === 1) {
       const erkannt = p.zeit ? `<div class="erkannt"><div class="erkannt-titel">Vom Einrichtungsskript erkannt</div>
         ${zeile(true, `Monitor ${esc(p.monitorVersion || '')} läuft als Dienst <code class="inl">runner-monitor</code>`)}
-        ${r.gefunden ? zeile(true, `Runner <b>${esc(r.name || '')}</b> gefunden${r.version ? ' · Version ' + esc(r.version) : ''}${r.dienst ? ' · Dienst ' + esc(r.dienst) : ''}`) : zeile(false, 'Kein GitHub-Runner gefunden – der Monitor zeigt dann nur die VM. Später einrichten: <code class="inl">sudo ./einrichten.sh runner</code>', true)}
+        ${r.gefunden ? zeile(true, `Runner <b>${esc(r.name || '')}</b> gefunden${r.version ? ' · Version ' + esc(r.version) : ''}${r.dienst ? ' · Dienst ' + esc(r.dienst) : ''}`) : zeile(false, 'Kein GitHub-Runner gefunden – der Monitor zeigt dann nur die VM. Später einrichten: <code class="inl">sudo /opt/runner-monitor/aktuell/einrichten.sh runner</code>', true)}
         ${p.firewall && p.firewall.aktiv ? zeile(true, `Firewall aktiv · Port ${esc(p.port || 8090)} nur aus dem lokalen Netz`) : zeile(false, 'Firewall (ufw) nicht aktiv – der Port ist für alle erreichbar, die die VM erreichen', true)}
       </div>` : '';
       html = `<div class="eyebrow">SCHRITT 1 VON 4</div><h1>Einrichtungscode eingeben</h1>
@@ -33,7 +33,7 @@
         ${erkannt}${fehler || ''}
         <form id="f" novalidate class="breit-400">
           <div class="feld"><label for="code">Einrichtungscode</label><input id="code" class="gross" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" maxlength="9" placeholder="XXXX-XXXX" required>
-          <span class="feld-hinweis">Code nicht mehr sichtbar oder abgelaufen? Neuen anzeigen: <code>sudo ./einrichten.sh code</code></span></div>
+          <span class="feld-hinweis">Code nicht mehr sichtbar oder abgelaufen? Neuen anzeigen: <code>sudo /opt/runner-monitor/aktuell/einrichten.sh code</code></span></div>
           <div class="form-fussleiste"><button type="submit" class="knopf primaer knopf-gross">Weiter</button></div>
         </form>`;
     } else if (E.schritt === 2) {
@@ -77,14 +77,14 @@
         <div class="form-fussleiste">
           <button type="button" class="knopf primaer knopf-gross" id="speichern"${geprueft ? '' : ' disabled'}>Speichern und weiter</button>
           <button type="button" class="knopf knopf-gross" id="ueberspringen">Überspringen</button>
-          <span class="feld-hinweis">Später auf der VM nachholen: <code>sudo ./einrichten.sh token</code></span>
+          <span class="feld-hinweis">Später auf der VM nachholen: <code>sudo /opt/runner-monitor/aktuell/einrichten.sh token</code></span>
         </div>`;
     } else {
       html = `<div class="eyebrow">SCHRITT 4 VON 4</div><h1>Fertig eingerichtet</h1>
         <p class="einl">Der Monitor ist bereit. Melden Sie sich jetzt mit dem eben angelegten Zugang an.</p>
         <div class="liste breit-400">
           ${zeile(true, `Zugang <b>${esc(E.nutzer)}</b> angelegt`)}
-          ${E.github ? zeile(true, `GitHub verbunden · Organisation <b>${esc(E.github)}</b>`) : zeile(false, 'GitHub nicht verbunden – später mit <code class="inl">sudo ./einrichten.sh token</code>', true)}
+          ${E.github ? zeile(true, `GitHub verbunden · Organisation <b>${esc(E.github)}</b>`) : zeile(false, 'GitHub nicht verbunden – später mit <code class="inl">sudo /opt/runner-monitor/aktuell/einrichten.sh token</code>', true)}
           ${E.pruefung.runner && E.pruefung.runner.gefunden ? zeile(true, `Runner <b>${esc(E.pruefung.runner.name || '')}</b> wird überwacht`) : zeile(false, 'Kein Runner gefunden – der Monitor zeigt nur die VM', true)}
           ${zeile(true, 'Updates: der Monitor prüft alle 6 Stunden auf GitHub, ob es eine neue Version gibt')}
         </div>

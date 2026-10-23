@@ -263,9 +263,8 @@ body.dashboard { overflow: hidden; }
 .ev-text b { color: var(--ink); font-weight: 600; }
 .ev-rechts { font-weight: 550; white-space: nowrap; }
 .term-rahmen { flex: 1; min-height: 0; position: relative; border-radius: 3px; overflow: hidden; background: var(--log-bg); }
-/* column-reverse hält die neuesten Zeilen unten sichtbar – ohne Scroll-Skript */
-.term { position: absolute; inset: 0; display: flex; flex-direction: column-reverse; overflow: hidden; padding: 6px 0 8px; font-family: var(--mono); font-size: 12px; line-height: 17px; color: var(--log-ink); font-variant-numeric: normal; }
-.term.pausiert { overflow-y: auto; }
+/* column-reverse hält die neuesten Zeilen unten sichtbar. Hochscrollen hält das Mitlaufen an (dashboard.js). */
+.term { position: absolute; inset: 0; display: flex; flex-direction: column-reverse; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--log-rule) transparent; padding: 6px 0 8px; font-family: var(--mono); font-size: 12px; line-height: 17px; color: var(--log-ink); font-variant-numeric: normal; }
 .z { display: grid; grid-template-columns: 64px minmax(0,1fr); padding: 0 12px; min-height: 17px; }
 .zt { color: var(--log-muted); font-variant-numeric: tabular-nums; }
 .zx { white-space: pre-wrap; overflow-wrap: anywhere; }

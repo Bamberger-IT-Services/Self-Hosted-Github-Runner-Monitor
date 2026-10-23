@@ -1,6 +1,6 @@
 # 2 Das Dashboard
 
-**Stand: 23.10.2026 · Version 0.1.0**
+**Stand: 23.10.2026 · Version 0.1.1**
 
 ![Dashboard mit laufendem Job](bilder/dashboard-job.png)
 
@@ -66,6 +66,10 @@ Teil über der Schwelle wird orange.
   Schritt bekommt eine Trennzeile „Schritt 4/8 · Name“. Fehlerzeilen sind rot hinterlegt.
 - Die neueste Zeile steht immer unten. **Anhalten** friert die Ansicht ein (neue Zeilen werden
   gezählt), **Weiter** springt wieder nach unten.
+- **Hochscrollen** (Mausrad oder Trackpad) hält das Mitlaufen ebenfalls an, um ältere Zeilen
+  des Schritts zu lesen. Unten steht „Angehalten · n neue Zeilen“. Wer wieder ganz nach unten
+  scrollt oder **Weiter** klickt, sieht die gesammelten Zeilen und es läuft wieder mit.
+  Im Log stehen die letzten 1 500 Zeilen.
 - **Umbrechen / Abschneiden** für lange Zeilen.
 - Ältere Ausgaben stehen im Runner (`_diag/pages`) und bei GitHub („Download log archive“).
 

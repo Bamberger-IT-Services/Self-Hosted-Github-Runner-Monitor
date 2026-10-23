@@ -169,20 +169,40 @@ installieren() {
 }
 
 token() {
-  local t org
+  local t org neu
   echo "Fine-grained Token mit Read-only für Actions und Metadata (optional: Self-hosted runners)."
-  echo "Erstellen: github.com › Settings › Developer settings › Fine-grained tokens"
+  echo "Erstellen: github.com › Settings › Developer settings › Fine-grained tokens (Resource owner: die Organisation)"
   read -r -s -p "  Token (Eingabe bleibt unsichtbar): " t </dev/tty; echo
   [[ "$t" =~ ^[A-Za-z0-9_]{20,255}$ ]] || fehler "Das sieht nicht wie ein GitHub-Token aus."
   install -d -o root -g "$NUTZER" -m 750 "$ETC"
   (umask 077; printf '%s\n' "$t" > "$ETC/github-token.neu"); mv "$ETC/github-token.neu" "$ETC/github-token"
   ok "gespeichert in $ETC/github-token (nur root)"
-  org="$(grep -E '^MONITOR_ORG=' "$ETC/konfig.env" 2>/dev/null | cut -d= -f2)"
-  if [ -z "$org" ] && [ ! -s "$DATEN/einstellungen.json" ]; then
-    read -r -p "  GitHub-Organisation: " org </dev/tty
-    [[ "$org" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || fehler "Ungültiger Name."
-    sed -i "s/^MONITOR_ORG=.*/MONITOR_ORG=$org/" "$ETC/konfig.env"
+  # Organisation immer anbieten. Die Einstellung aus dem Browser hat Vorrang vor konfig.env,
+  # deshalb beide Stellen lesen und beide schreiben (sonst fehlt sie nach „Überspringen“).
+  org="$("$PYTHON" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("org",""))' "$DATEN/einstellungen.json" 2>/dev/null || true)"
+  [ -n "$org" ] || org="$(grep -E '^MONITOR_ORG=' "$ETC/konfig.env" 2>/dev/null | cut -d= -f2 || true)"
+  read -r -p "  GitHub-Organisation${org:+ [Enter: $org]}: " neu </dev/tty || true
+  neu="${neu:-$org}"
+  [[ "$neu" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || fehler "Ungültiger Name der Organisation: ${neu:-leer}"
+  if grep -q '^MONITOR_ORG=' "$ETC/konfig.env" 2>/dev/null; then sed -i "s/^MONITOR_ORG=.*/MONITOR_ORG=$neu/" "$ETC/konfig.env"
+  else echo "MONITOR_ORG=$neu" >> "$ETC/konfig.env"; fi
+  if [ -f "$DATEN/einstellungen.json" ]; then
+    "$PYTHON" -c '
+import json, os, sys
+pfad, org = sys.argv[1], sys.argv[2]
+try:
+    daten = json.load(open(pfad, encoding="utf-8"))
+except (OSError, ValueError):
+    daten = {}
+daten["org"] = org
+info = os.stat(pfad)
+with open(pfad + ".neu", "w", encoding="utf-8") as datei:
+    json.dump(daten, datei)
+os.chown(pfad + ".neu", info.st_uid, info.st_gid)
+os.chmod(pfad + ".neu", info.st_mode & 0o777)
+os.replace(pfad + ".neu", pfad)' "$DATEN/einstellungen.json" "$neu"
   fi
+  ok "Organisation: $neu"
   systemctl restart runner-monitor-sammler.service runner-monitor.service
   ok "übernommen – die Workflows erscheinen in spätestens 30 s"
 }
