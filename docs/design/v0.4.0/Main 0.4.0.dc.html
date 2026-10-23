@@ -134,6 +134,8 @@ body{margin:0}
 .rm .seg{height:4px;border-radius:1px;background:var(--track);transition:background-color .4s}
 .rm .seg.fertig{background:var(--brand)}
 .rm .seg.aktiv{background:color-mix(in srgb,var(--brand) 45%,var(--track))}
+.rm .seg.unbekannt{background:repeating-linear-gradient(90deg,var(--track) 0 4px,transparent 4px 7px)}
+.rm .schritt-name.mut{color:var(--ink-muted);font-weight:500}
 .rm .zahlen{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
 .rm .zahl-gross{font-size:28px;line-height:32px;font-weight:600;letter-spacing:-0.022em;margin-top:2px}
 .rm .zahl-mittel{font-size:17px;line-height:22px;font-weight:600;margin-top:4px}
@@ -447,8 +449,8 @@ body{margin:0}
         </div>
         <div class="schritt">
           <div class="zeile-k"><span>Aktueller Schritt</span><span>{{st.job.schrittNr}} von {{st.job.schrittVon}}</span></div>
-          <div class="schritt-name">{{st.job.schrittName}}</div>
-          <div class="segmente" style="grid-template-columns: repeat({{st.job.schrittVon}}, minmax(0, 1fr))"><sc-for list="{{st.job.segs}}" as="sg" hint-placeholder-count="8"><span class="seg {{sg.cls}}"></span></sc-for></div>
+          <div class="schritt-name {{st.job.nameCls}}">{{st.job.schrittName}}</div>
+          <div class="segmente" style="grid-template-columns: repeat({{st.job.segN}}, minmax(0, 1fr))"><sc-for list="{{st.job.segs}}" as="sg" hint-placeholder-count="8"><span class="seg {{sg.cls}}"></span></sc-for></div>
         </div>
         <div class="zahlen">
           <div><div class="zeile-k">Laufzeit</div><div class="zahl-gross">{{st.job.laufzeit}}</div></div>
@@ -530,7 +532,7 @@ body{margin:0}
           <div class="gross-zeile"><span class="mess-label">CPU gesamt</span><span class="gross-wert">{{sys.cpu}}<span class="einheit">%</span></span></div>
           <div class="spark" style="flex: 1 1 0; min-height: 36px; margin: 2px 0 0; display: flex; flex-direction: column">
             <div style="flex: 1 1 0; min-height: 20px; position: relative"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="CPU-Verlauf der letzten 10 Minuten" style="position: absolute; inset: 0; width: 100%; height: 100%"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"></line><path class="spark-flaeche" d="{{sys.cpuFlaeche}}"></path><path class="spark-linie" d="{{sys.cpuLinie}}"></path></svg></div>
-            <div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
+            <div class="spark-achse"><span>{{sys.achseL}}</span><span>50 %</span><span>jetzt</span></div>
           </div>
           <div class="kerne" style="grid-template-rows: repeat({{sys.kernZeilen}}, minmax(12px, 24px)); flex: 0 1 auto; min-height: 0; align-content: start">
             <sc-for list="{{sys.kerne}}" as="c" hint-placeholder-count="4">
@@ -542,7 +544,7 @@ body{margin:0}
           <div class="gross-zeile"><span class="mess-label">Arbeitsspeicher</span><span class="gross-wert">{{sys.ram}}<span class="einheit" style="margin-left: 5px">/ {{sys.ramGesamt}} GB</span></span></div>
           <div class="spark" style="flex: {{netz.ramFlex}}; min-height: 24px; margin: 2px 0 0; display: flex; flex-direction: column">
             <div style="flex: 1 1 0; min-height: 20px; position: relative"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="RAM-Verlauf der letzten 10 Minuten" style="position: absolute; inset: 0; width: 100%; height: 100%"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"></line><path class="spark-flaeche" d="{{sys.ramFlaeche}}"></path><path class="spark-linie" d="{{sys.ramLinie}}"></path></svg></div>
-            <sc-if value="{{netz.ramAchse}}" hint-placeholder-val="{{false}}"><div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div></sc-if>
+            <sc-if value="{{netz.ramAchse}}" hint-placeholder-val="{{false}}"><div class="spark-achse"><span>{{sys.achseL}}</span><span>50 %</span><span>jetzt</span></div></sc-if>
           </div>
           <div class="meter"><span class="m-l">RAM</span><span class="balken"><span class="fuell" style="transform: scaleX({{sys.ramS}})"></span></span><span class="m-w">{{sys.ramPct}} %</span></div>
           <div class="meter"><span class="m-l">Swap</span><span class="balken"><span class="fuell gedimmt" style="transform: scaleX({{sys.swapS}})"></span></span><span class="m-w">{{sys.swap}}</span></div>
@@ -550,7 +552,7 @@ body{margin:0}
             <div class="netz" style="flex: 1 1 0; min-height: 64px" role="group" aria-label="Netzwerk">
               <div class="netz-kopf"><span class="mess-label">Netzwerk</span><span class="nw" title="empfangen"><span class="pf-rx" aria-label="empfangen">↓</span>{{netz.rx.z}}<i>{{netz.rx.e}}</i></span><span class="nw" title="gesendet"><span class="pf-tx" aria-label="gesendet">↑</span>{{netz.tx.z}}<i>{{netz.tx.e}}</i></span></div>
               <div style="flex: 1 1 0; min-height: 20px; position: relative; margin-top: 6px"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="Netzwerk-Verlauf der letzten 10 Minuten, empfangen und gesendet" style="position: absolute; inset: 0; width: 100%; height: 100%"><line class="spark-raster" x1="0" y1="2" x2="300" y2="2"></line><path class="spark-flaeche" d="{{netz.rxFlaeche}}"></path><path class="spark-linie" d="{{netz.rxLinie}}"></path><path class="spark-tx" d="{{netz.txLinie}}"></path></svg></div>
-              <div class="spark-achse"><span>vor 10 Min.</span><span>Spitze {{netz.spitze}}</span><span>jetzt</span></div>
+              <div class="spark-achse"><span>{{sys.achseL}}</span><span>Spitze {{netz.spitze}}</span><span>jetzt</span></div>
             </div>
           </sc-if>
           <sc-if value="{{netz.isC}}" hint-placeholder-val="{{false}}">
@@ -679,7 +681,7 @@ body{margin:0}
           <span aria-live="polite" style="display: contents">
             <sc-if value="{{upd.pLaeuft}}" hint-placeholder-val="{{false}}"><span class="pruef-text mut">Frage GitHub nach neuen Versionen …</span></sc-if>
             <sc-if value="{{upd.pAktuell}}" hint-placeholder-val="{{false}}"><span class="pruef-text ok"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg>Auf dem neuesten Stand.</span></sc-if>
-            <sc-if value="{{upd.pNeu}}" hint-placeholder-val="{{false}}"><span class="pruef-text laeuft"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 4.8v6M5.4 8.6L8 11.2l2.6-2.6"></path></svg>Version 0.4.0 ist verfügbar.</span></sc-if>
+            <sc-if value="{{upd.pNeu}}" hint-placeholder-val="{{false}}"><span class="pruef-text laeuft"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 4.8v6M5.4 8.6L8 11.2l2.6-2.6"></path></svg>Version 0.5.0 ist verfügbar.</span></sc-if>
             <sc-if value="{{upd.pKuerzlich}}" hint-placeholder-val="{{false}}"><span class="pruef-text mut">Gerade erst geprüft – Stand siehe oben.</span></sc-if>
             <sc-if value="{{upd.pUpdate}}" hint-placeholder-val="{{false}}"><span class="pruef-text mut">Gesperrt, solange das Update läuft.</span></sc-if>
           </span>
@@ -690,7 +692,7 @@ body{margin:0}
           <div class="upd-neu"><div class="upd-neu-titel">{{upd.neuTitel}}</div><ul><sc-for list="{{upd.notizen}}" as="n" hint-placeholder-count="3"><li>{{n}}</li></sc-for></ul><a href="https://github.com/">Alle Änderungen auf GitHub ↗</a></div>
         </sc-if>
         <sc-if value="{{upd.verfuegbar}}" hint-placeholder-val="{{true}}">
-          <div class="upd-aktion"><button type="button" class="knopf primaer gross" onClick="{{upd.starten}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.8 7.6L8 10.8l3.2-3.2M3 13.5h10"></path></svg>Jetzt auf 0.4.0 aktualisieren</button><p class="info-notiz" style="margin: 0">Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.</p></div>
+          <div class="upd-aktion"><button type="button" class="knopf primaer gross" onClick="{{upd.starten}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.8 7.6L8 10.8l3.2-3.2M3 13.5h10"></path></svg>Jetzt auf 0.5.0 aktualisieren</button><p class="info-notiz" style="margin: 0">Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.</p></div>
         </sc-if>
         <sc-if value="{{upd.zeigeSchritte}}" hint-placeholder-val="{{false}}">
           <ol class="upd-schritte" aria-live="polite"><sc-for list="{{upd.schritte}}" as="s" hint-placeholder-count="5"><li class="{{s.cls}}">
@@ -701,9 +703,9 @@ body{margin:0}
             <span>{{s.text}}</span><span class="upd-zusatz">{{s.zusatz}}</span>
           </li></sc-for></ol>
         </sc-if>
-        <sc-if value="{{upd.erfolg}}" hint-placeholder-val="{{false}}"><div class="hinweis ok" style="margin-top: 10px"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><div>Aktualisiert auf 0.4.0 <span>– um {{upd.zeit}}. Dienst läuft, alle Daten kommen an.</span></div></div></sc-if>
+        <sc-if value="{{upd.erfolg}}" hint-placeholder-val="{{false}}"><div class="hinweis ok" style="margin-top: 10px"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><div>Aktualisiert auf 0.5.0 <span>– um {{upd.zeit}}. Dienst läuft, alle Daten kommen an.</span></div></div></sc-if>
         <sc-if value="{{upd.fehler}}" hint-placeholder-val="{{false}}">
-          <div class="hinweis fehler" style="margin-top: 10px"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg><div>Update fehlgeschlagen <span>– Version 0.4.0 hat nach dem Neustart nicht geantwortet. Version 0.3.0 wurde automatisch wiederhergestellt und läuft wieder. Details: <code class="inl">journalctl -u runner-monitor-update -n 50</code></span></div></div>
+          <div class="hinweis fehler" style="margin-top: 10px"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg><div>Update fehlgeschlagen <span>– Version 0.5.0 hat nach dem Neustart nicht geantwortet. Version 0.4.0 wurde automatisch wiederhergestellt und läuft wieder. Details: <code class="inl">journalctl -u runner-monitor-update -n 50</code></span></div></div>
           <div class="upd-aktion" style="flex-direction: row; align-items: center"><button type="button" class="knopf" onClick="{{upd.starten}}">Erneut versuchen</button><a class="knopf" href="https://github.com/" style="text-decoration: none">Fehler melden ↗</a></div>
         </sc-if>
         <label class="upd-auto"><input type="checkbox" checked="{{upd.auto}}" onChange="{{upd.toggleAuto}}">Automatisch aktualisieren – nachts um 3 Uhr, nur wenn kein Job läuft</label>
@@ -767,7 +769,7 @@ body{margin:0}
 </sc-if>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"zustand":{"editor":"enum","options":["volllast","job","leerlauf","gestoppt","offline","platte","getrennt"],"default":"volllast","section":"Zustand"},"github":{"editor":"enum","options":["ok","kein-token","nicht-erreichbar","token-ablauf"],"default":"ok","section":"Zustand"},"netz":{"editor":"enum","options":["A","B","C"],"default":"A","section":"Netzwerk"},"thema":{"editor":"enum","options":["system","hell","dunkel"],"default":"hell","section":"Darstellung"},"kerne":{"editor":"int","min":2,"max":16,"step":1,"default":8,"section":"Darstellung"},"log":{"editor":"enum","options":["mitlaufen","hochgescrollt","angehalten"],"default":"mitlaufen","section":"Live-Log"},"update":{"editor":"enum","options":["aktuell","verfuegbar","laeuft","erfolg","fehler"],"default":"aktuell","section":"Updates"},"pruefung":{"editor":"enum","options":["ruhe","laeuft","aktuell","neu","kuerzlich","github-fehler","sammler-fehler"],"default":"ruhe","section":"Updates"},"pruefErgebnis":{"editor":"enum","options":["neu","aktuell","github-fehler","sammler-fehler"],"default":"neu","section":"Updates"},"info":{"editor":"boolean","default":false,"section":"Info & Hilfe"},"infoZiel":{"editor":"enum","options":["updates","github","token"],"default":"updates","section":"Info & Hilfe"},"onAbmelden":{"editor":null,"tsType":"() => void"},"$preview":{"width":1440,"height":900}}'>
+<script type="text/x-dc" data-dc-script data-props='{"zustand":{"editor":"enum","options":["volllast","job","leerlauf","gestoppt","offline","platte","getrennt"],"default":"volllast","section":"Zustand"},"github":{"editor":"enum","options":["ok","kein-token","nicht-erreichbar","token-ablauf"],"default":"ok","section":"Zustand"},"netz":{"editor":"enum","options":["A","B","C"],"default":"A","section":"Netzwerk"},"thema":{"editor":"enum","options":["system","hell","dunkel"],"default":"hell","section":"Darstellung"},"kerne":{"editor":"int","min":2,"max":16,"step":1,"default":8,"section":"Darstellung"},"log":{"editor":"enum","options":["mitlaufen","hochgescrollt","angehalten"],"default":"mitlaufen","section":"Live-Log"},"update":{"editor":"enum","options":["aktuell","verfuegbar","laeuft","erfolg","fehler"],"default":"aktuell","section":"Updates"},"pruefung":{"editor":"enum","options":["ruhe","laeuft","aktuell","neu","kuerzlich","github-fehler","sammler-fehler"],"default":"ruhe","section":"Updates"},"pruefErgebnis":{"editor":"enum","options":["neu","aktuell","github-fehler","sammler-fehler"],"default":"neu","section":"Updates"},"info":{"editor":"boolean","default":false,"section":"Info & Hilfe"},"infoZiel":{"editor":"enum","options":["updates","github","token"],"default":"updates","section":"Info & Hilfe"},"verlauf":{"editor":"int","min":30,"max":600,"step":30,"default":600,"unit":"s","section":"Zustand"},"schritte":{"editor":"enum","options":["github","lokal"],"default":"github","section":"Zustand"},"onAbmelden":{"editor":null,"tsType":"() => void"},"$preview":{"width":1440,"height":900}}'>
 class Component extends DCLogic {
   _uid = 'rm' + Math.random().toString(36).slice(2, 8);
   _el(k) { return typeof document !== 'undefined' ? document.getElementById(this._uid + '-' + k) : null; }
@@ -790,9 +792,11 @@ class Component extends DCLogic {
     const ziel = w(P.infoZiel, ['updates', 'github', 'token'], 'updates');
     const pr = w(P.pruefung, ['ruhe', 'laeuft', 'aktuell', 'neu', 'kuerzlich', 'github-fehler', 'sammler-fehler'], 'ruhe');
     const log = w(P.log, ['mitlaufen', 'hochgescrollt', 'angehalten'], 'mitlaufen');
+    const schritte = w(P.schritte, ['github', 'lokal'], 'github');
+    let vl = parseInt(P.verlauf, 10); if (!(vl >= 30 && vl <= 600)) vl = 600;
     const upd = w(P.update, ['aktuell', 'verfuegbar', 'laeuft', 'erfolg', 'fehler'], 'aktuell');
     let n = parseInt(P.kerne, 10); if (!(n >= 2 && n <= 16)) n = 8;
-    return { zustand: z, github: g, thema: t, kerne: n, netz: netz, infoZiel: ziel, pruefung: pr, log: log, key: [z, g, n, upd, P.info ? 1 : 0, ziel, pr, log].join('|') };
+    return { zustand: z, github: g, thema: t, kerne: n, netz: netz, infoZiel: ziel, pruefung: pr, log: log, schritte: schritte, verlauf: vl, key: [z, g, n, upd, P.info ? 1 : 0, ziel, pr, log, schritte, vl].join('|') };
   }
   _r(a, b) { return a + Math.random() * (b - a); }
   _cl(v, a, b) { return Math.max(a, Math.min(b, v)); }
@@ -936,7 +940,8 @@ class Component extends DCLogic {
       }
       m.cpuH.push(c); m.ramH.push(r / 32 * 100); m.rxH.push(rx); m.txH.push(tx); m.loadH.push(l);
     }
-    m.rx = m.rxH[599]; m.tx = m.txH[599];
+    if (o.verlauf < 600) ['cpuH', 'ramH', 'rxH', 'txH', 'loadH'].forEach((k) => { m[k] = m[k].slice(-o.verlauf); });
+    m.start = T - o.verlauf * 1000; m.rx = m.rxH[m.rxH.length - 1]; m.tx = m.txH[m.txH.length - 1];
     this._sample(m);
     const lz = busy ? [408, 1140, 1980, 3120, 4200] : [1080, 1860, 2640, 3780, 4800];
     m.letzte = (busy ? D.letzteBusy : D.letzteIdle).map((j, i) => Object.assign({}, j, { ende: T - lz[i] * 1000 }));
@@ -987,7 +992,7 @@ class Component extends DCLogic {
     const m = this.m; if (!m || m.z === 'getrennt') return;
     this._sample(m);
     m.cpuH.push(m.cpu); m.ramH.push(m.ram / 32 * 100); m.rxH.push(m.rx); m.txH.push(m.tx); m.loadH.push(m.load[0]);
-    m.cpuH.shift(); m.ramH.shift(); m.rxH.shift(); m.txH.shift(); m.loadH.shift();
+    if (m.cpuH.length > 600) { m.cpuH.shift(); m.ramH.shift(); m.rxH.shift(); m.txH.shift(); m.loadH.shift(); }
   }
   _tickLog() {
     const m = this.m; if (!m || !m.busy || m.z === 'getrennt') return false;
@@ -1017,8 +1022,8 @@ class Component extends DCLogic {
   }
 
   _spark(h, max, agg) {
-    max = max || 100; const pts = []; const b = h.length / 120;
-    for (let i = 0; i < 120; i++) { let s = 0, c = 0, mx = 0; for (let j = Math.floor(i * b); j < Math.floor((i + 1) * b); j++) { s += h[j]; c++; if (h[j] > mx) mx = h[j]; } const v = agg === 'max' ? mx : (c ? s / c : 0); pts.push([(i * 300 / 119).toFixed(1), (45 - this._cl(v / max, 0, 1) * 43).toFixed(1)]); }
+    max = max || 100; const pts = []; const K = Math.max(2, Math.min(120, h.length)); const b = h.length / K;
+    for (let i = 0; i < K; i++) { let s = 0, c = 0, mx = 0; for (let j = Math.floor(i * b); j < Math.floor((i + 1) * b); j++) { s += h[j]; c++; if (h[j] > mx) mx = h[j]; } const v = agg === 'max' ? mx : (c ? s / c : 0); pts.push([(i * 300 / (K - 1)).toFixed(1), (45 - this._cl(v / max, 0, 1) * 43).toFixed(1)]); }
     const linie = 'M' + pts.map((p) => p[0] + ',' + p[1]).join(' L');
     return { linie: linie, flaeche: linie + ' L300,46 L0,46 Z' };
   }
@@ -1084,7 +1089,7 @@ class Component extends DCLogic {
     const o = this._opts();
     if (!this.m || this.m.key !== o.key) { this.m = this._init(o); this._u = null; this._pr = null; }
     const m = this.m, D = this._daten(), now = Date.now();
-    const getr = m.z === 'getrennt', ref = getr ? m.T : now, N = D.steps.length;
+    const getr = m.z === 'getrennt', ref = getr ? m.T : now, N = D.steps.length, LOK = o.schritte === 'lokal';
     const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(now).getDay()];
 
     const kopf = {
@@ -1135,8 +1140,9 @@ class Component extends DCLogic {
         : [{ k: 'Dienst', v: 'aktiv seit ' + this._seit((now - m.boot) / 1000) }, { k: 'Letzter Job', v: letzterJob }, { k: 'Runner-Version', v: '2.329.0' }],
       job: m.job ? {
         repo: m.job.repo, privat: m.job.privat, workflow: m.job.workflow, name: m.job.name, refArt: m.job.refArt, ref: m.job.ref, refTitel: m.job.refTitel,
-        schrittNr: m.step + 1, schrittVon: N, schrittName: D.steps[Math.min(m.step, N - 1)],
-        segs: D.steps.map((s, i) => ({ cls: i < m.step ? 'fertig' : (i === m.step ? 'aktiv' : '') })),
+        schrittNr: m.step + 1, schrittVon: LOK ? '–' : N, segN: LOK ? m.step + 2 : N, nameCls: LOK ? 'mut' : '',
+        schrittName: LOK ? 'Schritt ' + (m.step + 1) : D.steps[Math.min(m.step, N - 1)],
+        segs: LOK ? Array.from({ length: m.step + 2 }, (x, i) => ({ cls: i < m.step ? 'fertig' : (i === m.step ? 'aktiv' : 'unbekannt') })) : D.steps.map((s, i) => ({ cls: i < m.step ? 'fertig' : (i === m.step ? 'aktiv' : '') })),
         laufzeit: this._dauer((ref - m.job.start) / 1000), gestartet: this._hms(m.job.start), datum: wd + ', ' + this._dm(m.job.start)
       } : { segs: [] },
       letzte: m.letzte.map((j) => ({ repo: j.repo, wf: j.wf, cls: j.erg === 'erfolg' ? 'ok' : (j.erg === 'fehler' ? 'fehler' : 'neutral'), isOk: j.erg === 'erfolg', isFehler: j.erg === 'fehler', isAbbr: j.erg === 'abgebrochen', wort: j.erg === 'erfolg' ? 'Erfolg' : (j.erg === 'fehler' ? 'Fehler' : 'Abgebrochen'), dauer: this._dauer(j.dauer), ende: this._hm(j.ende) }))
@@ -1146,6 +1152,7 @@ class Component extends DCLogic {
     const n = m.n, cs = this._spark(m.cpuH), rs = this._spark(m.ramH);
     const sys = {
       meta: n + ' Kerne · 32 GB RAM · läuft seit ' + this._seit((ref - m.boot) / 1000), n: n,
+      achseL: m.cpuH.length >= 600 ? 'vor 10 Min.' : 'seit ' + this._hm(m.start),
       cpu: this._de(m.cpu, 0), cpuLinie: cs.linie, cpuFlaeche: cs.flaeche, ramLinie: rs.linie, ramFlaeche: rs.flaeche,
       kernZeilen: Math.ceil(n / 2),
       kerne: m.cores.map((v, i) => ({ label: i + 1, s: (v / 100).toFixed(3), text: this._de(v, 0) + ' %' })),
@@ -1198,7 +1205,7 @@ class Component extends DCLogic {
       return { zeit: this._hms(e.t), cls: 'warn', isWarn: true, titel: 'Offline bei GitHub', text: 'Runner meldet sich nicht mehr bei GitHub', rechts: '' };
     });
     const lg = {
-      hatSchritt: !!m.job, schritt: m.job ? 'Schritt ' + (m.step + 1) + '/' + N + ' · ' + D.steps[Math.min(m.step, N - 1)] : '',
+      hatSchritt: !!m.job, schritt: m.job ? 'Schritt ' + (m.step + 1) + '/' + (LOK ? '–' : N) + (LOK ? '' : ' · ' + D.steps[Math.min(m.step, N - 1)]) : '',
       umbrCls: m.umbruch ? 'an' : '', kurzCls: m.umbruch ? '' : 'an', umbrP: m.umbruch ? 'true' : 'false', kurzP: m.umbruch ? 'false' : 'true',
       setUmbr: () => { m.umbruch = true; this.forceUpdate(); }, setKurz: () => { m.umbruch = false; this.forceUpdate(); },
       paused: m.paused, laeuft: !m.paused, pauseText: m.paused ? 'Weiter' : 'Anhalten',
@@ -1207,7 +1214,7 @@ class Component extends DCLogic {
       neu: (m.seq - m.pauseSeq) === 1 ? '1 neue Zeile' : (m.seq - m.pauseSeq) + ' neue Zeilen',
       termCls: (m.umbruch ? '' : 'kurz ') + (m.paused ? 'pausiert' : ''),
       events: evs,
-      zeilen: quelle.map((l) => l.art === 't' ? { isT: true, isZ: false, nr: 'Schritt ' + l.nr + '/' + N, name: l.name, zeit: this._hms(l.t), segs: [] } : { isT: false, isZ: true, cls: l.fehler ? 'fehler' : '', zeit: this._hms(l.t), segs: l.segs }),
+      zeilen: quelle.map((l) => l.art === 't' ? { isT: true, isZ: false, nr: 'Schritt ' + l.nr + '/' + (LOK ? '–' : N), name: LOK ? '' : l.name, zeit: this._hms(l.t), segs: [] } : { isT: false, isZ: true, cls: l.fehler ? 'fehler' : '', zeit: this._hms(l.t), segs: l.segs }),
       leer: quelle.length === 0,
       leerText: m.z === 'gestoppt' ? 'Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.' : (m.z === 'offline' ? 'Kein Schritt läuft. GitHub stellt dem Runner gerade keine Jobs zu.' : 'Kein Schritt läuft. Die Ausgabe erscheint hier, sobald ein Job startet.')
     };
@@ -1233,7 +1240,7 @@ class Component extends DCLogic {
     }
     const u = this._u;
     const pr = this._pruef(u);
-    const SCHR = [['Release 0.4.0 herunterladen', '1,4 MB'], ['Prüfsumme prüfen', 'SHA-256 stimmt'], ['Installieren', 'alte Version gesichert'], ['Monitor neu starten', 'kurz nicht erreichbar'], ['Funktion prüfen', 'Daten kommen an']];
+    const SCHR = [['Release 0.5.0 herunterladen', '1,4 MB'], ['Prüfsumme prüfen', 'SHA-256 stimmt'], ['Installieren', 'alte Version gesichert'], ['Monitor neu starten', 'kurz nicht erreichbar'], ['Funktion prüfen', 'Daten kommen an']];
     const lauf = () => {
       u.status = 'laeuft'; u.schritt = 0; this.forceUpdate();
       const weiter = () => { if (u.status !== 'laeuft') return; if (u.schritt < SCHR.length - 1) { u.schritt++; this.forceUpdate(); setTimeout(weiter, 1300); } else { u.status = 'erfolg'; u.zeit = this._hms(Date.now()); this.forceUpdate(); } };
@@ -1244,18 +1251,18 @@ class Component extends DCLogic {
       zeit: u.zeit,
       ...this._pruefVals(u, pr),
       kv: [
-        { k: 'Installiert', v: nachher ? '0.4.0' : '0.3.0' },
-        { k: 'Neueste', v: u.status === 'aktuell' || nachher ? (nachher ? '0.4.0 – auf dem neuesten Stand' : '0.3.0 – auf dem neuesten Stand') : '0.4.0 · erschienen am 21.10.2026', cls: u.status === 'aktuell' || nachher ? 'ok' : 'laeuft' },
+        { k: 'Installiert', v: nachher ? '0.5.0' : '0.4.0' },
+        { k: 'Neueste', v: u.status === 'aktuell' || nachher ? (nachher ? '0.5.0 – auf dem neuesten Stand' : '0.4.0 – auf dem neuesten Stand') : '0.5.0 · erschienen am 21.10.2026', cls: u.status === 'aktuell' || nachher ? 'ok' : 'laeuft' },
         { k: 'Geprüft', v: 'heute ' + this._hm(pr.letzte || (now - 47 * 60000)) + ' bei GitHub · alle 6 Std.' },
         { k: 'Runner', v: 'actions-runner 2.329.0 · aktualisiert sich selbst' }
       ],
-      zeigeNeu: u.status !== 'aktuell', neuTitel: nachher ? 'Neu seit dem Update' : 'Neu in 0.4.0',
+      zeigeNeu: u.status !== 'aktuell', neuTitel: nachher ? 'Neu seit dem Update' : 'Neu in 0.5.0',
       notizen: ['Mehrere Runner auf einer VM', 'Log-Suche im Live-Log', 'Kleinere Korrekturen in der Einrichtung'],
       verfuegbar: u.status === 'verfuegbar', zeigeSchritte: u.status === 'laeuft' || u.status === 'fehler',
       erfolg: nachher, fehler: u.status === 'fehler', auto: u.auto,
       starten: lauf, toggleAuto: () => { u.auto = !u.auto; this.forceUpdate(); },
       schritte: u.status === 'fehler'
-        ? SCHR.map((s, i) => ({ text: s[0], zusatz: i < 4 ? '' : 'keine Antwort nach 30 s', fertig: i < 4, aktiv: false, offen: false, fehler: i === 4, cls: '' })).concat([{ text: 'Version 0.3.0 wiederhergestellt', zusatz: 'läuft wieder', fertig: true, aktiv: false, offen: false, fehler: false, cls: '' }])
+        ? SCHR.map((s, i) => ({ text: s[0], zusatz: i < 4 ? '' : 'keine Antwort nach 30 s', fertig: i < 4, aktiv: false, offen: false, fehler: i === 4, cls: '' })).concat([{ text: 'Version 0.4.0 wiederhergestellt', zusatz: 'läuft wieder', fertig: true, aktiv: false, offen: false, fehler: false, cls: '' }])
         : SCHR.map((s, i) => ({ text: s[0], zusatz: i < u.schritt ? s[1] : (i === u.schritt ? 'läuft …' : ''), fertig: i < u.schritt, aktiv: i === u.schritt, offen: i > u.schritt, fehler: false, cls: i === u.schritt ? 'aktiv' : (i > u.schritt ? 'offen' : '') }))
     };
     u.schritteText = SCHR[Math.min(u.schritt, SCHR.length - 1)][0] + ' (' + (u.schritt + 1) + '/' + SCHR.length + ') · Runner arbeitet weiter';
@@ -1341,13 +1348,13 @@ class Component extends DCLogic {
         { k: 'Token-Datei', v: '/etc/runner-monitor/github-token' }
       ],
       bug: [
-        { k: 'Version', v: 'Runner-Monitor 0.3.0' },
+        { k: 'Version', v: 'Runner-Monitor 0.4.0' },
         { k: 'System', v: 'Ubuntu 24.04 LTS, Python 3.12' },
         { k: 'Runner', v: 'actions-runner 2.329.0' },
         { k: 'Browser', v: 'wird automatisch ergänzt' }
       ],
       monitor: [
-        { k: 'Version', v: '0.3.0' },
+        { k: 'Version', v: '0.4.0' },
         { k: 'Adresse', v: 'http://192.0.2.25:8090' },
         { k: 'Dienst', v: 'runner-monitor (systemd, eigener Benutzer)' },
         { k: 'Aktualisierung', v: 'Systemwerte jede Sekunde, GitHub alle 30 s' }
@@ -1356,8 +1363,8 @@ class Component extends DCLogic {
 
     // Meldungen oben mittig – wichtigste zuerst
     const M = [];
-    if (u.status === 'laeuft') M.push({ id: 'update', cls: 'laeuft', isUpd: true, link: 'Details', titel: 'Update auf 0.4.0 läuft', text: u.schritteText });
-    if (u.status === 'fehler') M.push({ id: 'update', cls: 'fehler', isX: true, link: 'Details', titel: 'Update fehlgeschlagen', text: 'Version 0.3.0 wurde wiederhergestellt und läuft' });
+    if (u.status === 'laeuft') M.push({ id: 'update', cls: 'laeuft', isUpd: true, link: 'Details', titel: 'Update auf 0.5.0 läuft', text: u.schritteText });
+    if (u.status === 'fehler') M.push({ id: 'update', cls: 'fehler', isX: true, link: 'Details', titel: 'Update fehlgeschlagen', text: 'Version 0.4.0 wurde wiederhergestellt und läuft' });
     if (getr) M.push({ id: 'monitor', cls: 'fehler', isGetrennt: true, titel: 'Verbindung zum Monitor unterbrochen', text: 'Stand ' + this._hms(m.T) + ' (' + this._vor((now - m.T) / 1000) + ') · neuer Versuch läuft' });
     if (m.z === 'gestoppt') M.push({ id: 'gestoppt', cls: 'fehler', isX: true, titel: 'Runner-Dienst gestoppt', text: 'Jobs bleiben in der Warteschlange (' + sw + ' warten)' });
     if (m.z === 'offline') M.push({ id: 'offline', cls: 'fehler', isX: true, titel: 'Runner offline bei GitHub', text: 'seit ' + this._hms(now - 240000) + ' – Jobs werden nicht zugestellt' });
@@ -1365,8 +1372,8 @@ class Component extends DCLogic {
     if (keinToken) M.push({ id: 'token', cls: 'neutral', isKey: true, titel: 'Kein GitHub-Token', text: 'Workflows und GitHub-Status sind aus' });
     if (knapp) M.push({ id: 'platte', cls: 'warn', isWarn: true, titel: 'Platte knapp: ' + this._de(frei, 1) + ' GB frei', text: 'unter 25 GB räumt der Runner vor jedem Job auf' });
     if (m.gh === 'token-ablauf') M.push({ id: 'token', cls: 'warn', isKey: true, titel: 'GitHub-Token läuft in 14 Tagen ab', text: 'am ' + wf.ablauf + ' – danach bleiben die Workflows leer' });
-    if (u.status === 'verfuegbar') M.push({ id: 'update', cls: 'laeuft', isUpd: true, link: 'Was ist neu?', titel: 'Version 0.4.0 verfügbar', text: 'installiert ist 0.3.0' });
-    if (u.status === 'erfolg') M.push({ id: 'update', cls: 'ok', isOkM: true, link: 'Was ist neu?', titel: 'Aktualisiert auf 0.4.0', text: 'um ' + upd.zeit + ' · alles läuft' });
+    if (u.status === 'verfuegbar') M.push({ id: 'update', cls: 'laeuft', isUpd: true, link: 'Was ist neu?', titel: 'Version 0.5.0 verfügbar', text: 'installiert ist 0.4.0' });
+    if (u.status === 'erfolg') M.push({ id: 'update', cls: 'ok', isOkM: true, link: 'Was ist neu?', titel: 'Aktualisiert auf 0.5.0', text: 'um ' + upd.zeit + ' · alles läuft' });
     const m0 = M[0] || {};
     const ml = { linkText: m0.link || 'Was tun?', isUpd: !!m0.isUpd, isOkM: !!m0.isOkM, da: M.length > 0, cls: m0.cls || '', isGetrennt: !!m0.isGetrennt, isX: !!m0.isX, isWarn: !!m0.isWarn, isKey: !!m0.isKey, titel: m0.titel || '', text: m0.text || '', hatMehr: M.length > 1, mehr: '+' + (M.length - 1) + ' weitere', oeffnen: oeffne(m0.id) };
 
