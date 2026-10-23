@@ -9,6 +9,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Werte über die volle Fläche; links steht „seit hh:mm“, bis 10 Minuten gemessen sind. Der Monitor
   sichert den Verlauf alle 10 s nach `verlauf.json` und übernimmt ihn nach einem Neustart (bis 60 s
   Pause). Demo: `?verlauf=120`.
+- **Job-Schritte überall gleich** (Design 0.4.0, #44): Karte, Log-Pille und Trennzeilen zeigen
+  denselben Schritt aus einer Quelle (`job.schritt = {nr, von, name}`), die Zahl springt nie zurück.
+  Der Segmentbalken steht immer; ohne Schrittliste von GitHub „3 von –“ mit gestricheltem Rest.
+  Demo: `?schritte=lokal`.
 
 ## [0.3.1] – 23.10.2026
 

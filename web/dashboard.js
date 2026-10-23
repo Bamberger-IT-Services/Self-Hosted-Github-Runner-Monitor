@@ -183,8 +183,10 @@
     const letzter = l0 ? `${l0.repo ? esc(l0.repo) + ' · ' : ''}${l0.workflow ? esc(l0.workflow) + ' · ' : ''}${esc(l0.name)} · ${vor((jetzt - ms(l0.ende)) / 1000)}` : '–';
     let mitte;
     if (art === 'job') {
-      const j = st.job, n = (j.schritte || []).length, nr = j.schritt || 1;
-      const schrittName = n ? j.schritte[Math.min(nr, n) - 1] : `Schritt ${nr}`;
+      // Ein Schritt aus einer Quelle (Server, Design 0.4.0). Ohne Liste von GitHub: „3 von –“,
+      // Name gedämpft, ein gestrichelter Rest – der Aufbau bleibt gleich, wenn GitHub nachliefert.
+      const j = st.job, { nr, von, name } = schrittVon(j), segN = von || nr + 1;
+      const segs = Array.from({ length: segN }, (_, i) => `<span class="seg${i < nr - 1 ? ' fertig' : i === nr - 1 ? ' aktiv' : von ? '' : ' unbekannt'}"></span>`).join('');
       mitte = `
         <div>
           <div class="job-repo">${esc(j.repo || j.name)}${j.privat ? IC.schloss() : ''}</div>
@@ -192,9 +194,9 @@
           ${j.ref ? `<div class="job-ref"><span>${esc(j.ref.art)}</span><span class="ref">${esc(j.ref.name)}</span><span class="ref-titel">${esc(j.ref.titel || '')}</span></div>` : ''}
         </div>
         <div class="schritt">
-          <div class="zeile-k"><span>Aktueller Schritt</span><span>${n ? `${nr} von ${n}` : `Nr. ${nr}`}</span></div>
-          <div class="schritt-name">${esc(schrittName)}</div>
-          ${n ? `<div class="segmente" data-spalten="${n}">${j.schritte.map((_, i) => `<span class="seg${i < nr - 1 ? ' fertig' : i === nr - 1 ? ' aktiv' : ''}"></span>`).join('')}</div>` : ''}
+          <div class="zeile-k"><span>Aktueller Schritt</span><span>${nr} von ${von || '–'}</span></div>
+          <div class="schritt-name${name ? '' : ' mut'}">${esc(name || `Schritt ${nr}`)}</div>
+          <div class="segmente" data-spalten="${segN}">${segs}</div>
         </div>
         <div class="zahlen">
           <div><div class="zeile-k">Laufzeit</div><div class="zahl-gross">${j.start ? dauer((ref - ms(j.start)) / 1000) : '–'}</div></div>
@@ -379,12 +381,18 @@
     });
   }
 
+  /* job.schritt = {nr, von, name} vom Server; von = null, solange GitHub keine Schrittliste geliefert hat. */
+  function schrittVon(j) {
+    const s = j && typeof j.schritt === 'object' && j.schritt ? j.schritt : {};
+    return { nr: Math.max(1, Number(s.nr) || 1), von: Number(s.von) || null, name: s.name || '' };
+  }
+
   /* ------------------------------------------------------------ Live-Log */
   function renderLogKopf() {
     const j = S.status && S.status.job, chip = $('schritt-chip');
     if (j && S.status.dienst.zustand === 'aktiv') {
-      const n = (j.schritte || []).length, nr = j.schritt || 1;
-      chip.hidden = false; chip.textContent = n ? `Schritt ${nr}/${n} · ${j.schritte[Math.min(nr, n) - 1]}` : `Schritt ${nr}`;
+      const { nr, von, name } = schrittVon(j);
+      chip.hidden = false; chip.textContent = `Schritt ${nr}/${von || '–'}${name ? ' · ' + name : ''}`;
     } else chip.hidden = true;
     renderLeer();
   }
@@ -405,7 +413,7 @@
     const div = document.createElement('div');
     if (z.art === 'schritt') {
       div.className = 'trenner';
-      div.innerHTML = `<span class="tr-nr">Schritt ${z.nr}${z.von ? '/' + z.von : ''}</span><span class="tr-name">${esc(z.name)}</span><span class="tr-linie"></span><span class="tr-zeit">${zeit(z.zeit)}</span>`;
+      div.innerHTML = `<span class="tr-nr">Schritt ${z.nr}/${z.von || '–'}</span><span class="tr-name">${esc(z.name || '')}</span><span class="tr-linie"></span><span class="tr-zeit">${zeit(z.zeit)}</span>`;
     } else {
       div.className = 'z' + (istFehler(z.text) ? ' fehler' : '');
       div.innerHTML = `<span class="zt">${zeit(z.zeit)}</span><span class="zx">${ansi(z.text).map(s => (s.c ? `<span class="${s.c}">${esc(s.t)}</span>` : esc(s.t))).join('')}</span>`;
