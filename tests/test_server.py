@@ -112,7 +112,16 @@ class ServerTest(unittest.TestCase):
         # Update nur, wenn ein neueres Release bekannt ist
         r, _ = self.anfrage("POST", "/api/update/starten")
         self.assertEqual(r.status, 409)
-        (self.k.lauf_verz / "release.json").write_text(json.dumps({"version": "99.0.0"}))
+        # Release schon veröffentlicht, Paket noch nicht angehängt (#63): 409 und gleich neu prüfen lassen
+        (self.k.lauf_verz / "release.json").write_text(json.dumps({"version": "99.0.0", "archiv": "", "pruefsumme": "", "bereit": False}))
+        r, daten = self.anfrage("POST", "/api/update/starten")
+        self.assertEqual(r.status, 409)
+        self.assertIn("bereitgestellt", daten.decode())
+        self.assertTrue((self.k.auftraege_verz / "release-pruefen").is_file())
+        (self.k.auftraege_verz / "release-pruefen").unlink()
+        self.assertFalse((self.k.auftraege_verz / "update").exists())
+        url = "https://github.com/beispiel-org/runner-monitor/releases/download/v99.0.0/runner-monitor-99.0.0.tar.gz"
+        (self.k.lauf_verz / "release.json").write_text(json.dumps({"version": "99.0.0", "archiv": url, "pruefsumme": url + ".sha256", "bereit": True}))
         r, _ = self.anfrage("POST", "/api/update/starten")
         self.assertEqual(r.status, 202)
         self.assertEqual(json.loads((self.k.auftraege_verz / "update").read_text())["version"], "99.0.0")

@@ -160,7 +160,10 @@ dieselben Daten ohne Server (Entwicklung, Bildschirmfotos).
 ## Update
 
 1. Der Sammler fragt alle 6 Stunden `releases/latest` ab und legt das Ergebnis in
-   `/run/runner-monitor/release.json` (nur root kann es schreiben).
+   `/run/runner-monitor/release.json` (nur root kann es schreiben). Hängen Archiv und Prüfsumme
+   noch nicht am Release (der Release-Workflow lädt sie erst nach dem Veröffentlichen hoch), steht
+   dort `bereit: false`; der Sammler fragt dann nach 2 Minuten erneut, die Oberfläche zeigt
+   „wird gerade bereitgestellt“ statt des Knopfs, und es gibt kein automatisches Update (#63).
 2. Klick auf „Jetzt aktualisieren“ → der Webserver legt `auftraege/update` mit der Versionsnummer ab.
 3. `runner-monitor-update.path` startet den root-Hilfsdienst. Er nimmt Archiv- und
    Prüfsummen-Adresse **nur** aus `release.json` und nur von

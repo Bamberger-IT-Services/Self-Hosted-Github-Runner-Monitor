@@ -29,6 +29,7 @@ LOG = logging.getLogger("runner_monitor.sammler")
 TAKT_DOCKER = 2
 TAKT_GITHUB = 30
 TAKT_RELEASE = 6 * 3600
+TAKT_NICHT_BEREIT = 120  # Release ohne Paket (Workflow lädt noch hoch): bald erneut fragen (#63)
 MANUELL_MIN_ABSTAND = 60  # „Jetzt prüfen“ schont das GitHub-Kontingent
 
 
@@ -88,6 +89,11 @@ def docker_container() -> dict:
 
 # ---------------------------------------------------------------- Sammler
 
+
+
+def paket_bereit(release: dict) -> bool:
+    """Hängen Archiv und Prüfsumme schon am Release? (ältere release.json ohne „bereit“ mitgedacht)"""
+    return bool(release.get("bereit", True) and release.get("archiv") and release.get("pruefsumme"))
 
 class Sammler:
     def __init__(self, k: Konfig) -> None:
@@ -165,10 +171,11 @@ class Sammler:
                 ergebnis["letzterErfolg"] = alt.get("letzterErfolg")
         schreibe_oeffentlich(self.k.lauf_verz / "github.json", ergebnis)
 
-    def release(self) -> None:
+    def release(self) -> dict:
         daten = github.neueste_version(github.Klient(self.token()), self.k.release_repo)
         daten["installiert"] = VERSION
         schreibe_oeffentlich(self.k.lauf_verz / "release.json", daten)
+        return daten
 
     def auto_update(self) -> None:
         """Nachts um 3 Uhr, nur wenn eingeschaltet, eine neuere Version da ist und kein Job läuft."""
@@ -180,6 +187,8 @@ class Sammler:
         release = self._lies(self.k.lauf_verz / "release.json") or {}
         if not einst.get("autoUpdate") or github.vergleiche(release.get("version", ""), VERSION) <= 0:
             return
+        if not paket_bereit(release):
+            return  # Paket wird noch hochgeladen – der Sammler fragt in 2 Minuten erneut
         if subprocess.run(["pgrep", "-f", "Runner.Worker"], capture_output=True, check=False).returncode == 0:
             return  # Job läuft – in der nächsten Minute erneut prüfen
         self.letztes_auto_update = heute
@@ -202,7 +211,9 @@ class Sammler:
             self.github()
         if jetzt >= self.naechste_release:
             self.naechste_release = jetzt + TAKT_RELEASE
-            self.release()
+            daten = self.release()
+            if github.vergleiche(daten.get("version", ""), VERSION) > 0 and not paket_bereit(daten):
+                self.naechste_release = jetzt + TAKT_NICHT_BEREIT
         self.auto_update()
 
     def laufe(self) -> None:  # pragma: no cover – Endlosschleife

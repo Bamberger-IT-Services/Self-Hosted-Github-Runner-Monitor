@@ -380,9 +380,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def _update_starten(self) -> None:
         app = self.app
-        neueste = (lies_json(app.k.lauf_verz / "release.json", {}) or {}).get("version", "")
+        release = lies_json(app.k.lauf_verz / "release.json", {}) or {}
+        neueste = release.get("version", "")
         if not neueste or github.vergleiche(neueste, VERSION) <= 0:
             self._fehler(HTTPStatus.CONFLICT, "Keine neuere Version verfügbar.")
+            return
+        if not (release.get("bereit", True) and release.get("archiv") and release.get("pruefsumme")):
+            # Paket hängt noch nicht am Release (#63): gleich neu prüfen lassen statt scheitern
+            zugang._schreibe(app.k.auftraege_verz / "release-pruefen", {"zeit": time.time()})  # noqa: SLF001
+            self._fehler(HTTPStatus.CONFLICT, f"Version {neueste} wird noch bereitgestellt – bitte in ein bis zwei Minuten erneut versuchen.")
             return
         status = lies_json(app.k.update_status_datei, {}) or {}
         if status.get("zustand") == "laeuft" and time.time() - status.get("zeit", 0) < 600:
