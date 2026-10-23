@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "23.10.2026 22:12",
+  stand: "23.10.2026 22:18",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -270,7 +270,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
-    { datum: "23.10.2026 22:12", text: "Release v0.3.1 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
+    { datum: "23.10.2026 22:18", text: "Release v0.3.1 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
     { datum: "23.10.2026 22:04", text: "0.3.1: Ursache für „Getrennt“ gefunden (Meldung Tobias von der VM): Jede Log-Zeile war eine eigene Nachricht, ein Build füllte die Warteschlange (2000), der Strom blieb danach stumm offen, der Browser verband nicht neu. Zeilen gebündelt, Strom endet bei Überlauf, Browser verbindet nach 10 s ohne Daten selbst neu, write() mit 60-s-Frist. Nachgestellt mit langsam lesendem Client." },
     { datum: "23.10.2026 21:31", text: "0.3.0: Design 0.3.0 pixelgenau umgesetzt (Dashboard mit Netz-Block, Info & Hilfe mit „Jetzt prüfen“ und Kopieren-Knöpfen, Live-Log mit Mitlaufen-Hinweis, Einrichtung und Anmeldung neu, einrichten.sh-Ausgabe). Design v1 entfernt, Design 0.3.0 unter docs/design/v0.3.0. Bildschirmfotos neu. Review: einrichten.sh ohne Docker, Klicks in sekündlich aktualisierten Karten, „Jetzt prüfen“ bei Uhrversatz, Anleitung „Kein Runner“." },
     { datum: "23.10.2026 21:06", text: "Entwickler-Dashboard auf den Aufbau des Helios-Dashboards umgestellt." },
