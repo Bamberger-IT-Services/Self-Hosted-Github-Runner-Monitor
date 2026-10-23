@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Neu
+- **Herkunft der Updates** (#18, ADR-0005): Der Release-Workflow bestätigt jedes Paket per
+  GitHub-Attestierung (Sigstore); der Update-Hilfsdienst prüft sie mit `gh attestation verify` und
+  verwirft ein Archiv ohne Bestätigung. Ohne GitHub-CLI auf der VM weiter nur Prüfsumme;
+  `MONITOR_UPDATE_HERKUNFT=pflicht` erzwingt die Prüfung.
+
 ### Behoben
 - Update gleich nach einem neuen Release scheiterte mit „Release enthält kein Archiv mit
   Prüfsumme“, wenn der Monitor das Release abfragte, bevor der Release-Workflow das Paket angehängt

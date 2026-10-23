@@ -23,7 +23,10 @@ jobs:
   paket:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # Dateien an das Release hängen
+      contents: write           # Dateien an das Release hängen
+      id-token: write           # Attestierung: OIDC-Token für Sigstore (ADR-0005)
+      attestations: write       # Attestierung am Repository speichern
+      artifact-metadata: write  # Verweis vom Paket auf die Attestierung
     env:
       TAG: ${{ inputs.tag || github.event.release.tag_name }}
     steps:
@@ -49,3 +52,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release upload "$TAG" dist/runner-monitor-*.tar.gz dist/runner-monitor-*.tar.gz.sha256 --clobber
+      # Nach dem Hochladen: Scheitert die Attestierung, bleibt das Update per Prüfsumme möglich
+      # und der Lauf ist rot. Prüfen auf der VM: gh attestation verify (ADR-0005).
+      - name: Herkunft bestätigen (GitHub-Attestierung, Sigstore)
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/runner-monitor-*.tar.gz

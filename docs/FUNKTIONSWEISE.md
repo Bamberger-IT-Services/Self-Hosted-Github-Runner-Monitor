@@ -167,7 +167,8 @@ dieselben Daten ohne Server (Entwicklung, Bildschirmfotos).
 2. Klick auf „Jetzt aktualisieren“ → der Webserver legt `auftraege/update` mit der Versionsnummer ab.
 3. `runner-monitor-update.path` startet den root-Hilfsdienst. Er nimmt Archiv- und
    Prüfsummen-Adresse **nur** aus `release.json` und nur von
-   `https://github.com/<release-repo>/releases/download/…`, prüft SHA-256, entpackt nach
+   `https://github.com/<release-repo>/releases/download/…`, prüft SHA-256 und – mit GitHub-CLI – die
+   Herkunft per `gh attestation verify` (ADR-0005), entpackt nach
    `/opt/runner-monitor/versionen/X.Y.Z`, hängt `aktuell` um und startet beide Dienste neu.
 4. Meldet `/api/health` binnen 30 s nicht die neue Version, hängt er zurück auf die alte und
    meldet „Update fehlgeschlagen“. Drei Versionen bleiben liegen (`./einrichten.sh zurueck`).
