@@ -109,7 +109,6 @@ window.RM_DEMO = (() => {
     // ?verlauf=120: Monitor wurde vor 2 Minuten neu gestartet (Design 0.4.0, Option „Verlauf“)
     const n = verlaufS;
     return { cpu: cpu.slice(-n), ram: ram.slice(-n), netz: netz.slice(-n), start: jetzt() - n };
-    return d;
   }
   // Ohne Job wie im Design: der Listener wartet, sonst ist es ruhig
   const PROZ_RUHE = [[3091, 'github-runner', 0.7, 3.5, '/opt/actions-runner/bin/Runner.Listener run --startuptype service'], [3725, 'runner-monitor', 0.5, 2.0, 'python3 -m runner_monitor'], [2774, 'root', 0.3, 4.6, '/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock'], [3408, 'root', 0.1, 2.7, '/usr/bin/containerd'], [402, 'root', 0.0, 0.2, '/usr/lib/systemd/systemd-journald'], [655, 'root', 0.0, 0.1, 'sshd: /usr/sbin/sshd -D [listener]']];

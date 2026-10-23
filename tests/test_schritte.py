@@ -60,6 +60,17 @@ class SchrittTest(unittest.TestCase):
         self.assertIsNone(self.z._gh_job())
         self.assertEqual(self.z._schritt(self.z._gh_job()), {"nr": 1, "von": None, "name": ""})
 
+    def test_gleichnamiger_folgejob_uebernimmt_alte_abfrage_nicht(self):
+        # Review zu #44: Job „test“ endet, der nächste „test“ startet, die Abfrage ist noch alt
+        self.z.bereiche["_github"] = {"job": {"name": "test", "schritte": list("abcdefgh"), "schritt": 8, "start": 1.0}}
+        self.z.bei_journal(runner.JobEreignis(art="ende", zeit=500.0, name="test", ergebnis="erfolg"))
+        self.assertIsNone(self.z._gh_job())   # beendet, Abfrage meldet ihn noch
+        self.z.bei_journal(runner.JobEreignis(art="start", zeit=510.0, name="test"))
+        self.assertIsNone(self.z._gh_job())   # neuer Job, alte Startzeit passt nicht
+        self.assertEqual(self.z._schritt(self.z._gh_job()), {"nr": 1, "von": None, "name": ""})
+        self.z.bereiche["_github"] = {"job": {"name": "test", "schritte": list("abc"), "schritt": 2, "start": 505.0}}
+        self.assertEqual(self.z._schritt(self.z._gh_job()), {"nr": 2, "von": 3, "name": "b"})
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -181,12 +181,15 @@
     }[art];
     const l0 = (st.letzteJobs || [])[0];
     const letzter = l0 ? `${l0.repo ? esc(l0.repo) + ' · ' : ''}${l0.workflow ? esc(l0.workflow) + ' · ' : ''}${esc(l0.name)} · ${vor((jetzt - ms(l0.ende)) / 1000)}` : '–';
-    let mitte;
+    let mitte, dyn = null;
     if (art === 'job') {
       // Ein Schritt aus einer Quelle (Server, Design 0.4.0). Ohne Liste von GitHub: „3 von –“,
       // Name gedämpft, ein gestrichelter Rest – der Aufbau bleibt gleich, wenn GitHub nachliefert.
-      const j = st.job, { nr, von, name } = schrittVon(j), segN = von || nr + 1;
-      const segs = Array.from({ length: segN }, (_, i) => `<span class="seg${i < nr - 1 ? ' fertig' : i === nr - 1 ? ' aktiv' : von ? '' : ' unbekannt'}"></span>`).join('');
+      // Gerüst nur mit der Zahl der Segmente; Zahl, Name, Klassen und Laufzeit setzt dynamik() unten
+      // direkt – so wird der Block beim Nachtragen nicht neu aufgebaut und die Übergänge wirken.
+      const j = st.job, { nr, von } = schrittVon(j), segN = von || nr + 1;
+      const segs = '<span class="seg"></span>'.repeat(segN);
+      dyn = { ...schrittVon(j), segN, laufzeit: j.start ? dauer((ref - ms(j.start)) / 1000) : '–' };
       mitte = `
         <div>
           <div class="job-repo">${esc(j.repo || j.name)}${j.privat ? IC.schloss() : ''}</div>
@@ -194,12 +197,12 @@
           ${j.ref ? `<div class="job-ref"><span>${esc(j.ref.art)}</span><span class="ref">${esc(j.ref.name)}</span><span class="ref-titel">${esc(j.ref.titel || '')}</span></div>` : ''}
         </div>
         <div class="schritt">
-          <div class="zeile-k"><span>Aktueller Schritt</span><span>${nr} von ${von || '–'}</span></div>
-          <div class="schritt-name${name ? '' : ' mut'}">${esc(name || `Schritt ${nr}`)}</div>
+          <div class="zeile-k"><span>Aktueller Schritt</span><span class="schritt-zahl"></span></div>
+          <div class="schritt-name"></div>
           <div class="segmente" data-spalten="${segN}">${segs}</div>
         </div>
         <div class="zahlen">
-          <div><div class="zeile-k">Laufzeit</div><div class="zahl-gross">${j.start ? dauer((ref - ms(j.start)) / 1000) : '–'}</div></div>
+          <div><div class="zeile-k">Laufzeit</div><div class="zahl-gross laufzeit"></div></div>
           <div><div class="zeile-k">Gestartet</div><div class="zahl-mittel">${j.start ? zeit(j.start) : '–'}</div><div class="zahl-sub">${j.start ? `${wt(j.start)}, ${tm(j.start)}` : ''}</div></div>
         </div>`;
     } else {
@@ -231,11 +234,22 @@
       <div class="letzte"><div class="letzte-titel">Letzte Jobs</div>${letzte || '<div class="leer">Seit dem Start des Monitors noch keine Jobs.</div>'}</div>`;
     // nur bei Änderung neu schreiben – sonst gehen Klicks und Fokus auf Knöpfen der Karte verloren
     const karte = $('status');
-    if (karte.dataset.html === html) return;
-    karte.innerHTML = html; karte.dataset.html = html;
-    // Spaltenzahl der Schritt-Segmente per CSSOM (CSP erlaubt keine style-Attribute)
-    const segs = karte.querySelector('.segmente');
-    if (segs) segs.style.gridTemplateColumns = `repeat(${segs.dataset.spalten}, minmax(0, 1fr))`;
+    if (karte.dataset.html !== html) {
+      karte.innerHTML = html; karte.dataset.html = html;
+      // Spaltenzahl der Schritt-Segmente per CSSOM (CSP erlaubt keine style-Attribute)
+      const segs = karte.querySelector('.segmente');
+      if (segs) segs.style.gridTemplateColumns = `repeat(${segs.dataset.spalten}, minmax(0, 1fr))`;
+    }
+    if (dyn) {
+      const setze = (el, t) => { if (el && el.textContent !== t) el.textContent = t; };
+      setze(karte.querySelector('.schritt-zahl'), `${dyn.nr} von ${dyn.von || '–'}`);
+      const nm = karte.querySelector('.schritt-name');
+      setze(nm, dyn.name || `Schritt ${dyn.nr}`); if (nm) nm.classList.toggle('mut', !dyn.name);
+      karte.querySelectorAll('.segmente .seg').forEach((sg, i) => {
+        sg.className = `seg${i < dyn.nr - 1 ? ' fertig' : i === dyn.nr - 1 ? ' aktiv' : dyn.von ? '' : ' unbekannt'}`;
+      });
+      setze(karte.querySelector('.laufzeit'), dyn.laufzeit);
+    }
   }
 
   /* ------------------------------------------------------------ Workflows */
@@ -288,6 +302,7 @@
      Netz-Spitze), agg 'max' hält kurze Spitzen sichtbar (Netz), sonst Mittelwert (CPU, RAM). */
   function spark(h, max = 100, agg = 'mittel') {
     const daten = h.slice(-600); if (!daten.length) return ['', ''];
+    if (daten.length === 1) daten.push(daten[0]);  // ein Wert: waagerechte Linie statt eines Sprungs von 0
     const K = Math.max(2, Math.min(120, daten.length)), b = daten.length / K, pts = [];
     for (let i = 0; i < K; i++) {
       let s = 0, c = 0, mx = 0;
@@ -413,7 +428,7 @@
     const div = document.createElement('div');
     if (z.art === 'schritt') {
       div.className = 'trenner';
-      div.innerHTML = `<span class="tr-nr">Schritt ${z.nr}/${z.von || '–'}</span><span class="tr-name">${esc(z.name || '')}</span><span class="tr-linie"></span><span class="tr-zeit">${zeit(z.zeit)}</span>`;
+      div.innerHTML = `<span class="tr-nr">Schritt ${Number(z.nr) || 1}/${Number(z.von) || '–'}</span><span class="tr-name">${esc(z.name || '')}</span><span class="tr-linie"></span><span class="tr-zeit">${zeit(z.zeit)}</span>`;
     } else {
       div.className = 'z' + (istFehler(z.text) ? ' fehler' : '');
       div.innerHTML = `<span class="zt">${zeit(z.zeit)}</span><span class="zx">${ansi(z.text).map(s => (s.c ? `<span class="${s.c}">${esc(s.t)}</span>` : esc(s.t))).join('')}</span>`;
