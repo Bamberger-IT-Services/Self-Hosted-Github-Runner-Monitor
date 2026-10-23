@@ -4,12 +4,11 @@ window.DATEN = {
   projekt: 'Runner-Monitor',
   repo: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor',
   version: '0.1.1',
-  versionStatus: '0.1.0 auf main und auf der Runner-VM im Test; 0.1.1 als erstes Release vorbereitet, noch nicht veröffentlicht',
-  stand: '23.10.2026 17:56',
+  versionStatus: 'Release v0.1.1 veröffentlicht (23.10.2026); auf der Runner-VM läuft 0.1.0 im Test',
+  stand: '23.10.2026 18:04',
   naechsteSchritte: [
-    'Release v0.1.1 veröffentlichen – nur nach OK von Tobias (A-06); dann auf der VM das Update per Knopf testen',
+    'Auf der VM das Update auf 0.1.1 per Knopf testen, danach Rückweg (A-03)',
     'Abnahme auf der Runner-VM weiterführen (A-03): Live-Log mit echtem Job, Update und Rückweg',
-    'Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung hierher, Vorlage runner-einrichten.sh entfällt (A-19)',
     'Helios-Repo kürzen (A-14, Helios-Chat)',
   ],
 
@@ -20,7 +19,7 @@ window.DATEN = {
     { id: 'A-03', titel: 'Abnahme auf einer Test-VM: einrichten.sh (frisch und über alte ttyd-Ansicht), Runner-Erkennung, Firewall, Einrichtung im Browser, Live-Log mit echtem Job, Update und Rückweg mit einem Test-Release', status: 'offen', prio: 'hoch', bereich: 'Betrieb', wer: 'Tobias' },
     { id: 'A-04', titel: 'Branch pushen, PR öffnen, CI grün, mergen', status: 'erledigt', prio: 'hoch', bereich: 'Repo', wer: 'Tobias (Push) / Claude (Merge)', notiz: 'PR #1 am 23.10.2026 gemergt' },
     { id: 'A-05', titel: 'Lizenz festlegen (öffentliches Repo ohne Lizenz = alle Rechte vorbehalten)', status: 'erledigt', prio: 'mittel', bereich: 'Repo', wer: 'Tobias (Entscheidung)', notiz: 'E-11: keine Lizenz' },
-    { id: 'A-06', titel: 'Release v0.1.0 veröffentlichen (Tag, Release-Workflow hängt Paket + Prüfsumme an)', status: 'offen', prio: 'hoch', bereich: 'Release', wer: 'nach A-03, OK von Tobias' },
+    { id: 'A-06', titel: 'Erstes Release veröffentlichen (Tag, Release-Workflow hängt Paket + Prüfsumme an)', status: 'erledigt', prio: 'hoch', bereich: 'Release', wer: 'OK von Tobias', notiz: 'v0.1.1 am 23.10.2026 – zugleich Test für Update und Rückweg' },
     { id: 'A-07', titel: 'GitHub-Kontingent schonen: bedingte Anfragen (ETag/304) und ruhige Repositories seltener abfragen – heute reicht es für ca. 35 Repositories', status: 'offen', prio: 'mittel', bereich: 'Code' },
     { id: 'A-08', titel: 'Liste der 10 000 häufigsten Passwörter statt 20 Einträgen (S-AUTH-02)', status: 'offen', prio: 'niedrig', bereich: 'Sicherheit' },
     { id: 'A-09', titel: 'Anleitung HTTPS über Reverse-Proxy (z. B. Caddy) für Zugriff außerhalb des LAN (S-NET-01)', status: 'offen', prio: 'niedrig', bereich: 'Doku' },
@@ -34,7 +33,7 @@ window.DATEN = {
     { id: 'A-17', titel: 'Klären: Projektanweisung sagt „Als Docker sollte es dennoch funktionieren“ – widerspricht E-02/ADR-0002 (kein Docker). Optionaler Container (privilegiert, --pid=host, Journal- und Runner-Mounts) zusätzlich zum systemd-Dienst?', status: 'erledigt', prio: 'mittel', bereich: 'Entscheidung', wer: 'Tobias', notiz: 'E-12: kein Docker, auch nicht zusätzlich' },
     { id: 'A-18', titel: 'Info-Blatt baute sich jede Sekunde neu auf; Live-Log ließ sich nicht hochscrollen; einrichten.sh token vergaß die Organisation', status: 'erledigt', prio: 'hoch', bereich: 'Code', notiz: 'Version 0.1.1' },
     { id: 'A-20', titel: 'Netzwerkauslastung in der Karte Auslastung (empfangen, gesendet, Spitze 10 Min.)', status: 'erledigt', prio: 'mittel', bereich: 'Code', notiz: 'Wunsch Tobias, Version 0.1.1' },
-    { id: 'A-19', titel: 'Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung auf dieses Repo, vorlagen/runner-einrichten.sh entfällt (Entscheidung „alles hierher verschieben“)', status: 'offen', prio: 'mittel', bereich: 'Public', wer: 'Claude' },
+    { id: 'A-19', titel: 'Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung auf dieses Repo, vorlagen/runner-einrichten.sh entfällt (Entscheidung „alles hierher verschieben“)', status: 'erledigt', prio: 'mittel', bereich: 'Public', wer: 'Claude', notiz: 'Public PR #15' },
   ],
 
   entscheidungen: [
@@ -61,6 +60,7 @@ window.DATEN = {
   ],
 
   verlauf: [
+    { datum: '23.10.2026 18:04', text: 'Release v0.1.1 (OK Tobias): CHANGELOG, Release-Notiz, Doku-Stand, Bildschirmfotos neu. Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung hierher (PR #15).' },
     { datum: '23.10.2026 17:56', text: 'Netzwerkauslastung ergänzt (Zeile „Netz“ in der Auslastung, /proc/net/dev ohne virtuelle Schnittstellen). PR #4 und Dependabot #2/#3 gemergt.' },
     { datum: '23.10.2026 17:49', text: '0.1.1: Info-Blatt bleibt ruhig stehen, Live-Log lässt sich hochscrollen, Token-Befehl im Info-Menü, einrichten.sh token fragt die Organisation. Entscheidungen E-11 (keine Lizenz) und E-12 (kein Docker) nachgetragen.' },
     { datum: '23.10.2026 16:29', text: 'Version 0.1.0 programmiert: Server, Sammler, Update-Hilfsdienst, Oberfläche nach Design v1, einrichten.sh (inkl. Runner-Einrichtung und Ablösung der ttyd-Ansicht), Doku (Funktionsweise, Handbuch mit Bildern, Einrichtung, Update, Runner, Runbooks, Sicherheit), CI und Release-Workflow. Tests und Browser-Rauchtest grün.' },

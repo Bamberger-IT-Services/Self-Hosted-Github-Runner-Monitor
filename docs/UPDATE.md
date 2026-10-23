@@ -1,6 +1,6 @@
 # Update und Rückweg
 
-**Stand: 23.10.2026 · Version 0.1.0**
+**Stand: 23.10.2026 · Version 0.1.1**
 
 Der Monitor prüft alle 6 Stunden, ob es auf GitHub ein neueres Release gibt. Dann erscheint
 oben die Meldung **„Version X.Y.Z verfügbar“**. Vorher die Release-Notiz lesen

@@ -4,7 +4,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
-## [0.1.1] – noch nicht veröffentlicht
+## [0.1.1] – 23.10.2026
+
+Erstes veröffentlichtes Release, enthält 0.1.0.
 
 ### Neu
 - Auslastung: Zeile **Netz** mit Empfangen und Senden je Sekunde und der Spitze der letzten
@@ -25,7 +27,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   sie in `konfig.env` und den Einstellungen ein. Vorher fehlte sie, wenn GitHub in der Einrichtung
   übersprungen wurde.
 
-## [0.1.0] – noch nicht veröffentlicht
+## [0.1.0] – nicht als Release veröffentlicht (in 0.1.1 enthalten)
 
 Erste Version nach Design v1.
 
