@@ -72,6 +72,7 @@ class Zustand:
         self.bereiche: dict[str, object] = {}
         self.cpu_verlauf: deque[float] = deque(maxlen=VERLAUF)
         self.ram_verlauf: deque[float] = deque(maxlen=VERLAUF)
+        self.netz_verlauf: deque[list[int]] = deque(maxlen=VERLAUF)  # [empfangen, gesendet] in B/s
         self.zeilen: deque[dict] = deque(maxlen=MAX_ZEILEN)
         self.ereignisse: deque[dict] = deque(maxlen=MAX_EREIGNISSE)
         self.letzte_jobs: deque[dict] = deque(maxlen=5)
@@ -99,7 +100,7 @@ class Zustand:
             liste = [(k, v) for k, v in self.bereiche.items() if k != "system" and not k.startswith("_")]
             if "system" in self.bereiche:
                 sys_daten = dict(self.bereiche["system"])  # type: ignore[arg-type]
-                sys_daten["verlauf"] = {"cpu": list(self.cpu_verlauf), "ram": list(self.ram_verlauf)}
+                sys_daten["verlauf"] = {"cpu": list(self.cpu_verlauf), "ram": list(self.ram_verlauf), "netz": list(self.netz_verlauf)}
                 liste.insert(0, ("system", sys_daten))
             liste.append(("log", {"neu": True, "ereignisse": list(self.ereignisse), "zeilen": list(self.zeilen)}))
         return liste
@@ -266,6 +267,8 @@ class Zustand:
             self.cpu_verlauf.append(daten["cpu"])
             ram = daten["ram"]
             self.ram_verlauf.append(round(100.0 * ram["belegt"] / ram["gesamt"], 1) if ram["gesamt"] else 0.0)
+            netz = daten.get("netz") or {}
+            self.netz_verlauf.append([netz.get("empfangen", 0), netz.get("gesendet", 0)])
             self._setze("system", daten)
             if takt % 2 == 0:
                 self._setze("prozesse", self.messer.prozesse.messen(ram["gesamt"]))

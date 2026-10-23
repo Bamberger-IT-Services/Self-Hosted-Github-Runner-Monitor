@@ -6,6 +6,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [0.1.1] – noch nicht veröffentlicht
 
+### Neu
+- Auslastung: Zeile **Netz** mit Empfangen und Senden je Sekunde und der Spitze der letzten
+  10 Minuten (aus `/proc/net/dev`, ohne virtuelle Schnittstellen).
+
 ### Geändert
 - Info & Hilfe baut sich nicht mehr jede Sekunde neu auf: Das Blatt blendet nur beim Öffnen ein,
   danach aktualisieren sich nur die Werte. Position, Auswahl und aufgeklappte Anleitung bleiben.

@@ -45,8 +45,14 @@ Ohne Token zeigt die Karte, wie man eines einrichtet:
 ## Auslastung
 
 CPU gesamt mit Verlauf der letzten 10 Minuten, jeder Kern als Balken, Arbeitsspeicher mit
-Verlauf, RAM und Swap, Last (1, 5, 15 Minuten) im Vergleich zur Zahl der Kerne. Bei 16 und
-mehr Kernen werden die Balken schmaler.
+Verlauf, RAM und Swap, **Netz** und Last (1, 5, 15 Minuten) im Vergleich zur Zahl der Kerne.
+Bei 16 und mehr Kernen werden die Balken schmaler.
+
+**Netz** zeigt, was die VM gerade empfängt (↓) und sendet (↑), summiert über alle echten
+Netzwerkschnittstellen, dazu den höchsten Wert der letzten 10 Minuten. Verkehr von Docker-
+Containern und VPN-Tunneln steckt schon in der echten Schnittstelle und wird nicht doppelt
+gezählt. Einheiten dezimal: 1 MB/s = 1 000 000 Byte je Sekunde (≈ 8 Mbit/s). Viel Empfang
+während eines Jobs ist normal – der Runner lädt dann Docker-Images und Pakete.
 
 ![Volllast, dunkel](bilder/dashboard-volllast-dunkel.png)
 

@@ -30,6 +30,35 @@ tmpfs /run tmpfs rw 0 0
 """
 
 
+NETZ_VORHER = """Inter-|   Receive                                                |  Transmit
+ face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed
+    lo: 5000      10    0    0    0     0          0         0     5000      10    0    0    0     0       0          0
+ ens18: 1000000  900    0    0    0     0          0         0   200000     500    0    0    0     0       0          0
+docker0: 777777  10    0    0    0     0          0         0   777777      10    0    0    0     0       0          0
+vethab12: 99999  10    0    0    0     0          0         0    99999      10    0    0    0     0       0          0
+"""
+NETZ_JETZT = NETZ_VORHER.replace("1000000", "3000000").replace("200000 ", "300000 ")
+
+
+class NetzTest(unittest.TestCase):
+    def test_nur_echte_schnittstellen(self):
+        werte = system.lies_netz(NETZ_VORHER)
+        self.assertEqual(werte, {"ens18": (1000000, 200000)})
+
+    def test_rate_je_sekunde(self):
+        rate = system.netz_rate(system.lies_netz(NETZ_VORHER), system.lies_netz(NETZ_JETZT), 2.0)
+        self.assertEqual(rate["empfangen"], 1000000)
+        self.assertEqual(rate["gesendet"], 50000)
+        self.assertEqual(rate["schnittstellen"], ["ens18"])
+
+    def test_zaehler_neustart_und_neue_schnittstelle(self):
+        vorher = {"ens18": (5000, 5000)}
+        jetzt = {"ens18": (100, 200), "ens19": (999, 999)}
+        rate = system.netz_rate(vorher, jetzt, 1.0)
+        self.assertEqual((rate["empfangen"], rate["gesendet"]), (0, 0))
+        self.assertEqual(system.netz_rate(vorher, jetzt, 0)["empfangen"], 0)
+
+
 class CpuTest(unittest.TestCase):
     def test_auslastung_je_kern(self):
         vorher = system.lies_cpu_zeiten(STAT_VORHER)
