@@ -20,7 +20,7 @@ Das Wichtigste zuerst: groß der Zustand.
 
 | Zustand | Bedeutung |
 |---|---|
-| **Job läuft** (blau) | Repository, Workflow und Job, Pull Request oder Branch, aktueller Schritt „3 von 8“ mit Fortschritt, Laufzeit, Startzeit |
+| **Job läuft** (blau) | Repository, Workflow und Job, Pull Request oder Branch, aktueller Schritt „3 von 8“ mit Fortschritt, Laufzeit, Startzeit. Kennt GitHub die Schrittliste noch nicht (die ersten Sekunden eines Jobs), steht „3 von –“ mit gedämpftem Namen „Schritt 3“ und gestricheltem Rest; Name und Anzahl kommen nach. Die Zahl springt nie zurück. |
 | **Bereit** (grün) | Dienst läuft, GitHub sieht den Runner, kein Job |
 | **Dienst gestoppt** (rot) | der systemd-Dienst des Runners läuft nicht – Jobs warten. Link „Runner-Logs abrufen“ |
 | **Offline bei GitHub** (orange) | Dienst läuft, GitHub sieht ihn aber nicht |
@@ -76,7 +76,7 @@ Teil über der Schwelle wird orange.
 
 - Oben die letzten **Ereignisse** (Job gestartet, beendet mit Ergebnis und Dauer, Dienst gestoppt).
 - Darunter die **Ausgabe des laufenden Schritts** mit den Farben aus dem Workflow. Jeder neue
-  Schritt bekommt eine Trennzeile „Schritt 4/8 · Name“. Fehlerzeilen sind rot hinterlegt.
+  Schritt bekommt eine Trennzeile „Schritt 4/8 · Name“ (ohne Schrittliste von GitHub „Schritt 4/–“). Karte, Schritt-Pille über dem Log und Trennzeilen zeigen immer denselben Schritt. Fehlerzeilen sind rot hinterlegt.
 - Die neueste Zeile steht immer unten. **Anhalten** friert die Ansicht ein (neue Zeilen werden
   gezählt), **Weiter** springt wieder nach unten.
 - **Hochscrollen** (Mausrad oder Trackpad) hält das Mitlaufen ebenfalls an, um ältere Zeilen

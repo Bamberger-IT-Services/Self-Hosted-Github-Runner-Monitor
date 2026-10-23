@@ -95,7 +95,9 @@ class Zustand:
         self.ereignisse: deque[dict] = deque(maxlen=MAX_EREIGNISSE)
         self.letzte_jobs: deque[dict] = deque(maxlen=5)
         self.job_lokal: dict | None = None      # aus dem Journal: {"name", "start"}
-        self.schritt_nr = 0
+        self.schritt_nr = 0  # lokal: Zahl der Seitendateien in _diag/pages im laufenden Job
+        self._schritt_hoch = 0  # höchster angezeigter Schritt im laufenden Job – die Zahl springt nie zurück
+        self._schritt_job = ""  # Name des Jobs, zu dem _schritt_hoch gehört
         self.job_zuordnung: dict[str, dict] = {}  # Jobname → {repo, workflow} aus der GitHub-Abfrage
         self.offline_seit: float | None = None
         self._dateistand: dict[Path, float] = {}
@@ -208,6 +210,7 @@ class Zustand:
             if e.art == "start":
                 self.job_lokal = {"name": e.name, "start": e.zeit}
                 self.schritt_nr = 0
+                self._schritt_hoch, self._schritt_job = 0, e.name
                 info = self.job_zuordnung.get(e.name, {})
                 eintrag = {"zeit": e.zeit, "art": "start", "name": e.name, **info}
             elif e.art == "ende":
@@ -227,18 +230,44 @@ class Zustand:
             self.ereignisse.append(eintrag)
         self.verteiler.sende("log", {"ereignisse": [eintrag], "zeilen": []})
 
+    # ------------------------------------------------------------ Job-Schritt aus einer Quelle (Design 0.4.0)
+
+    def _gh_job(self) -> dict | None:
+        """Job aus der GitHub-Abfrage, sofern er zum lokal laufenden Job passt."""
+        gh = self.bereiche.get("_github")
+        gh_job = gh.get("job") if isinstance(gh, dict) else None
+        if not isinstance(gh_job, dict):
+            return None
+        if self.job_lokal and gh_job.get("name") != self.job_lokal.get("name"):
+            return None
+        return gh_job
+
+    def _schritt(self, gh_job: dict | None) -> dict:
+        """{nr, von, name} für Status, Log-Chip und Trenner.
+
+        nr = max(lokal, GitHub), nie kleiner als zuvor im selben Job; von = max(Zahl der Schritte, nr)
+        oder None, solange GitHub keine Schrittliste geliefert hat; name nur aus GitHub.
+        """
+        job_name = (self.job_lokal or {}).get("name") or (gh_job or {}).get("name", "")
+        if job_name != self._schritt_job:
+            self._schritt_hoch, self._schritt_job = 0, job_name
+        schritte = [str(s) for s in ((gh_job or {}).get("schritte") or [])]
+        try:
+            gh_nr = int((gh_job or {}).get("schritt") or 0) if schritte else 0
+        except (TypeError, ValueError):
+            gh_nr = 0
+        nr = max(self.schritt_nr, gh_nr, self._schritt_hoch, 1)
+        self._schritt_hoch = nr
+        von = max(len(schritte), nr) if schritte else None
+        name = schritte[nr - 1] if nr <= len(schritte) else ""
+        return {"nr": nr, "von": von, "name": name}
+
     def bei_seite(self, art: str, wert: object) -> None:
         with self._sperre:
             if art == "schritt":
                 self.schritt_nr += 1
-                gh_job = (self.bereiche.get("_github") or {}).get("job") if isinstance(self.bereiche.get("_github"), dict) else None
-                name = ""
-                von = 0
-                if gh_job and gh_job.get("schritte"):
-                    von = len(gh_job["schritte"])
-                    idx = min(int(gh_job.get("schritt", 1)), von) - 1
-                    name = gh_job["schritte"][idx]
-                zeile = {"zeit": time.time(), "art": "schritt", "nr": self.schritt_nr, "von": von, "name": name or f"Schritt {self.schritt_nr}"}
+                s = self._schritt(self._gh_job())
+                zeile = {"zeit": time.time(), "art": "schritt", **s}
                 neu = [zeile]
             elif art == "zeilen":
                 neu = [{"zeit": zeit, "text": text[:4000]} for zeit, text in list(wert)[-MAX_ZEILEN:]]  # type: ignore[call-overload]
@@ -269,10 +298,12 @@ class Zustand:
                 job = {
                     "name": (self.job_lokal or {}).get("name") or (gh_job or {}).get("name", ""),
                     "start": (self.job_lokal or {}).get("start") or (gh_job or {}).get("start"),
-                    "repo": "", "workflow": "", "privat": False, "ref": None, "schritte": [], "schritt": self.schritt_nr or 1,
+                    "repo": "", "workflow": "", "privat": False, "ref": None, "schritte": [],
                 }
-                if gh_job and (not self.job_lokal or gh_job.get("name") == self.job_lokal.get("name")):
-                    job.update({k: gh_job.get(k) for k in ("repo", "workflow", "privat", "ref", "schritte", "schritt", "url")})
+                passend = gh_job if gh_job and (not self.job_lokal or gh_job.get("name") == self.job_lokal.get("name")) else None
+                if passend:
+                    job.update({k: passend.get(k) for k in ("repo", "workflow", "privat", "ref", "schritte", "url")})
+                job["schritt"] = self._schritt(passend)
             letzte = list(self.letzte_jobs)
         labels = gh_runner.get("labels") or self.k.weitere.get("RUNNER_LABELS", "self-hosted,linux,x64").split(",")
         return {

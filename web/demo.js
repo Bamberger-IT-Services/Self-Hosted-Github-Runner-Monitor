@@ -6,7 +6,7 @@ window.RM_DEMO = (() => {
   const GiB = 1024 ** 3, GB = 1e9;
   const jetzt = () => Date.now() / 1000;
   const zufall = (a, b) => a + Math.random() * (b - a);
-  let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600;
+  let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600, schritteLokal = false;
   let cpuSchnitt = 40, job = null, schrittNr = 1, zeilenImSchritt = 0, updSchritt = 0;
   const START = jetzt() - 3 * 86400 - 4 * 3600;
   const REPOS = [
@@ -27,6 +27,8 @@ window.RM_DEMO = (() => {
   };
   const PROZ = [['Runner.Worker', 'github-runner'], ['node vitest run', 'github-runner'], ['dockerd', 'root'], ['Runner.Listener', 'github-runner'], ['containerd', 'root'], ['python3 -m runner_monitor', 'runner-monitor'], ['systemd-journald', 'root'], ['sshd: verwaltung', 'root']];
 
+  // Ein Schritt wie vom Server: {nr, von, name}; ?schritte=lokal = Liste von GitHub fehlt noch (Design 0.4.0)
+  const schritt = (nr) => (schritteLokal ? { nr, von: null, name: '' } : { nr, von: JOB.schritte.length, name: JOB.schritte[nr - 1] });
   const status = () => {
     const t = jetzt();
     const dienst = zustand === 'gestoppt' ? { zustand: 'gestoppt', seit: t - 760 } : { zustand: 'aktiv', seit: START + 3600 };
@@ -34,7 +36,7 @@ window.RM_DEMO = (() => {
     return {
       vm: 'runner-vm', runner: 'runner-vm-01', eingerichtet: true, labels: ['self-hosted', 'linux', 'x64', 'docker'], version: '2.329.0', monitorVersion: '0.1.0',
       dienst, github,
-      job: ['job', 'platte', 'volllast', 'getrennt'].includes(zustand) && job ? { ...JOB, start: job.start, schritt: schrittNr } : null,
+      job: ['job', 'platte', 'volllast', 'getrennt'].includes(zustand) && job ? { ...JOB, schritte: schritteLokal ? [] : JOB.schritte, start: job.start, schritt: schritt(schrittNr) } : null,
       letzteJobs: [
         { repo: 'api-dienst', workflow: 'CI', name: 'build', ergebnis: 'erfolg', dauer: 274, ende: t - 860 },
         { repo: 'web-portal', workflow: 'Deploy', name: 'staging', ergebnis: 'fehler', dauer: 92, ende: t - 2400 },
@@ -121,12 +123,12 @@ window.RM_DEMO = (() => {
       job = null; setTimeout(() => { if (zustand === 'job') neuerJob(); }, 6000); return;
     }
     schrittNr++; zeilenImSchritt = 0;
-    api.empfange('log', { zeilen: [{ art: 'schritt', zeit: jetzt(), nr: schrittNr, von: JOB.schritte.length, name: JOB.schritte[schrittNr - 1] }] });
+    api.empfange('log', { zeilen: [{ art: 'schritt', zeit: jetzt(), ...schritt(schrittNr) }] });
     api.empfange('status', status());
   }
   function neuerJob() {
     job = { start: jetzt() - 95 }; schrittNr = 3; zeilenImSchritt = 0;
-    api.empfange('log', { neu: true, ereignisse: [{ art: 'start', zeit: jetzt() - 95, repo: JOB.repo, workflow: JOB.workflow, name: JOB.name }], zeilen: [{ art: 'schritt', zeit: jetzt() - 60, nr: 3, von: JOB.schritte.length, name: JOB.schritte[2] }] });
+    api.empfange('log', { neu: true, ereignisse: [{ art: 'start', zeit: jetzt() - 95, repo: JOB.repo, workflow: JOB.workflow, name: JOB.name }], zeilen: [{ art: 'schritt', zeit: jetzt() - 60, ...schritt(3) }] });
     api.empfange('status', status());
   }
 
@@ -166,6 +168,7 @@ window.RM_DEMO = (() => {
     const p = new URLSearchParams(location.search);
     zustand = p.get('zustand') || zustand; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
+    schritteLokal = p.get('schritte') === 'lokal';
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();
     if (['job', 'platte', 'volllast'].includes(zustand)) neuerJob();

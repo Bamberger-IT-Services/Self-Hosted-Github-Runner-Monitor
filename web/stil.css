@@ -161,6 +161,9 @@ body.dashboard { overflow: hidden; }
 .seg { height: 4px; border-radius: 1px; background: var(--track); transition: background-color .4s; }
 .seg.fertig { background: var(--brand); }
 .seg.aktiv { background: color-mix(in srgb, var(--brand) 45%, var(--track)); }
+/* Schrittliste von GitHub fehlt noch: gestrichelter Rest, Name gedämpft (Design 0.4.0) */
+.seg.unbekannt { background: repeating-linear-gradient(90deg, var(--track) 0 4px, transparent 4px 7px); }
+.schritt-name.mut { color: var(--ink-muted); font-weight: 500; }
 .zahlen { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
 .zahl-gross { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.022em; margin-top: 2px; }
 .zahl-mittel { font-size: 17px; line-height: 22px; font-weight: 600; margin-top: 4px; }
