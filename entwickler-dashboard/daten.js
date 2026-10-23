@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "23.10.2026 22:04",
+  stand: "23.10.2026 22:12",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -152,8 +152,8 @@ window.RUNNER_MONITOR = {
   ],
 
   hinweise: [
-    { titel: "Version", text: "0.3.0 setzt Design 0.3.0 um (Netz-Block, Jetzt prüfen, Kopieren-Knöpfe, Einrichtung und Anmeldung neu) und wird als v0.3.0 veröffentlicht; davor v0.1.2 und v0.1.1. Der Abnahmetest auf der Runner-VM läuft (A-03).", datei: "CHANGELOG.md" },
-    { titel: "Nächste Schritte", text: "1) Auf der VM in Info › Updates „Jetzt prüfen“ und das Update auf 0.3.0 starten, danach den Rückweg testen (A-03). 2) Abnahme weiterführen: Live-Log mit echtem Job, Netz-Block mit echtem Verkehr (A-03). 3) Helios-Repo kürzen (A-14, Helios-Chat)." },
+    { titel: "Version", text: "0.3.1 ist veröffentlicht (Live-Verbindung bleibt bei viel Log-Ausgabe stabil), davor v0.3.0 mit Design 0.3.0, v0.1.2 und v0.1.1. Der Abnahmetest auf der Runner-VM läuft (A-03).", datei: "CHANGELOG.md" },
+    { titel: "Nächste Schritte", text: "1) Auf der VM in Info › Updates „Jetzt prüfen“ und das Update auf 0.3.1 starten, danach Dashboard neu laden, danach den Rückweg testen (A-03). 2) Abnahme weiterführen: Live-Log mit echtem Job, Netz-Block mit echtem Verkehr (A-03). 3) Helios-Repo kürzen (A-14, Helios-Chat)." },
     { titel: "Öffentliches Repository", text: "Keine echten IP-Adressen, Rechner-, Organisations- oder Personennamen und keine Tokens – auch nicht in Tests, Bildern, Logs oder diesem Dashboard. Platzhalter: runner-vm, runner-vm-01, beispiel-org, <ip-der-runner-vm>, Adressen aus 192.0.2.0/24 (RFC 5737)." },
     { titel: "Kein Docker (E-02, E-12)", text: "Der Monitor läuft nur als systemd-Dienst, auch nicht zusätzlich als Container – gilt auch dann, wenn eine Projektanweisung etwas anderes sagt („Als Docker sollte es dennoch funktionieren“ gilt nicht).", datei: "docs/adr/0002-systemd-statt-docker.md" },
     { titel: "Keine Lizenz (E-11)", text: "Keine LICENSE-Datei anlegen. Alle Rechte bei Bamberger IT Services, der Code ist nur zum Lesen öffentlich." },
@@ -216,7 +216,7 @@ window.RUNNER_MONITOR = {
     { id: "A-20", status: "erledigt", bereich: "Code", prio: "mittel", text: "Netzwerkauslastung in der Karte Auslastung (empfangen, gesendet, Spitze 10 Min.) · Wunsch Tobias, Version 0.1.1", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/5", linkText: "PR #5" },
     { id: "A-21", status: "erledigt", bereich: "Code", prio: "mittel", text: "Knopf „Jetzt prüfen“ in Info › Updates (Release sofort abfragen) · Wunsch Tobias, Version 0.1.2", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/7", linkText: "PR #7" },
     { id: "A-22", status: "erledigt", bereich: "Design", prio: "hoch", text: "Design 0.3.0 umsetzen und als v0.3.0 veröffentlichen · Netz als eigener Block in der RAM-Spalte (E-13); OK von Tobias, Release v0.3.0", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases", linkText: "Releases" },
-    { id: "A-24", status: "läuft", bereich: "Code", prio: "hoch", text: "Dashboard bleibt bei Jobs mit viel Log-Ausgabe auf „Getrennt“ stehen, bis der Dienst neu startet · Ursache: Log-Zeilen einzeln verteilt, übergelaufene Warteschlange blieb stumm offen, Browser verband nicht neu. Korrektur in 0.3.1, Release nach OK von Tobias", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pulls", linkText: "Pull Requests" },
+    { id: "A-24", status: "erledigt", bereich: "Code", prio: "hoch", text: "Dashboard bleibt bei Jobs mit viel Log-Ausgabe auf „Getrennt“ stehen, bis der Dienst neu startet · Ursache: Log-Zeilen einzeln verteilt, übergelaufene Warteschlange blieb stumm offen, Browser verband nicht neu. Korrektur in 0.3.1 (PR #9), Release v0.3.1 nach OK von Tobias", link: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/pull/9", linkText: "PR #9" },
     { id: "A-23", status: "erledigt", bereich: "Doku", prio: "mittel", text: "Entwickler-Dashboard nach Helios-Vorlage: gleiches Design und gleiche Abschnitte (Status, Starten, Fehlerhilfe, Protokolle, Wo finde ich was, Entscheidungen, Aufgaben, Merkzettel, Links, Verlauf), Daten in window.RUNNER_MONITOR" },
   ],
 
@@ -270,6 +270,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "23.10.2026 22:12", text: "Release v0.3.1 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
     { datum: "23.10.2026 22:04", text: "0.3.1: Ursache für „Getrennt“ gefunden (Meldung Tobias von der VM): Jede Log-Zeile war eine eigene Nachricht, ein Build füllte die Warteschlange (2000), der Strom blieb danach stumm offen, der Browser verband nicht neu. Zeilen gebündelt, Strom endet bei Überlauf, Browser verbindet nach 10 s ohne Daten selbst neu, write() mit 60-s-Frist. Nachgestellt mit langsam lesendem Client." },
     { datum: "23.10.2026 21:31", text: "0.3.0: Design 0.3.0 pixelgenau umgesetzt (Dashboard mit Netz-Block, Info & Hilfe mit „Jetzt prüfen“ und Kopieren-Knöpfen, Live-Log mit Mitlaufen-Hinweis, Einrichtung und Anmeldung neu, einrichten.sh-Ausgabe). Design v1 entfernt, Design 0.3.0 unter docs/design/v0.3.0. Bildschirmfotos neu. Review: einrichten.sh ohne Docker, Klicks in sekündlich aktualisierten Karten, „Jetzt prüfen“ bei Uhrversatz, Anleitung „Kein Runner“." },
     { datum: "23.10.2026 21:06", text: "Entwickler-Dashboard auf den Aufbau des Helios-Dashboards umgestellt." },
