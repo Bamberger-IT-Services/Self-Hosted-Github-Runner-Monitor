@@ -1,0 +1,32 @@
+# Runner-Monitor – Sammler (root). Fragt GitHub (Token nur für root lesbar) und Docker ab,
+# prüft alle 6 Stunden auf neue Releases und übernimmt Token-Aufträge aus der Einrichtung.
+# Ergebnisse landen als JSON in /run/runner-monitor (0644), die Oberfläche liest sie nur.
+[Unit]
+Description=Runner-Monitor (Sammler für GitHub und Docker)
+Documentation=https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/runner-monitor/aktuell
+Environment=PYTHONPATH=/opt/runner-monitor/aktuell
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m runner_monitor.sammler
+RuntimeDirectory=runner-monitor
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+Restart=on-failure
+RestartSec=10
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/runner-monitor /etc/runner-monitor /run/runner-monitor
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

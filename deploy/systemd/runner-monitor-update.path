@@ -1,0 +1,10 @@
+# Startet den Update-Hilfsdienst, sobald die Oberfläche einen Update-Auftrag ablegt.
+[Unit]
+Description=Runner-Monitor: Update-Auftrag beobachten
+
+[Path]
+PathExists=/var/lib/runner-monitor/auftraege/update
+Unit=runner-monitor-update.service
+
+[Install]
+WantedBy=multi-user.target
