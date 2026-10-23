@@ -78,7 +78,7 @@
       case 'status': S.status = d; renderKopf(); renderStatus(); renderLogKopf(); break;
       case 'system':
         S.system = d;
-        if (d.verlauf) { S.cpuH = d.verlauf.cpu.slice(-600); S.ramH = d.verlauf.ram.slice(-600); S.netzH = (d.verlauf.netz || []).slice(-600); }
+        if (d.verlauf) { S.cpuH = d.verlauf.cpu.slice(-600); S.ramH = d.verlauf.ram.slice(-600); S.netzH = (d.verlauf.netz || []).slice(-600); S.verlaufStart = d.verlauf.start || null; }
         else {
           S.cpuH.push(d.cpu); S.ramH.push(d.ram.gesamt ? d.ram.belegt / d.ram.gesamt * 100 : 0);
           if (d.netz) S.netzH.push([d.netz.empfangen, d.netz.gesendet]);
@@ -281,20 +281,25 @@
 
   /* ------------------------------------------------------------ Auslastung */
   // 600 Werte = 10 Minuten, 120 Stützpunkte zu je 5 s. Kürzerer Verlauf liegt rechtsbündig („jetzt“ rechts).
-  /* 600 Sekundenwerte → 120 Punkte. max = Skala (100 % bzw. die Netz-Spitze), agg 'max' hält kurze
-     Spitzen sichtbar (Netz), sonst Mittelwert (CPU, RAM). */
+  /* Vorhandene Sekundenwerte (bis 600) über die volle Breite gestreckt (Design 0.4.0):
+     Stützpunkte = min(120, Länge), Fläche immer von x=0 bis x=300. max = Skala (100 % bzw. die
+     Netz-Spitze), agg 'max' hält kurze Spitzen sichtbar (Netz), sonst Mittelwert (CPU, RAM). */
   function spark(h, max = 100, agg = 'mittel') {
-    const N = 600, n = 120, b = N / n, off = N - Math.min(h.length, N), daten = h.slice(-N), pts = [];
-    for (let i = 0; i < n; i++) {
+    const daten = h.slice(-600); if (!daten.length) return ['', ''];
+    const K = Math.max(2, Math.min(120, daten.length)), b = daten.length / K, pts = [];
+    for (let i = 0; i < K; i++) {
       let s = 0, c = 0, mx = 0;
-      for (let g = i * b; g < (i + 1) * b; g++) { const j = g - off; if (j >= 0 && j < daten.length) { s += daten[j]; c++; if (daten[j] > mx) mx = daten[j]; } }
-      if (!c) continue;
-      const v = agg === 'max' ? mx : s / c;
-      pts.push(`${(i * 300 / (n - 1)).toFixed(1)},${(45 - Math.max(0, Math.min(1, v / max)) * 43).toFixed(1)}`);
+      for (let j = Math.floor(i * b); j < Math.floor((i + 1) * b); j++) { s += daten[j]; c++; if (daten[j] > mx) mx = daten[j]; }
+      const v = agg === 'max' ? mx : (c ? s / c : 0);
+      pts.push(`${(i * 300 / (K - 1)).toFixed(1)},${(45 - Math.max(0, Math.min(1, v / max)) * 43).toFixed(1)}`);
     }
-    if (!pts.length) return ['', ''];
     const linie = 'M' + pts.join(' L');
-    return [linie, `${linie} L${pts[pts.length - 1].split(',')[0]},46 L${pts[0].split(',')[0]},46 Z`];
+    return [linie, `${linie} L300.0,46 L0.0,46 Z`];
+  }
+  /* Achse links: „vor 10 Min.“ bei vollem Verlauf, sonst ab wann gemessen wird („seit 14:02“). */
+  function achseVon() {
+    if (S.cpuH.length >= 600 || !S.verlaufStart) return 'vor 10 Min.';
+    return `seit ${hm(S.verlaufStart)}`;
   }
 
   /* Bytes je Sekunde, dezimal wie bei Netzwerken üblich (1 MB/s = 1 000 000 B/s). */
@@ -333,6 +338,8 @@
       $('netz-rx-linie').setAttribute('d', rl2); $('netz-rx-flaeche').setAttribute('d', rf2); $('netz-tx-linie').setAttribute('d', tl);
       const [w, e] = rate(spitze); $('netz-spitze').textContent = `Spitze ${w} ${e}`;
     }
+    const von = achseVon();
+    document.querySelectorAll('.achse-von').forEach((el) => { if (el.textContent !== von) el.textContent = von; });
     $('l1').textContent = zahl(d.last[0], 2); $('l5').textContent = zahl(d.last[1], 2); $('l15').textContent = zahl(d.last[2], 2); $('kerne-n').textContent = n;
   }
 
