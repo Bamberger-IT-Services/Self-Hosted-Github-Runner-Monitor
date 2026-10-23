@@ -1,6 +1,6 @@
 # HTTPS über einen Reverse-Proxy
 
-**Stand: 23.10.2026 · Version 0.4.0**
+**Stand: 23.10.2026 · Version 0.5.0**
 
 Der Monitor spricht selbst nur HTTP und ist für das lokale Netz gedacht (Sicherheitsbericht
 S-NET-01). Soll er von außerhalb des LAN erreichbar sein – etwa über ein VPN mit Gästen oder eine
