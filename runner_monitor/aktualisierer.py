@@ -8,7 +8,8 @@ das der root-Sammler vom offiziellen Release-Repository geholt hat.
 Ablauf (die Nummern sind die Schritte, die die Oberfläche anzeigt):
 
 1. Archiv und Prüfsumme herunterladen (nur https://github.com/<release-repo>/releases/…)
-2. SHA-256 prüfen
+2. SHA-256 prüfen, dann die Herkunft: ``gh attestation verify`` bestätigt, dass das Archiv vom
+   Release-Workflow dieses Repositorys gebaut wurde (GitHub-Attestierung/Sigstore, ADR-0005)
 3. nach ``/opt/runner-monitor/versionen/<version>`` entpacken, ``aktuell`` umhängen
 4. ``runner-monitor`` und ``runner-monitor-sammler`` neu starten
 5. ``/api/health`` muss binnen 30 s die neue Version melden – sonst zurück zur alten
@@ -39,6 +40,41 @@ BASIS = Path(os.environ.get("MONITOR_INSTALL_VERZ", "/opt/runner-monitor"))
 DIENSTE = ("runner-monitor-sammler", "runner-monitor")
 BEHALTEN = 3  # so viele Versionen bleiben liegen (für „zurück“)
 VERSION_MUSTER = re.compile(r"^\d+\.\d+\.\d+$")
+
+
+HERKUNFT_WORKFLOW = ".github/workflows/release.yml"
+
+
+def herkunft_pruefen(k: Konfig, archiv: Path) -> str:
+    """Prüft die GitHub-Attestierung des Archivs. Ergebnis „geprüft“ oder „nicht geprüft (Grund)“.
+
+    MONITOR_UPDATE_HERKUNFT: ``pflicht`` – ohne erfolgreiche Prüfung kein Update;
+    sonst (Vorgabe) wird geprüft, sobald die GitHub-CLI und ein Token da sind. Eine Prüfung, die
+    läuft und scheitert, bricht das Update immer ab.
+    """
+    pflicht = k.update_herkunft == "pflicht"
+    gh = shutil.which("gh")
+    try:
+        token = k.token_datei.read_text(encoding="utf-8").strip()
+    except OSError:
+        token = ""
+    grund = "GitHub-CLI fehlt" if not gh else "kein GitHub-Token" if not token else ""
+    if grund:
+        if pflicht:
+            raise UpdateFehler(2, f"Herkunft nicht prüfbar ({grund}) – MONITOR_UPDATE_HERKUNFT=pflicht")
+        LOG.warning("Herkunft des Updates nicht geprüft: %s (nur Prüfsumme)", grund)
+        return f"nicht geprüft ({grund})"
+    befehl = [gh, "attestation", "verify", str(archiv), "--repo", k.release_repo,
+              "--signer-workflow", f"{k.release_repo}/{HERKUNFT_WORKFLOW}"]
+    umgebung = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": "/root", "GH_TOKEN": token, "GH_PROMPT_DISABLED": "1", "NO_COLOR": "1"}
+    try:
+        lauf = subprocess.run(befehl, capture_output=True, text=True, timeout=90, env=umgebung, check=False)
+    except (OSError, subprocess.SubprocessError) as fehler:
+        raise UpdateFehler(2, f"Herkunftsprüfung lief nicht: {fehler}") from fehler
+    if lauf.returncode != 0:
+        letzte = (lauf.stderr or lauf.stdout).strip().splitlines()[-1:] or [""]
+        raise UpdateFehler(2, f"Herkunft nicht bestätigt – Archiv verworfen ({letzte[0][:200]})")
+    return "geprüft"
 
 
 class UpdateFehler(Exception):
@@ -168,6 +204,7 @@ def aktualisiere(k: Konfig, ziel: str) -> None:
         erwartet = summe.read_text(encoding="utf-8").split()[0].lower() if summe.stat().st_size else ""
         if not re.fullmatch(r"[0-9a-f]{64}", erwartet) or sha256(archiv) != erwartet:
             raise UpdateFehler(2, "Prüfsumme stimmt nicht – Archiv verworfen")
+        herkunft = herkunft_pruefen(k, archiv)
         status(k, zustand="laeuft", schritt=3, version=ziel)
         ziel_verz = BASIS / "versionen" / ziel
         if ziel_verz.exists():
@@ -182,7 +219,7 @@ def aktualisiere(k: Konfig, ziel: str) -> None:
             haenge_um(alt)
             neustart()
         raise UpdateFehler(5, "die neue Version hat nach dem Neustart nicht geantwortet")
-    status(k, zustand="erfolg", version=ziel, vorher=alt)
+    status(k, zustand="erfolg", version=ziel, vorher=alt, herkunft=herkunft)
     aufraeumen()
 
 
