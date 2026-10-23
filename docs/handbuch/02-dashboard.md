@@ -95,3 +95,5 @@ Teil über der Schwelle wird orange.
 Bekommt die Seite 5 Sekunden lang keine Daten, steht oben „Getrennt“ mit der Zeit des letzten
 Stands, und die Karten werden blasser. Spätestens nach 10 Sekunden ohne Daten verbindet sich die
 Seite selbst neu, danach in wachsenden Abständen bis 30 Sekunden. Ein Neuladen der Seite ist nicht nötig.
+Mit derselben Anmeldung sind höchstens sechs Fenster gleichzeitig live; ein siebtes bleibt auf
+„Getrennt“, bis ein anderes geschlossen wird.

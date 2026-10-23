@@ -120,6 +120,11 @@ ist und die Pause höchstens 60 s dauerte; die Lücke füllt der erste neue Mess
 Verlauf leer. Die Oberfläche streckt die vorhandenen Werte über die ganze Breite und schreibt links
 „seit hh:mm“, bis 10 Minuten voll sind („vor 10 Min.“).
 
+**Höchstens 6 Live-Verbindungen je Sitzung:** Ein weiteres Fenster derselben Anmeldung bekommt 429 und
+versucht es mit wachsender Wartezeit erneut; sobald ein anderes Fenster zu ist, verbindet es sich.
+Abgelehnt wird die neue Verbindung, nicht die älteste – sonst würden sich offene Fenster im Wechsel
+verdrängen.
+
 **Warteschlange je Browserfenster (seit 0.3.1):** Der Verteiler hält je Fenster eine Schlange mit
 höchstens 2000 Nachrichten. Log-Zeilen gehen gebündelt raus: Der Log-Leser meldet je gelesenem Stück
 (alle 0,3 s, bis 512 KB) **eine** Nachricht mit höchstens 1500 Zeilen. Läuft eine Schlange trotzdem

@@ -7,6 +7,7 @@ ein ``HttpOnly``-Cookie mit ``SameSite=Strict``.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import mimetypes
@@ -29,6 +30,7 @@ from .zustand import ENDE, Zustand, lies_json
 LOG = logging.getLogger("runner_monitor")
 COOKIE = "rm_sitzung"
 SSE_SCHREIB_FRIST = 60  # Sekunden, die ein write() an einen hängenden Browser höchstens blockiert
+SSE_JE_SITZUNG = 6  # Live-Verbindungen je Sitzung (S-DOS-01); weitere werden mit 429 abgelehnt
 COOKIE_EINRICHTUNG = "rm_einrichtung"
 MAX_KOERPER = 16 * 1024
 
@@ -55,7 +57,31 @@ class App:
         self.zugang = zugang.Zugang(konfig.zugang_datei, konfig.sitzungen_datei, konfig.sperren_datei)
         self.einrichtung: dict[str, float] = {}  # Token → gültig bis (nur im Speicher)
         self.sperre = threading.Lock()
+        self.stroeme: dict[str, int] = {}  # Hash der Sitzung → offene Live-Verbindungen
         self.statisch = {p.name: p for p in konfig.web_verz.iterdir() if STATISCH.match(p.name)} if konfig.web_verz.is_dir() else {}
+
+    # Live-Verbindungen je Sitzung (S-DOS-01) ---------------------------
+
+    def strom_an(self, sitzung: str) -> bool:
+        """Eine Live-Verbindung mehr – False, wenn die Sitzung schon SSE_JE_SITZUNG offen hat.
+
+        Abgelehnt wird die neue, nicht die älteste Verbindung: sonst würden sich mehrere offene
+        Fenster gegenseitig im Wechsel verdrängen.
+        """
+        with self.sperre:
+            n = self.stroeme.get(sitzung, 0)
+            if n >= SSE_JE_SITZUNG:
+                return False
+            self.stroeme[sitzung] = n + 1
+            return True
+
+    def strom_ab(self, sitzung: str) -> None:
+        with self.sperre:
+            n = self.stroeme.get(sitzung, 0) - 1
+            if n > 0:
+                self.stroeme[sitzung] = n
+            else:
+                self.stroeme.pop(sitzung, None)
 
     # Einrichtungs-Sitzung ---------------------------------------------
 
@@ -238,6 +264,16 @@ class Handler(BaseHTTPRequestHandler):
     def _ereignisse(self) -> None:
         """Server-Sent Events: erst der aktuelle Stand, dann jede Änderung."""
         self.close_connection = True
+        sitzung = hashlib.sha256((self._cookie(COOKIE) or "entwicklung").encode()).hexdigest()
+        if not self.app.strom_an(sitzung):
+            self._fehler(HTTPStatus.TOO_MANY_REQUESTS, "Zu viele Live-Verbindungen für diese Sitzung")
+            return
+        try:
+            self._strom()
+        finally:
+            self.app.strom_ab(sitzung)
+
+    def _strom(self) -> None:
         self._kopf(HTTPStatus.OK, "text/event-stream; charset=utf-8", None, {"X-Accel-Buffering": "no", "Connection": "close"})
         z = self.app.zustand
         # Hängt der Browser (Rechner schläft, WLAN weg), blockiert write() sonst ewig und der Thread bleibt liegen.
