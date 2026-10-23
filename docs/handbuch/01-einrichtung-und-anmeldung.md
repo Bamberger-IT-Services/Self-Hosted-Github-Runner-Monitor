@@ -22,7 +22,7 @@ Adresse zur Einrichtung in vier Schritten.
 - **Angemeldet bleiben** hält die Sitzung 30 Tage (sonst 12 Stunden). Nach 7 Tagen ohne
   Aufruf ist man immer abgemeldet.
 - Nach **5 Fehlversuchen** ist die Anmeldung 5 Minuten gesperrt; die Seite zählt herunter.
-- **Passwort vergessen:** auf der VM `sudo ./einrichten.sh passwort` – danach den Zugang im
+- **Passwort vergessen:** auf der VM `sudo /opt/runner-monitor/aktuell/einrichten.sh passwort` – danach den Zugang im
   Browser neu anlegen. GitHub-Token und Einstellungen bleiben erhalten.
 - Abmelden: Info › „Abmelden“.
 

@@ -8,13 +8,15 @@
   const GiB = 1024 ** 3, GB = 1e9;
   const REPO = 'Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor';
   const MAX_ZEILEN = 1500;
+  // Volle Pfadangabe: ./einrichten.sh gibt es nur im entpackten Ordner, dieser Pfad gilt immer nach der Installation.
+  const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
   const UPDATE_SCHRITTE = [['Release herunterladen', 'Archiv und Prüfsumme'], ['Prüfsumme prüfen', 'SHA-256 stimmt'], ['Installieren', 'alte Version gesichert'], ['Monitor neu starten', 'kurz nicht erreichbar'], ['Funktion prüfen', 'Daten kommen an']];
 
   const S = {
     status: null, system: null, prozesse: [], platten: [], workflows: null, update: null,
     cpuH: [], ramH: [], ereignisse: [], zeilenN: 0, puffer: [],
     verbindung: 'verbindet', letzteDaten: 0,
-    umbruch: true, angehalten: false, wfOffen: false, info: null, kerneN: 0,
+    umbruch: true, angehalten: false, hochgescrollt: false, wfOffen: false, info: null, kerneN: 0,
   };
 
   /* ------------------------------------------------------------ ANSI → Segmente */
@@ -201,7 +203,7 @@
       const dienstSeit = st.dienst.seit ? (art === 'gestoppt' ? `gestoppt seit ${zeit(st.dienst.seit)} (${vor((jetzt - ms(st.dienst.seit)) / 1000)})` : `aktiv seit ${seit((jetzt - ms(st.dienst.seit)) / 1000)}`) : (art === 'gestoppt' ? 'gestoppt' : art === 'fehlt' ? 'nicht vorhanden' : 'aktiv');
       const kv = art === 'gestoppt' ? [['Dienst', dienstSeit], ['Wartende Jobs', wartend == null ? 'unbekannt' : `${wartend} in der Warteschlange`], ['Letzter Job', letzter]]
         : art === 'offline' ? [['Dienst', dienstSeit], ['Bei GitHub', st.github.seit ? `offline seit ${zeit(st.github.seit)} (${vor((jetzt - ms(st.github.seit)) / 1000)})` : 'offline'], ['Letzter Job', letzter]]
-        : art === 'fehlt' ? [['Runner', 'nicht gefunden in /opt/actions-runner'], ['Einrichten', 'sudo ./einrichten.sh runner']]
+        : art === 'fehlt' ? [['Runner', 'nicht gefunden in /opt/actions-runner'], ['Einrichten', `${SKRIPT} runner`]]
         : [['Dienst', dienstSeit], ['Letzter Job', letzter], ['Runner-Version', esc(st.version || '–')]];
       mitte = `<p class="zustand-text">${text}</p><dl class="kv">${kv.map(([k, v]) => `<div class="kv-z"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
         + (art === 'gestoppt' || art === 'offline' ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="logs">${IC.datei()}Runner-Logs abrufen ›</button>` : '');
@@ -390,7 +392,7 @@
     $('pause-text').textContent = `Angehalten · ${S.puffer.length} ${mehrzahl(S.puffer.length, 'neue Zeile', 'neue Zeilen')}`;
   }
   function umschaltenPause() {
-    S.angehalten = !S.angehalten;
+    S.angehalten = !S.angehalten; S.hochgescrollt = false;
     if (!S.angehalten) { const p = S.puffer; S.puffer = []; if (p.length) haengeAn(p); $('term').scrollTop = 0; }
     renderPause(); renderLeer();
   }
@@ -406,11 +408,12 @@
     const tokenAblauf = w.tokenAblauf && (ms(w.tokenAblauf) - Date.now()) < 14 * 86400000;
     return [
       { id: 'token', titel: 'GitHub-Token einrichten oder erneuern', aktiv: ['kein-token', 'token-ungueltig', 'keine-rechte'].includes(w.abfrage) || tokenAblauf, wann: 'Wenn „Kein GitHub-Token“, „Token ungültig“ oder „Token läuft ab“ gemeldet wird.', schritte: [
-        ['Auf github.com: Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.'],
-        ['Resource owner: die Organisation. Repository access: All repositories. Ablauf zum Beispiel 90 Tage.'],
-        ['Nur lesende Rechte: Repository › Actions und Metadata jeweils „Read-only“. Für den Online-Status des Runners zusätzlich Organization › Self-hosted runners „Read-only“.'],
-        ['Auf der VM das Token eintragen. Nur root kann die Datei lesen:', 'sudo ./einrichten.sh token'],
-        ['Die nächste Abfrage (spätestens nach 30 s) übernimmt es.'],
+        ['Auf github.com: Profilbild › Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.'],
+        ['Resource owner: die Organisation, nicht das eigene Konto. Repository access: All repositories. Ablauf zum Beispiel 1 Jahr.'],
+        ['Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status des Runners zusätzlich Organization › Self-hosted runners „Read-only“.'],
+        ['Verlangt die Organisation eine Freigabe, das Token unter Organisation › Settings › Personal access tokens › Pending requests freigeben. Vorher meldet der Monitor „ohne Zugriff“.'],
+        ['Auf der VM das Token eintragen (Eingabe bleibt unsichtbar, nur root kann die Datei lesen). Das Skript fragt auch nach der Organisation – Enter behält die bisherige:', `${SKRIPT} token`],
+        ['Die nächste Abfrage (spätestens nach 30 s) übernimmt es. Prüfen, ob GitHub das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):', `sudo bash -c 'curl -s -o /dev/null -w "%{http_code}\\n" -H "Authorization: Bearer $(cat /etc/runner-monitor/github-token)" "https://api.github.com/orgs/${w.org || 'ORGANISATION'}/repos?per_page=1"'`],
       ] },
       { id: 'github', titel: 'GitHub nicht erreichbar', aktiv: ['nicht-erreichbar', 'kontingent', 'fehler'].includes(w.abfrage), wann: 'Wenn die Abfrage der Workflows fehlschlägt. Die Karte zeigt dann den letzten Stand.', schritte: [
         ['Zuerst den Status von GitHub prüfen: githubstatus.com.'],
@@ -427,7 +430,7 @@
       { id: 'offline', titel: 'Runner offline bei GitHub', aktiv: st.github.zustand === 'offline', cls: 'fehler', wann: 'Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.', schritte: [
         ['Netz der VM prüfen:', 'curl -sI https://github.com | head -1'],
         ['Dienst neu starten, damit er sich neu anmeldet:', "sudo systemctl restart 'actions.runner.*'"],
-        ['Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:', 'sudo ./einrichten.sh runner --umziehen'],
+        ['Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:', `${SKRIPT} runner --umziehen`],
         ['Warum die Verbindung fehlt, steht im Diagnoseprotokoll – siehe „Runner-Logs abrufen“.'],
       ] },
       { id: 'logs', titel: 'Runner-Logs abrufen (Diagnose)', aktiv: st.dienst.zustand === 'gestoppt' || st.github.zustand === 'offline', cls: st.dienst.zustand === 'gestoppt' ? 'fehler' : 'warn', wann: 'Wenn der Runner-Dienst stoppt, abstürzt, offline ist oder Jobs nicht annimmt. Alle Befehle auf der VM ausführen.', schritte: [
@@ -452,9 +455,9 @@
       ] },
       { id: 'update', titel: 'Monitor aktualisieren', aktiv: us.zustand === 'fehler' || (u.neueste && vergleiche(u.neueste.version, u.installiert) > 0), cls: us.zustand === 'fehler' ? 'fehler' : 'warn', wann: 'Wenn eine neue Version gemeldet wird oder ein Update fehlgeschlagen ist.', schritte: [
         ['Am einfachsten oben in „Updates“ auf „Jetzt aktualisieren“ klicken. Ein Hilfsdienst auf der VM lädt das offizielle Release, prüft die Prüfsumme, installiert es und startet den Monitor neu. Antwortet die neue Version nicht, stellt er die alte wieder her.'],
-        ['Oder per SSH auf der VM:', 'sudo ./einrichten.sh aktualisieren'],
+        ['Oder per SSH auf der VM:', `${SKRIPT} aktualisieren`],
         ['Protokoll des letzten Updates:', 'journalctl -u runner-monitor-update -n 50'],
-        ['Zur vorherigen Version zurück:', 'sudo ./einrichten.sh zurueck'],
+        ['Zur vorherigen Version zurück:', `${SKRIPT} zurueck`],
       ] },
     ];
   }
@@ -462,6 +465,7 @@
   function oeffneInfo(id) {
     S.info = id || 'alle';
     const ebene = $('info-ebene');
+    if (ebene.querySelector('.info.raus')) ebene.replaceChildren(); // gerade beim Schließen: neu aufbauen
     ebene.hidden = false;
     renderInfo();
     const aside = ebene.querySelector('.info');
@@ -479,9 +483,8 @@
     $('k-info').focus();
   }
 
-  function renderInfo() {
-    if (!S.info) return;
-    const ebene = $('info-ebene'), st = S.status || {}, w = S.workflows || {}, u = S.update || {}, us = u.status || {};
+  function infoTeile() {
+    const st = S.status || {}, w = S.workflows || {}, u = S.update || {}, us = u.status || {};
     const jetzt = Date.now();
     const neu = u.neueste && u.neueste.version && vergleiche(u.neueste.version, u.installiert) > 0;
     const kv = (liste) => `<dl class="kv">${liste.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`).join('')}</dl>`;
@@ -523,10 +526,10 @@
       ['Rechte', 'Actions, Metadata, Self-hosted runners – je Read-only' + (w.runnerGrund ? ` <span class="warn">(${esc(w.runnerGrund)})</span>` : '')],
       ['Ablauf', w.tokenAblauf ? `${datum(w.tokenAblauf)} (in ${tage} ${mehrzahl(tage, 'Tag', 'Tagen')})` : '–', tage != null && tage <= 14 ? 'warn' : ''],
       ['Letzte Abfrage', w.abfrage === 'kein-token' ? 'aus' : w.abfrage === 'ok' ? `${zeit(w.abgefragt)} · erfolgreich` : `fehlgeschlagen · letzte erfolgreiche ${w.abgefragt ? zeit(w.abgefragt) : '–'}`, w.abfrage !== 'ok' && w.abfrage !== 'kein-token' ? 'warn' : ''],
-      ['Nächste Abfrage', w.naechste && w.abfrage !== 'kein-token' ? `in ${Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000))} s (alle 30 s)` : '–'],
+      ['Nächste Abfrage', '<span data-tick="naechste"></span>'],
       ['API-Kontingent', kont.limit ? `${zahl(kont.frei)} von ${zahl(kont.limit)} frei, Reset ${hm(kont.reset)}` : '–'],
       ['Token-Datei', '/etc/runner-monitor/github-token'],
-    ]);
+    ]) + `<p class="info-notiz">Token oder Organisation ändern geht nur auf der VM, die Seite ist nur zum Anschauen. Das Skript fragt das Token verdeckt ab und startet die Dienste neu:</p><pre class="code">${esc(SKRIPT)} token</pre><p class="info-notiz">Schritt für Schritt: „Was tun, wenn …“ › <button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">GitHub-Token einrichten oder erneuern</button></p>`;
     const ueber = kv([
       ['Version', esc(u.installiert || st.monitorVersion || '–')],
       ['Adresse', esc(location.host)],
@@ -535,26 +538,53 @@
     ]);
     const issue = (vorlage) => `https://github.com/${REPO}/issues/new?template=${vorlage}&version=${encodeURIComponent(u.installiert || '')}&runner=${encodeURIComponent(st.version || '')}&browser=${encodeURIComponent(navigator.userAgent.slice(0, 120))}`;
 
-    const html = `
+    // Teile einzeln austauschen statt das ganze Blatt neu zu bauen: Sonst startet die Einblend-
+    // Animation bei jeder Aktualisierung neu, Auswahl und Fokus gehen verloren.
+    return {
+      eyebrow: `${esc(st.vm || '')}${st.runner ? ' · ' + esc(st.runner) : ''}`,
+      upd,
+      modi: `<div class="info-zeile"><span class="mut">Modus</span><div class="segment" role="group" aria-label="Hell oder dunkel">${modi}</div></div><p class="info-notiz">„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.</p>`,
+      anl,
+      gh,
+      ueber: `<p class="info-text">Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.</p>${ueber}<p class="info-text">Ersteller: Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>Quellcode und Doku: <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
+      issue: `<p class="info-text">Fehler und Wünsche landen als Issue im öffentlichen GitHub-Repository. Die Knöpfe öffnen eine vorbereitete Vorlage mit Version, Runner-Version und Browser.</p><div class="knopf-reihe"><a class="knopf" href="${issue('fehler.yml')}" rel="noopener" target="_blank">${IC.kaefer()}Fehler melden ↗</a><a class="knopf" href="${issue('idee.yml')}" rel="noopener" target="_blank">Idee vorschlagen ↗</a></div><p class="info-notiz">Vor dem Absenden prüfen: keine IP-Adressen, Rechnernamen, Tokens oder Passwörter in das Issue schreiben – das Repository ist öffentlich.</p>`,
+    };
+  }
+
+  const INFO_GERUEST = `
       <div class="info-scrim" data-aktion="info-zu"></div>
       <aside class="info" role="dialog" aria-modal="true" aria-labelledby="info-titel" tabindex="-1">
         <div class="info-kopf">
-          <div><div class="vm-eyebrow">${esc(st.vm || '')}${st.runner ? ' · ' + esc(st.runner) : ''}</div><h2 class="info-titel" id="info-titel">Info &amp; Hilfe</h2></div>
+          <div><div class="vm-eyebrow" data-teil="eyebrow"></div><h2 class="info-titel" id="info-titel">Info &amp; Hilfe</h2></div>
           <div class="knopf-reihe"><button type="button" class="knopf" data-aktion="abmelden">Abmelden</button><button type="button" class="knopf" data-aktion="info-zu">Schließen</button></div>
         </div>
         <div class="info-body">
-          <section class="info-abschnitt"><h3 class="info-h">Updates</h3>${upd}</section>
-          <section class="info-abschnitt"><h3 class="info-h">Darstellung</h3><div class="info-zeile"><span class="mut">Modus</span><div class="segment" role="group" aria-label="Hell oder dunkel">${modi}</div></div><p class="info-notiz">„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.</p></section>
-          <section class="info-abschnitt"><h3 class="info-h">Was tun, wenn …</h3>${anl}</section>
-          <section class="info-abschnitt"><h3 class="info-h">GitHub-Verbindung</h3>${gh}<p class="info-notiz">Geändert wird das auf der VM (sudo ./einrichten.sh token), nicht hier – die Seite ist nur zum Anschauen.</p></section>
-          <section class="info-abschnitt"><h3 class="info-h">Über diesen Monitor</h3><p class="info-text">Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.</p>${ueber}<p class="info-text">Ersteller: Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>Quellcode und Doku: <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p></section>
-          <section class="info-abschnitt"><h3 class="info-h">Fehler gefunden oder Idee?</h3><p class="info-text">Fehler und Wünsche landen als Issue im öffentlichen GitHub-Repository. Die Knöpfe öffnen eine vorbereitete Vorlage mit Version, Runner-Version und Browser.</p><div class="knopf-reihe"><a class="knopf" href="${issue('fehler.yml')}" rel="noopener" target="_blank">${IC.kaefer()}Fehler melden ↗</a><a class="knopf" href="${issue('idee.yml')}" rel="noopener" target="_blank">Idee vorschlagen ↗</a></div><p class="info-notiz">Vor dem Absenden prüfen: keine IP-Adressen, Rechnernamen, Tokens oder Passwörter in das Issue schreiben – das Repository ist öffentlich.</p></section>
+          <section class="info-abschnitt"><h3 class="info-h">Updates</h3><div data-teil="upd"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">Darstellung</h3><div data-teil="modi"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">Was tun, wenn …</h3><div data-teil="anl"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">GitHub-Verbindung</h3><div data-teil="gh"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">Über diesen Monitor</h3><div data-teil="ueber"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">Fehler gefunden oder Idee?</h3><div data-teil="issue"></div></section>
         </div>
       </aside>`;
-    const scroll = ebene.querySelector('.info-body') ? ebene.querySelector('.info-body').scrollTop : 0;
-    if (ebene.dataset.html === html) return;
-    ebene.innerHTML = html; ebene.dataset.html = html;
-    const body = ebene.querySelector('.info-body'); if (body) body.scrollTop = scroll;
+
+  function renderInfo() {
+    if (!S.info) return;
+    const ebene = $('info-ebene');
+    if (!ebene.querySelector('.info')) ebene.innerHTML = INFO_GERUEST;
+    const teile = infoTeile();
+    for (const [name, html] of Object.entries(teile)) {
+      const el = ebene.querySelector(`[data-teil="${name}"]`);
+      if (el && el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    }
+    tickInfo();
+  }
+
+  /* Werte, die sich jede Sekunde ändern, nur als Text setzen. */
+  function tickInfo() {
+    const el = $('info-ebene').querySelector('[data-tick="naechste"]'); if (!el) return;
+    const w = S.workflows || {};
+    el.textContent = w.naechste && w.abfrage !== 'kein-token' ? `in ${Math.max(0, Math.round((ms(w.naechste) - Date.now()) / 1000))} s (alle 30 s)` : '–';
   }
 
   /* ------------------------------------------------------------ Bedienung */
@@ -587,6 +617,13 @@
   $('k-info').innerHTML = `${IC.info()}Info`;
   $('k-info').addEventListener('click', () => oeffneInfo('alle'));
   $('k-pause').addEventListener('click', umschaltenPause);
+  /* Im Log hochscrollen hält das Mitlaufen an (neue Zeilen werden gesammelt), zurück nach
+     unten läuft es wieder mit. Wegen column-reverse ist scrollTop unten 0 und oben negativ. */
+  $('term').addEventListener('scroll', () => {
+    const oben = Math.abs($('term').scrollTop) > 8;
+    if (oben && !S.angehalten) { S.angehalten = true; S.hochgescrollt = true; renderPause(); }
+    else if (!oben && S.angehalten && S.hochgescrollt) umschaltenPause();
+  }, { passive: true });
   $('k-weiter').addEventListener('click', umschaltenPause);
   $('k-umbrechen').addEventListener('click', () => setzeUmbruch(true));
   $('k-abschneiden').addEventListener('click', () => setzeUmbruch(false));

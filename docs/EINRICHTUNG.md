@@ -85,7 +85,18 @@ github.com › Settings › Developer settings › Personal access tokens › **
 | Organization permissions | **Self-hosted runners: Read-only** (optional, für „Online bei GitHub“) |
 
 Das Token wird auf der VM in `/etc/runner-monitor/github-token` gespeichert (nur root kann
-es lesen). Erneuern: `sudo ./einrichten.sh token` (Info › GitHub-Verbindung zeigt Ablauf und Rechte).
+es lesen). Erneuern oder nachholen, wenn GitHub übersprungen wurde:
+
+```bash
+sudo /opt/runner-monitor/aktuell/einrichten.sh token
+```
+
+Das Skript fragt das Token verdeckt und danach die Organisation ab (Enter behält die bisherige)
+und startet die Dienste neu. Info › GitHub-Verbindung zeigt Ablauf und Rechte.
+
+Kommt keine Verbindung zustande, auf GitHub prüfen: Resource owner des Tokens muss die
+**Organisation** sein, und verlangt die Organisation eine Freigabe, steht das Token unter
+Organisation › Settings › Personal access tokens › **Pending requests**.
 
 ## Prüfen
 

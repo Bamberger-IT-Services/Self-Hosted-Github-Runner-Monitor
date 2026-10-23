@@ -14,3 +14,5 @@ Nummeriert, mit Datum und Begründung (Anweisung 06). Technische Entscheidungen 
 | E-08 | 23.10.2026 | Erst-Einrichtung: Skript auf der VM (Dienste, Firewall, Runner-Erkennung, Code) → Browser (Code, Zugang, GitHub) → Anmeldung | Besitznachweis über die VM, kein Standardpasswort | Tobias |
 | E-09 | 23.10.2026 | Python-Standardbibliothek statt Next.js | [ADR-0001](docs/adr/0001-python-standardbibliothek.md) | Tobias (Brief) |
 | E-10 | 23.10.2026 | Ansprache in Anmeldung und Einrichtung „Sie“, im Dashboard neutral – Design v1 nutzte teils „du“ | Anweisungen gehen dem Entwurf vor (Anweisung 06) | Claude (im Rahmen der Anweisungen) |
+| E-11 | 23.10.2026 | Keine Lizenz: alle Rechte bei Bamberger IT Services, der Code ist nur zum Lesen öffentlich (A-05) | Möglichkeiten waren MIT, keine Lizenz, Apache-2.0 | Tobias (Auswahlfrage) |
+| E-12 | 23.10.2026 | Kein Docker-Container für den Monitor, auch nicht zusätzlich – nur systemd. Der Satz „Als Docker sollte es dennoch funktionieren“ in der Projektanweisung gilt nicht (A-17) | bestätigt E-02 / [ADR-0002](docs/adr/0002-systemd-statt-docker.md) | Tobias |

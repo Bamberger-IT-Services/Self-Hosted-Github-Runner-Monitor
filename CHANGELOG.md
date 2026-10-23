@@ -4,6 +4,23 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.1.1] – noch nicht veröffentlicht
+
+### Geändert
+- Info & Hilfe baut sich nicht mehr jede Sekunde neu auf: Das Blatt blendet nur beim Öffnen ein,
+  danach aktualisieren sich nur die Werte. Position, Auswahl und aufgeklappte Anleitung bleiben.
+- Live-Log: Hochscrollen hält das Mitlaufen an (neue Zeilen werden gezählt), ganz unten läuft es
+  wieder mit.
+- Info › GitHub-Verbindung nennt den Befehl zum Ändern auf der VM, die Token-Anleitung die
+  Freigabe in der Organisation und eine Prüfung mit `curl`.
+- Alle Befehle in der Oberfläche nutzen den festen Pfad `/opt/runner-monitor/aktuell/einrichten.sh`
+  (`./einrichten.sh` gibt es nur im entpackten Ordner).
+
+### Behoben
+- `einrichten.sh token` fragt immer nach der Organisation (Enter behält die bisherige) und trägt
+  sie in `konfig.env` und den Einstellungen ein. Vorher fehlte sie, wenn GitHub in der Einrichtung
+  übersprungen wurde.
+
 ## [0.1.0] – noch nicht veröffentlicht
 
 Erste Version nach Design v1.
