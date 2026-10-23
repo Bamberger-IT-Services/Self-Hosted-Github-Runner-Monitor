@@ -10,6 +10,7 @@ window.DATEN = {
     'Branch aufbau/0.1.0 pushen und PR öffnen; CI grün → mergen (A-04)',
     'Abnahme auf einer Test-VM mit den Befehlen aus docs/EINRICHTUNG.md (A-03)',
     'Lizenz festlegen (A-05)',
+    'Docker-Frage aus der Projektanweisung klären (A-17)',
     'Danach Release v0.1.0 – nur nach OK von Tobias (A-06)',
   ],
 
@@ -30,6 +31,7 @@ window.DATEN = {
     { id: 'A-14', titel: 'Helios-Repo: docs/RUNNER.md kürzen und hierher verweisen, deploy/runner/runner-einrichten.sh entfernen', status: 'offen', prio: 'mittel', bereich: 'Helios', wer: 'Helios-Chat' },
     { id: 'A-15', titel: 'Docker-Ansicht (Daten werden schon gesammelt)', status: 'später', prio: 'niedrig', bereich: 'Code' },
     { id: 'A-16', titel: 'Mehrere Runner je VM', status: 'später', prio: 'niedrig', bereich: 'Code' },
+    { id: 'A-17', titel: 'Klären: Projektanweisung sagt „Als Docker sollte es dennoch funktionieren“ – widerspricht E-02/ADR-0002 (kein Docker). Optionaler Container (privilegiert, --pid=host, Journal- und Runner-Mounts) zusätzlich zum systemd-Dienst?', status: 'offen', prio: 'mittel', bereich: 'Entscheidung', wer: 'Tobias' },
   ],
 
   entscheidungen: [
