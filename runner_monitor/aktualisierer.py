@@ -189,6 +189,9 @@ def aktualisiere(k: Konfig, ziel: str) -> None:
     if release.get("version") != ziel or not VERSION_MUSTER.match(ziel):
         raise UpdateFehler(1, f"Version {ziel} ist nicht das neueste offizielle Release")
     archiv_url, summe_url = release.get("archiv", ""), release.get("pruefsumme", "")
+    if not archiv_url or not summe_url:
+        raise UpdateFehler(1, f"Version {ziel} wird noch bereitgestellt (Paket noch nicht am Release) – "
+                              "in ein bis zwei Minuten erneut versuchen")
     if not (erlaubte_url(archiv_url, k.release_repo) and erlaubte_url(summe_url, k.release_repo)):
         raise UpdateFehler(1, "Release enthält kein Archiv mit Prüfsumme")
     alt = aktuelle_version()

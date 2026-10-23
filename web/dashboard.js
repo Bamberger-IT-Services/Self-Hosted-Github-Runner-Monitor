@@ -631,7 +631,9 @@
     }
     if (us.zustand === 'fehler') upd += `<div class="hinweis fehler">${IC.x(15)}<div>Update fehlgeschlagen <span>– ${esc(us.meldung || 'die neue Version hat nach dem Neustart nicht geantwortet')}. Version ${esc(u.installiert)} wurde automatisch wiederhergestellt. Details: <code class="inl">journalctl -u runner-monitor-update -n 50</code></span></div></div>`;
     if (us.zustand === 'erfolg' && jetzt - ms(us.zeit) < 3600000) upd += `<div class="hinweis ok">${IC.ok(15)}<div>Aktualisiert auf ${esc(u.installiert)} <span>– um ${hm(us.zeit)}. Dienst läuft, alle Daten kommen an.</span></div></div>`;
-    if (neu && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${us.zustand === 'fehler' ? 'Erneut versuchen' : `Jetzt auf ${esc(u.neueste.version)} aktualisieren`}</button><p class="info-notiz">Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.</p></div>`;
+    const bereit = !u.neueste || u.neueste.bereit !== false;  // Paket hängt schon am Release (#63)
+    if (neu && !bereit && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><p class="info-notiz">Version ${esc(u.neueste.version)} wird gerade bereitgestellt – das Paket ist in ein bis zwei Minuten da. Der Monitor prüft von selbst erneut.</p></div>`;
+    else if (neu && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${us.zustand === 'fehler' ? 'Erneut versuchen' : `Jetzt auf ${esc(u.neueste.version)} aktualisieren`}</button><p class="info-notiz">Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.</p></div>`;
     upd += `<label class="upd-auto"><input type="checkbox" data-aktion="update-auto" ${u.auto ? 'checked' : ''}>Automatisch aktualisieren – nachts um 3 Uhr, nur wenn kein Job läuft</label>`;
 
     const t = RM.thema();

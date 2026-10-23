@@ -16,6 +16,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   verwirft ein Archiv ohne Bestätigung. Ohne GitHub-CLI auf der VM weiter nur Prüfsumme;
   `MONITOR_UPDATE_HERKUNFT=pflicht` erzwingt die Prüfung.
 
+### Behoben
+- Update gleich nach einem neuen Release scheiterte mit „Release enthält kein Archiv mit
+  Prüfsumme“, wenn der Monitor das Release abfragte, bevor der Release-Workflow das Paket angehängt
+  hatte – und fragte erst nach 6 Stunden wieder. Jetzt: „wird gerade bereitgestellt“, neue Abfrage
+  nach 2 Minuten, kein Auto-Update in dieser Zeit (#63).
+
 ## [0.5.0] – 23.10.2026
 
 ### Neu

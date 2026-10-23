@@ -18,6 +18,7 @@ es läuft nichts Kaputtes.
    | Grund | Bedeutung |
    |---|---|
    | Download fehlgeschlagen | Netz/GitHub – später erneut versuchen |
+   | wird noch bereitgestellt / Release enthält kein Archiv mit Prüfsumme | Release gerade erst veröffentlicht, das Paket wird noch angehängt – Info › Updates › „Jetzt prüfen“, dann erneut versuchen (ab 0.6 von selbst nach 2 Minuten) |
    | Prüfsumme stimmt nicht | Archiv beschädigt oder manipuliert – **nicht** von Hand installieren, Issue melden |
    | neue Version hat nicht geantwortet | `journalctl -u runner-monitor -n 50` zeigt den Fehler der neuen Version |
 2. Erneut versuchen: Info › Updates › „Erneut versuchen“ oder

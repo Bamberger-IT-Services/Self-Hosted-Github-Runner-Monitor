@@ -113,6 +113,55 @@ class ReleasePruefenTest(unittest.TestCase):
             self.assertFalse((k.auftraege_verz / "release-pruefen").exists())
 
 
+class ReleaseBereitTest(unittest.TestCase):
+    """Gleich nach dem Veröffentlichen fehlt das Paket noch (#63): bald erneut fragen, nicht 6 h warten."""
+
+    def sammler(self, verz, antworten):
+        from runner_monitor import konfig
+        d = Path(verz)
+        k = konfig.lade(datei=d / "fehlt.env", umgebung={"MONITOR_DATEN_VERZ": str(d / "daten"), "MONITOR_LAUF_VERZ": str(d / "lauf")})
+        k.lauf_verz.mkdir(parents=True)
+        s = sammler.Sammler(k)
+        s.naechste_github = float("inf")
+        s.auftraege = lambda: None
+        s.auto_update = lambda: None
+        s.release = lambda: antworten.pop(0)
+        return s
+
+    def test_ohne_paket_bald_wieder(self):
+        url = "https://github.com/beispiel-org/x/releases/download/v99.0.0/runner-monitor-99.0.0.tar.gz"
+        ohne = {"version": "99.0.0", "archiv": "", "pruefsumme": "", "bereit": False}
+        mit = {"version": "99.0.0", "archiv": url, "pruefsumme": url + ".sha256", "bereit": True}
+        with tempfile.TemporaryDirectory() as verz:
+            s = self.sammler(verz, [ohne, mit])
+            alt = sammler.docker_container
+            sammler.docker_container = lambda: {}
+            try:
+                s.ein_takt(1000.0)
+                self.assertEqual(s.naechste_release, 1000.0 + sammler.TAKT_NICHT_BEREIT)
+                s.ein_takt(1000.0 + sammler.TAKT_NICHT_BEREIT)
+                self.assertEqual(s.naechste_release, 1000.0 + sammler.TAKT_NICHT_BEREIT + sammler.TAKT_RELEASE)
+            finally:
+                sammler.docker_container = alt
+
+    def test_paket_bereit(self):
+        self.assertFalse(sammler.paket_bereit({"version": "1.0.0", "archiv": "", "pruefsumme": ""}))
+        self.assertFalse(sammler.paket_bereit({"archiv": "a", "pruefsumme": "b", "bereit": False}))
+        self.assertTrue(sammler.paket_bereit({"archiv": "a", "pruefsumme": "b"}))  # ältere release.json ohne „bereit“
+
+    def test_neueste_version_meldet_bereit(self):
+        class Klient:
+            def __init__(self, assets):
+                self.assets = assets
+
+            def hole(self, pfad):
+                return github.Antwort({"tag_name": "v1.2.3", "assets": self.assets, "body": ""}, {})
+        self.assertFalse(github.neueste_version(Klient([]), "beispiel-org/x")["bereit"])
+        assets = [{"name": "runner-monitor-1.2.3.tar.gz", "browser_download_url": "u"},
+                  {"name": "runner-monitor-1.2.3.tar.gz.sha256", "browser_download_url": "u.sha256"}]
+        self.assertTrue(github.neueste_version(Klient(assets), "beispiel-org/x")["bereit"])
+
+
 class GitHubTest(unittest.TestCase):
     def test_zaehlen(self):
         runs = [{"status": "in_progress"}, {"status": "queued"}, {"status": "waiting"}, {"status": "completed"}]
