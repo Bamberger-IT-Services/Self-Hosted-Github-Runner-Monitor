@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<meta name="color-scheme" content="light dark">
+<title>Runner-Monitor</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/stil.css">
+<script src="/static/gemeinsam.js" defer></script>
+<script src="/static/dashboard.js" defer></script>
+</head>
+<body class="dashboard">
+<div class="rm" id="rm">
+
+  <header class="kopf">
+    <div class="vm">
+      <span class="vm-icon" id="vm-icon"></span>
+      <div class="vm-name" id="vm-name" title="Name der VM (Hostname)">–</div>
+    </div>
+    <div class="kopf-trenner"></div>
+    <div class="runner"><div class="runner-name" id="runner-name">–</div><div class="labels" id="labels"></div></div>
+    <div class="meldungen" id="meldungen" role="status" aria-live="polite"></div>
+    <div class="kopf-rechts">
+      <span class="live neutral" id="live"></span>
+      <span class="uhr"><span class="uhr-datum" id="uhr-datum"></span><span class="uhr-zeit" id="uhr-zeit"></span></span>
+      <button type="button" class="knopf modus-knopf" id="k-modus" title="Darstellung: Automatisch, Hell oder Dunkel"></button>
+      <button type="button" class="knopf" id="k-info" aria-haspopup="dialog"></button>
+    </div>
+  </header>
+
+  <main class="raster" id="raster">
+    <div class="spalte a">
+      <section class="karte status" id="status" aria-label="Runner-Status"></section>
+      <section class="karte wf" id="workflows" aria-label="Workflows je Repository"></section>
+    </div>
+
+    <section class="karte ausl" aria-label="Auslastung">
+      <div class="karte-kopf"><span class="karte-titel">Auslastung</span><span class="karte-meta" id="sys-meta"></span></div>
+      <div class="ausl-raster">
+        <div class="ausl-spalte">
+          <div class="gross-zeile"><span class="mess-label">CPU gesamt</span><span class="gross-wert"><span id="cpu">–</span><span class="einheit">%</span></span></div>
+          <div class="spark">
+            <svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="CPU-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="cpu-flaeche"/><path class="spark-linie" id="cpu-linie"/></svg>
+            <div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
+          </div>
+          <div class="kerne" id="kerne"></div>
+        </div>
+        <div class="ausl-spalte">
+          <div class="gross-zeile"><span class="mess-label">Arbeitsspeicher</span><span class="gross-wert"><span id="ram">–</span><span class="einheit" id="ram-gesamt"></span></span></div>
+          <div class="spark">
+            <svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="RAM-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="ram-flaeche"/><path class="spark-linie" id="ram-linie"/></svg>
+            <div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
+          </div>
+          <div>
+            <div class="meter"><span class="m-l">RAM</span><span class="balken"><span class="fuell" id="ram-fuell"></span></span><span class="m-w" id="ram-pct"></span></div>
+            <div class="meter"><span class="m-l">Swap</span><span class="balken"><span class="fuell gedimmt" id="swap-fuell"></span></span><span class="m-w" id="swap"></span></div>
+          </div>
+          <div class="last"><span class="m-l">Last</span><span class="last-werte"><span><b id="l1">–</b><i>1 Min.</i></span><span><b id="l5">–</b><i>5 Min.</i></span><span><b id="l15">–</b><i>15 Min.</i></span><span><b class="mut" id="kerne-n">–</b><i>Kerne</i></span></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="karte log" aria-label="Live-Log">
+      <div class="karte-kopf">
+        <span class="karte-titel">Live-Log</span>
+        <span class="schritt-chip" id="schritt-chip" hidden></span>
+        <span class="luecke"></span>
+        <div class="segment" role="group" aria-label="Lange Zeilen">
+          <button type="button" class="seg-knopf" id="k-umbrechen" aria-pressed="true">Umbrechen</button>
+          <button type="button" class="seg-knopf" id="k-abschneiden" aria-pressed="false">Abschneiden</button>
+        </div>
+        <button type="button" class="knopf" id="k-pause"></button>
+      </div>
+      <div class="ereignisse" id="ereignisse" aria-label="Ereignisse"></div>
+      <div class="term-rahmen">
+        <div class="term" id="term" role="log" aria-label="Ausgabe des laufenden Schritts">
+          <div id="term-innen"></div>
+        </div>
+        <div class="term-leer" id="term-leer"></div>
+        <div class="pause-hinweis" id="pause-hinweis" role="status" hidden><span id="pause-text"></span><button type="button" class="knopf" id="k-weiter">Weiter</button></div>
+      </div>
+    </section>
+
+    <div class="spalte c">
+      <section class="karte proz" aria-label="Prozesse und Platten">
+        <div class="karte-kopf"><span class="karte-titel">Prozesse</span><span class="karte-meta">Top 6 nach CPU</span></div>
+        <div class="pz pz-kopf"><span>PID</span><span>Benutzer</span><span class="r">CPU %</span><span class="r">RAM %</span><span>Befehl</span></div>
+        <div id="prozesse"></div>
+        <div class="platten" aria-label="Platten">
+          <div class="karte-kopf"><span class="karte-titel">Platten</span><span class="karte-meta" id="pl-anzahl"></span></div>
+          <div id="platten"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div id="info-ebene" hidden></div>
+
+<div class="demo" id="demo" hidden>
+  <span class="demo-titel">Demo</span>
+  <div class="segment" id="demo-zustand" role="group" aria-label="Zustand"></div>
+  <div class="segment" id="demo-github" role="group" aria-label="GitHub-Abfrage"></div>
+  <div class="segment" id="demo-update" role="group" aria-label="Update"></div>
+  <div class="segment" id="demo-kerne" role="group" aria-label="Kerne"></div>
+</div>
+</body>
+</html>

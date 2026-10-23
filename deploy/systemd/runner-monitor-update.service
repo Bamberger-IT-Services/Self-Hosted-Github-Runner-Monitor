@@ -1,0 +1,14 @@
+# Runner-Monitor – Update-Hilfsdienst (root, ADR-0004). Lädt nur das offizielle Release,
+# prüft die SHA-256-Prüfsumme, installiert versioniert und stellt bei Fehlern die alte Version wieder her.
+[Unit]
+Description=Runner-Monitor: Update installieren
+Documentation=https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/UPDATE.md
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/runner-monitor
+# Fest auf den Pfad der laufenden Version – nach dem Umhängen startet der nächste Auftrag die neue.
+Environment=PYTHONPATH=/opt/runner-monitor/aktuell
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m runner_monitor.aktualisierer
+TimeoutStartSec=300

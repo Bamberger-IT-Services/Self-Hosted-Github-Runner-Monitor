@@ -1,0 +1,41 @@
+name: Fehler melden
+description: Etwas funktioniert nicht wie erwartet.
+labels: [fehler]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Das Repository ist öffentlich.** Bitte keine IP-Adressen, Rechnernamen, Organisationsnamen, Tokens oder Passwörter eintragen – auch nicht in Bildschirmfotos oder Logs.
+  - type: textarea
+    id: was
+    attributes:
+      label: Was ist passiert?
+      description: Was haben Sie getan, was haben Sie erwartet, was kam stattdessen?
+    validations:
+      required: true
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Schritte zum Nachstellen
+      placeholder: "1. …\n2. …"
+  - type: input
+    id: version
+    attributes:
+      label: Monitor-Version
+      description: Steht unter Info › Über diesen Monitor.
+    validations:
+      required: true
+  - type: input
+    id: runner
+    attributes:
+      label: Runner-Version
+  - type: input
+    id: browser
+    attributes:
+      label: Browser und System
+  - type: textarea
+    id: log
+    attributes:
+      label: Auszug aus dem Protokoll (bereinigt)
+      description: "z. B. journalctl -u runner-monitor -n 50 – Adressen und Namen vorher entfernen"
+      render: text

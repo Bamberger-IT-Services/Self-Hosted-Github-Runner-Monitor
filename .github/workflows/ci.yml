@@ -1,0 +1,62 @@
+# Prüfungen bei jedem Pull Request (Anweisung 01).
+# Öffentliches Repository: läuft immer auf GitHubs Rechnern (ubuntu-latest), nie auf dem eigenen
+# Runner – sonst könnte Code aus fremden Pull Requests auf der Runner-VM laufen.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]   # Ubuntu 22.04 und 24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Versionen stimmen überein
+        run: |
+          v="$(tr -d '[:space:]' < VERSION)"
+          grep -q "^VERSION = \"$v\"" runner_monitor/__init__.py || { echo "VERSION ($v) und runner_monitor/__init__.py weichen ab"; exit 1; }
+      - name: Python kompiliert
+        run: python -m compileall -q runner_monitor tests
+      - name: Tests
+        run: python -W error::ResourceWarning -m unittest discover -s tests -t . -v
+      - name: Shell-Skripte (shellcheck)
+        run: shellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: JavaScript-Syntax
+        run: for f in web/*.js; do node --check "$f"; done
+      - name: Keine Inline-Skripte oder style-Attribute (CSP)
+        run: |
+          ! grep -nE '<script>|<script [^>]*>[^<]|style="' web/*.html
+      - name: Paket baut
+        run: werkzeuge/paket.sh && tar -tzf dist/runner-monitor-*.tar.gz | head
+
+  geheimnisse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: gitleaks
+        env:
+          BASIS: ${{ github.event.pull_request.base.sha }}
+        run: |
+          bereich="${BASIS:+--log-opts=$BASIS..HEAD}"
+          # shellcheck disable=SC2086
+          docker run --rm -v "$PWD:/repo" -w /repo zricethezav/gitleaks:v8.28.0 git $bereich --redact --no-banner

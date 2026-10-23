@@ -1,0 +1,1175 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Runner-Monitor</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.rm{--surface:#ffffff;--surface-alt:#f6f6f6;--ink:#13212b;--ink-muted:#4f5d67;--border:#d9dee2;--track:#e2e6e9;--brand:#0e628f;--on-brand:#ffffff;--gold-ink:#85602a;--success:#1f7a4d;--danger:#b3261e;--warning:#9a4d00;--log-bg:#0f1d27;--log-ink:#dbe3e9;--log-muted:#8796a2;--log-rule:#2c3d4a;--log-err:rgba(240,138,128,.14);--mat:rgba(255,255,255,.74);--mat-rand:rgba(19,33,43,.10);--schatten:0 1px 2px rgba(19,33,43,.08),0 8px 24px rgba(19,33,43,.10);--mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;position:relative;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden;background:var(--surface);color:var(--ink);font-size:13px;line-height:18px;font-variant-numeric:tabular-nums;-webkit-font-smoothing:antialiased}
+.rm[data-thema="dunkel"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--track:#20384c;--brand:#5aa9d6;--on-brand:#0c1a24;--gold-ink:#d6ad72;--success:#5cc08a;--danger:#f08a80;--warning:#f0a35e;--log-bg:#08131b;--log-rule:#22333f;--mat:rgba(19,40,58,.74);--mat-rand:rgba(255,255,255,.10);--schatten:0 8px 28px rgba(0,0,0,.45)}
+@media (prefers-color-scheme: dark){.rm[data-thema="system"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--track:#20384c;--brand:#5aa9d6;--on-brand:#0c1a24;--gold-ink:#d6ad72;--success:#5cc08a;--danger:#f08a80;--warning:#f0a35e;--log-bg:#08131b;--log-rule:#22333f;--mat:rgba(19,40,58,.74);--mat-rand:rgba(255,255,255,.10);--schatten:0 8px 28px rgba(0,0,0,.45)}}
+.rm *,.rm *::before,.rm *::after{box-sizing:border-box}
+.rm button{font:inherit;color:inherit;cursor:default}
+.rm svg{flex:none;display:block}
+.rm button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.kopf{flex:0 0 60px;display:flex;align-items:center;gap:16px;padding:0 20px;border-bottom:1px solid var(--border)}
+.vm{display:flex;align-items:center;gap:10px}
+.vm-icon{width:32px;height:32px;border-radius:4px;background:var(--brand);color:var(--on-brand);display:grid;place-items:center}
+.vm-eyebrow{font-size:11px;line-height:13px;color:var(--ink-muted);font-weight:500}
+.vm-name{font-size:17px;line-height:21px;font-weight:650;letter-spacing:-0.017em}
+.kopf-trenner{width:1px;height:30px;background:var(--border)}
+.runner{display:flex;flex-direction:column;gap:3px}
+.runner-name{font-size:13px;line-height:16px;font-weight:600}
+.labels{display:flex;gap:4px}
+.label{font-family:var(--mono);font-size:11px;line-height:16px;padding:0 6px;border-radius:2px;border:1px solid var(--border);color:var(--ink-muted)}
+.kopf-rechts{display:flex;align-items:center;gap:20px}
+.meldungen{flex:1;min-width:0;display:flex;justify-content:center}
+.meldung{display:flex;align-items:center;gap:9px;max-width:100%;height:38px;padding:0 14px;border-radius:4px;font-size:13px;line-height:16px;background:color-mix(in srgb,currentColor 11%,var(--surface));border:1px solid color-mix(in srgb,currentColor 38%,transparent);white-space:nowrap;animation:einblenden-m .3s ease-out}
+.meldung b{font-weight:650}
+.meldung-link{margin-left:4px;height:26px;padding:0 10px;border-radius:2px;border:1px solid currentColor;background:var(--surface);color:inherit;font-size:12px;font-weight:600;transition:transform .1s ease-out}
+.meldung-link:active{transform:scale(.97)}
+.knopf.primaer{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.knopf.gross{height:34px;padding:0 14px;font-size:13px}
+.upd-neu{margin:10px 0 12px;padding:12px 14px;border:1px solid var(--border);border-radius:4px;font-size:13px;line-height:19px}
+.upd-neu-titel{font-weight:650;margin-bottom:4px}
+.upd-neu ul{margin:0 0 8px;padding-left:18px}
+.upd-neu a{color:var(--brand);font-weight:600;font-size:12.5px}
+.upd-aktion{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin:10px 0}
+.upd-schritte{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:13px}
+.upd-schritte li{display:flex;align-items:center;gap:8px}
+.upd-schritte li.offen{color:var(--ink-muted)}
+.upd-schritte li.aktiv{font-weight:600}
+.upd-zusatz{color:var(--ink-muted);font-size:12px;font-weight:400}
+.upd-dreh{animation:dreh 1s linear infinite;transform-origin:50% 50%}
+@keyframes dreh{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.upd-dreh{animation:none}}
+.upd-auto{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px}
+.upd-auto input{width:16px;height:16px;margin:0;accent-color:var(--brand)}
+code.inl{font-family:var(--mono);font-size:12px}
+.link-knopf{display:inline-flex;align-items:center;gap:6px;margin-top:12px;padding:0;border:0;background:none;color:var(--brand);font-size:13px;font-weight:600}
+.link-knopf:hover{text-decoration:underline}
+.pl-z{margin-top:6px}
+.pl-z-kopf{display:flex;align-items:baseline;gap:8px;margin-bottom:4px;font-size:12px}
+.pl-pfad{font-size:12px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modus-knopf{min-width:86px;justify-content:center}
+.info-scrim{position:absolute;inset:0;z-index:20;background:rgba(12,26,36,.30);animation:einblenden-m .25s ease-out}
+.info{position:absolute;top:0;right:0;bottom:0;z-index:21;width:560px;display:flex;flex-direction:column;background:var(--surface);border-left:1px solid var(--border);box-shadow:-12px 0 40px rgba(12,26,36,.20);animation:info-rein .4s cubic-bezier(.22,1,.36,1)}
+@keyframes info-rein{from{transform:translateX(40px);opacity:0}to{transform:translateX(0);opacity:1}}
+.info-kopf{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border)}
+.info-titel{font-size:20px;line-height:24px;font-weight:650;letter-spacing:-.015em}
+.info-body{flex:1;min-height:0;overflow:auto;padding:0 24px 24px}
+.info-abschnitt{padding:18px 0;border-bottom:1px solid var(--border)}
+.info-abschnitt:last-child{border-bottom:0}
+.info-h{margin:0 0 10px;font-size:13px;line-height:16px;font-weight:650}
+.info-zeile{display:flex;align-items:center;justify-content:space-between}
+.info-notiz{margin:8px 0 0;font-size:12px;color:var(--ink-muted)}
+.info-text{margin:0 0 8px;font-size:13px;line-height:19px}
+.info-text a{color:var(--brand)}
+.info .kv{margin-top:0}
+.info .kv-z dd{white-space:normal}
+.anl{border-top:1px solid var(--border)}
+.anl-kopf{display:flex;align-items:center;gap:8px;width:100%;min-height:42px;padding:0;border:0;background:none;text-align:left;font-size:14px;font-weight:600}
+.anl-titel{flex:1}
+.anl-wann{margin:0 0 10px 20px;color:var(--ink-muted);font-size:13px;line-height:19px}
+.anl-schritte{margin:0 0 16px;padding-left:40px;display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:19px}
+.code{margin:6px 0 0;padding:8px 10px;border-radius:3px;background:var(--log-bg);color:var(--log-ink);font-family:var(--mono);font-size:12px;line-height:17px;white-space:pre-wrap;overflow-wrap:anywhere}
+@media (prefers-reduced-motion: reduce){.info{animation:einblenden-m .2s linear}}
+.meldung-text{color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.meldung-mehr{color:var(--ink-muted);font-size:12px;padding-left:8px;border-left:1px solid color-mix(in srgb,currentColor 30%,transparent)}
+@keyframes einblenden-m{from{opacity:0}to{opacity:1}}
+.live{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 10px;border-radius:2px;font-size:12px;font-weight:600}
+.live.ok{color:var(--success);background:color-mix(in srgb,var(--success) 10%,transparent)}
+.live.weg{color:var(--danger);background:color-mix(in srgb,var(--danger) 11%,transparent)}
+.live-zeit{color:var(--ink-muted);font-weight:400}
+.punkt{width:7px;height:7px;border-radius:50%;background:currentColor}
+.uhr{display:flex;align-items:baseline;gap:8px}
+.uhr-datum{font-size:13px;color:var(--ink-muted)}
+.uhr-zeit{font-size:20px;line-height:24px;font-weight:600;letter-spacing:-0.012em}
+.banner{position:absolute;top:72px;left:50%;transform:translateX(-50%);z-index:5;display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:4px;background:var(--mat);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border:1px solid var(--mat-rand);box-shadow:var(--schatten);font-size:13px;white-space:nowrap;animation:auftauchen .36s cubic-bezier(.22,1,.36,1)}
+.banner .ic{color:var(--danger)}
+.banner b{font-weight:650}
+@keyframes auftauchen{from{opacity:0;transform:translate(-50%,-8px) scale(.98)}to{opacity:1;transform:translate(-50%,0) scale(1)}}
+.raster{flex:1;min-height:0;display:grid;grid-template-columns:400px minmax(0,1fr) 400px;grid-template-rows:336px minmax(0,1fr);gap:12px;padding:12px 16px 16px;transition:opacity .4s,filter .4s}
+.raster.veraltet{opacity:.5;filter:grayscale(.9)}
+.spalte{display:flex;flex-direction:column;gap:12px;min-height:0;min-width:0}
+.spalte.a{grid-column:1;grid-row:1 / 3}
+.spalte.b{display:contents}
+.spalte.c{grid-column:3;grid-row:1}
+.karte{background:var(--surface-alt);border-radius:4px;padding:14px 16px;display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
+.karte-kopf{display:flex;align-items:center;gap:8px;min-height:22px;margin-bottom:10px}
+.karte-titel{font-size:13px;line-height:16px;font-weight:650;letter-spacing:-0.005em}
+.karte-meta{margin-left:auto;font-size:12px;color:var(--ink-muted);white-space:nowrap}
+.mono{font-family:var(--mono)}
+.pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border-radius:2px;font-size:12px;font-weight:550;white-space:nowrap;background:color-mix(in srgb,currentColor 10%,transparent)}
+.ok{color:var(--success)}.fehler{color:var(--danger)}.warn{color:var(--warning)}.laeuft{color:var(--brand)}.wartet{color:var(--gold-ink)}.neutral{color:var(--ink-muted)}
+.pillen{margin-left:auto;display:flex;gap:6px}
+.status{flex:0 0 486px;padding:18px 20px}
+.zustand{display:flex;align-items:center;gap:10px;margin:8px 0 14px}
+.zustand-titel{font-size:30px;line-height:34px;font-weight:650;letter-spacing:-0.024em}
+.job-repo{display:flex;align-items:center;gap:6px;font-size:17px;line-height:22px;font-weight:600;letter-spacing:-0.014em}
+.job-repo svg{color:var(--ink-muted)}
+.job-pfad{margin-top:2px;font-size:14px;line-height:20px;color:var(--ink-muted)}
+.job-pfad b{color:var(--ink);font-weight:550}
+.sep{padding:0 4px;color:var(--ink-muted)}
+.job-ref{display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--ink-muted);min-width:0}
+.ref{font-family:var(--mono);font-size:12px;line-height:18px;color:var(--ink);background:var(--surface);border:1px solid var(--border);padding:0 6px;border-radius:2px;white-space:nowrap}
+.ref-titel{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.schritt{margin-top:16px}
+.zeile-k{display:flex;justify-content:space-between;font-size:11.5px;line-height:14px;color:var(--ink-muted)}
+.schritt-name{margin-top:3px;font-size:15px;line-height:20px;font-weight:600}
+.segmente{display:grid;gap:3px;margin-top:8px}
+.seg{height:4px;border-radius:1px;background:var(--track);transition:background-color .4s}
+.seg.fertig{background:var(--brand)}
+.seg.aktiv{background:color-mix(in srgb,var(--brand) 45%,var(--track))}
+.zahlen{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+.zahl-gross{font-size:28px;line-height:32px;font-weight:600;letter-spacing:-0.022em;margin-top:2px}
+.zahl-mittel{font-size:17px;line-height:22px;font-weight:600;margin-top:4px}
+.zahl-sub{font-size:12px;color:var(--ink-muted)}
+.zustand-text{margin:0;font-size:14px;line-height:20px;color:var(--ink-muted);max-width:340px}
+.kv{margin:16px 0 0;display:flex;flex-direction:column}
+.kv-z{display:grid;grid-template-columns:110px minmax(0,1fr);gap:8px;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px}
+.kv-z dt{color:var(--ink-muted)}
+.kv-z dd{margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.letzte{margin-top:auto;padding-top:12px;border-top:1px solid var(--border)}
+.letzte-titel{font-size:12px;line-height:16px;font-weight:650;color:var(--ink-muted);margin-bottom:4px}
+.jobzeile{display:grid;grid-template-columns:108px minmax(0,1fr) 46px 40px;gap:8px;align-items:center;height:27px;font-size:12.5px}
+.erg{display:flex;align-items:center;gap:5px;font-weight:550}
+.jz-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jz-wf{color:var(--ink-muted)}
+.jz-dauer{text-align:right}
+.jz-ende{text-align:right;color:var(--ink-muted)}
+.wf{flex:1}
+.summen{display:flex;gap:22px;margin-bottom:8px}
+.summe{display:flex;align-items:center;gap:6px}
+.summe-zahl{font-size:28px;line-height:32px;font-weight:600;letter-spacing:-0.022em}
+.summe-text{font-size:13px;color:var(--ink)}
+.repo{display:flex;align-items:center;gap:8px;height:30px;border-top:1px solid var(--border)}
+.repo-name{display:flex;align-items:center;gap:5px;font-weight:550;min-width:0;white-space:nowrap}
+.repo-name svg{color:var(--ink-muted)}
+.repo-pillen{margin-left:auto;display:flex;gap:6px}
+.alle-ruhig{display:flex;align-items:center;gap:6px;height:30px;border-top:1px solid var(--border);color:var(--ink-muted)}
+.ruhig-knopf{display:flex;align-items:center;gap:6px;width:100%;height:30px;padding:0;border:0;border-top:1px solid var(--border);background:none;text-align:left;color:var(--ink-muted);font-size:12.5px}
+.ruhig-knopf:hover{color:var(--ink)}
+.chev{transition:transform .3s cubic-bezier(.22,1,.36,1)}
+.chev.offen{transform:rotate(90deg)}
+.ruhig-liste{display:flex;flex-wrap:wrap;gap:4px 6px;padding:2px 0 8px 20px}
+.ruhig-repo{font-size:12px;line-height:18px;color:var(--ink-muted);padding:0 6px;border:1px solid var(--border);border-radius:2px}
+.wf-inhalt{flex:1;min-height:0;overflow:auto}
+.wf-inhalt.alt{opacity:.55}
+.wf-fuss{margin-top:auto;padding-top:8px;display:flex;flex-direction:column;gap:6px}
+.wf-zeit{font-size:12px;color:var(--ink-muted)}
+.hinweis{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;line-height:17px;font-weight:550}
+.hinweis svg{margin-top:1px}
+.hinweis span{color:var(--ink);font-weight:400}
+.leerzustand{flex:1;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px;padding:0 4px 8px}
+.leer-ic{color:var(--ink-muted);margin-bottom:4px}
+.leer-titel{font-size:15px;line-height:20px;font-weight:600}
+.leer-text{font-size:13px;color:var(--ink-muted);max-width:320px}
+.leer-pfad{margin-top:4px;font-family:var(--mono);font-size:12px;padding:2px 6px;border:1px solid var(--border);border-radius:2px;background:var(--surface)}
+.ausl{grid-column:2;grid-row:1;min-height:0}
+.ausl-raster{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px}
+.ausl-spalte{display:flex;flex-direction:column;min-height:0}
+.gross-zeile{display:flex;align-items:baseline;justify-content:space-between}
+.mess-label{font-size:12px;font-weight:650;color:var(--ink-muted)}
+.gross-wert{font-size:28px;line-height:32px;font-weight:600;letter-spacing:-0.022em}
+.einheit{font-size:14px;font-weight:500;color:var(--ink-muted);letter-spacing:0;margin-left:2px}
+.spark{margin:6px 0 10px}
+.spark svg{width:100%;height:48px}
+.spark-linie{fill:none;stroke:var(--brand);stroke-width:1.5;stroke-linejoin:round;vector-effect:non-scaling-stroke}
+.spark-flaeche{fill:var(--brand);opacity:.13}
+.spark-raster{stroke:var(--border);stroke-width:1;stroke-dasharray:2 3;vector-effect:non-scaling-stroke}
+.spark-achse{display:flex;justify-content:space-between;font-size:10.5px;line-height:12px;color:var(--ink-muted);margin-top:3px}
+.kerne{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-auto-flow:column;column-gap:16px;row-gap:2px;align-content:start}
+.kern{display:grid;grid-template-columns:16px minmax(0,1fr) 40px;gap:6px;align-items:center;font-size:11.5px;line-height:14px;min-height:12px}
+.kern-l{color:var(--ink-muted);text-align:right}
+.kern-w{text-align:right}
+.balken{position:relative;height:6px;border-radius:2px;background:var(--track);overflow:hidden}
+.fuell{position:absolute;inset:0;background:var(--brand);transform-origin:left center;transition:transform .7s cubic-bezier(.22,1,.36,1)}
+.fuell.gedimmt{background:color-mix(in srgb,var(--brand) 55%,var(--track))}
+.meter{display:grid;grid-template-columns:44px minmax(0,1fr) 92px;gap:8px;align-items:center;height:22px;font-size:12px}
+.m-l{color:var(--ink-muted)}
+.m-w{text-align:right;white-space:nowrap}
+.last{display:grid;grid-template-columns:44px minmax(0,1fr);gap:8px;align-items:start;margin-top:6px;font-size:12px}
+.last-werte{display:flex;gap:16px}
+.last-werte span{display:flex;flex-direction:column}
+.last-werte b{font-size:15px;line-height:19px;font-weight:600}
+.last-werte i{font-style:normal;font-size:11px;color:var(--ink-muted)}
+.log{grid-column:2 / 4;grid-row:2;min-height:0}
+.schritt-chip{font-size:12px;line-height:20px;padding:0 8px;border-radius:2px;color:var(--brand);background:color-mix(in srgb,var(--brand) 10%,transparent);font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.luecke{flex:1}
+.segment{display:flex;border:1px solid var(--border);border-radius:2px;overflow:hidden;background:var(--surface)}
+.seg-knopf{border:0;background:none;height:24px;padding:0 9px;font-size:12px;color:var(--ink-muted)}
+.seg-knopf.an{background:var(--track);color:var(--ink);font-weight:550}
+.knopf{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--border);border-radius:2px;background:var(--surface);font-size:12px;font-weight:550;transition:transform .1s ease-out}
+.knopf:active,.seg-knopf:active,.ruhig-knopf:active,.ct-gruppe:active{transform:scale(.97)}
+.ereignisse{display:flex;flex-direction:column;margin-bottom:8px}
+.ev{display:grid;grid-template-columns:58px 16px minmax(0,1fr) auto;gap:8px;align-items:center;height:21px;font-size:12px}
+.ev-zeit{color:var(--ink-muted)}
+.ev-text{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink-muted)}
+.ev-text b{color:var(--ink);font-weight:600}
+.ev-rechts{font-weight:550;white-space:nowrap}
+.term-rahmen{flex:1;min-height:0;position:relative;border-radius:3px;overflow:hidden;background:var(--log-bg)}
+.term{position:absolute;inset:0;display:flex;flex-direction:column-reverse;overflow:hidden;padding:6px 0 8px;font-family:var(--mono);font-size:12px;line-height:17px;color:var(--log-ink);font-variant-numeric:normal}
+.term.pausiert{overflow-y:auto}
+.z{display:grid;grid-template-columns:64px minmax(0,1fr);padding:0 12px;min-height:17px}
+.zt{color:var(--log-muted);font-variant-numeric:tabular-nums}
+.zx{white-space:pre-wrap;overflow-wrap:anywhere}
+.term.kurz .zx{white-space:pre;overflow:hidden;text-overflow:ellipsis}
+.z.fehler{background:var(--log-err)}
+.z.fehler .zt{color:#ff9e95}
+.trenner{display:flex;align-items:center;gap:8px;margin:10px 12px 5px;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:12px;line-height:18px;color:#f2f6f8}
+.tr-nr{color:#9cc9e8;font-weight:600;font-variant-numeric:tabular-nums}
+.tr-name{font-weight:650}
+.tr-linie{flex:1;height:1px;background:var(--log-rule)}
+.tr-zeit{color:var(--log-muted);font-family:var(--mono);font-variant-numeric:tabular-nums}
+.term-leer{padding:0 12px 6px;color:var(--log-muted);font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-size:13px}
+.pause-hinweis{position:absolute;left:50%;bottom:12px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:6px 6px 6px 14px;border-radius:4px;background:rgba(28,44,56,.72);-webkit-backdrop-filter:blur(16px) saturate(160%);backdrop-filter:blur(16px) saturate(160%);border:1px solid rgba(255,255,255,.12);color:#eef2f5;font-size:12px;font-weight:550;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.pause-hinweis .knopf{background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.16);color:#fff}
+.a1{font-weight:700}.a2{opacity:.68}.a3{font-style:italic}.a4{text-decoration:underline}
+.f30,.f90{color:#8796a2}.f31{color:#ff8a80}.f32{color:#7fd4a0}.f33{color:#e8c477}.f34{color:#79b8e6}.f35{color:#d6a2e8}.f36{color:#7fd1d9}.f37{color:#dbe3e9}
+.f91{color:#ffa59d}.f92{color:#9be3b5}.f93{color:#f2d58e}.f94{color:#9dcbf0}.f95{color:#e2bcef}.f96{color:#a0e0e6}.f97{color:#ffffff}
+.b41{background:#6b231d}.b42{background:#1d4a32}.b43{background:#5a4613}
+.proz{flex:1}
+.proz .platte{margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.proz .platte .karte-kopf{margin-bottom:6px}
+.pz{display:grid;grid-template-columns:44px 88px 46px 42px minmax(0,1fr);gap:0 8px;align-items:center;height:21px;font-size:12px}
+.pz-kopf{height:18px;font-size:11px;font-weight:650;color:var(--ink-muted);border-bottom:1px solid var(--border);margin-bottom:2px}
+.r{text-align:right}
+.mut{color:var(--ink-muted)}
+.eng{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmd{font-family:var(--mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-zahlen{display:flex;align-items:baseline;justify-content:space-between}
+.pl-frei{font-size:24px;line-height:28px;font-weight:600;letter-spacing:-0.02em}
+.pl-frei small{font-size:13px;font-weight:500;color:var(--ink-muted);letter-spacing:0;margin-left:3px}
+.pl-frei.warn small{color:var(--warning)}
+.pl-belegt{font-size:12px;color:var(--ink-muted)}
+.pl-balken{position:relative;height:8px;margin-top:10px;border-radius:2px;background:var(--track)}
+.pl-teil{position:absolute;top:0;bottom:0;left:0;background:var(--brand);border-radius:2px 0 0 2px;transition:width .7s cubic-bezier(.22,1,.36,1)}
+.pl-teil.ueber{background:var(--warning);border-radius:0}
+.pl-marke{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:var(--ink);border-radius:1px}
+.pl-legende{position:relative;height:16px;margin-top:5px;font-size:11px;line-height:16px;color:var(--ink-muted)}
+.pl-legende span{position:absolute;top:0;padding-right:6px;white-space:nowrap}
+.pl-fuss{margin-top:6px;font-size:12px;color:var(--ink-muted)}
+.proz .ct{flex:1;min-height:0;display:flex;flex-direction:column;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)}
+.ct-zeile{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.ct-zeile .karte-titel{margin-right:2px}
+.ct-anz{font-size:12px;color:var(--ink-muted);margin-right:4px}
+.ct-chip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px;border:1px solid var(--border);border-radius:2px;background:var(--surface);font-size:12px;white-space:nowrap}
+.proz .ct .ct-liste{margin-top:6px}
+.pl-frei-k{font-size:13px;font-weight:650}
+.pl-frei-k.warn{color:var(--warning)}
+.proz .pl-balken{margin-top:2px;height:6px}
+.pl-warn{margin-top:6px;font-size:12px}
+.ct-liste{flex:1;min-height:0;overflow:auto;margin:0 -4px;padding:0 4px}
+.ct-gruppe{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:6px;align-items:center;width:100%;height:30px;padding:0;border:0;border-bottom:1px solid var(--border);background:none;text-align:left;font-size:12.5px}
+.ct-gname{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct-gname i{font-style:normal;font-weight:400;color:var(--ink-muted)}
+.ct-gstatus{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--success);font-weight:550}
+.ct-z{display:grid;grid-template-columns:14px minmax(0,1fr) auto;gap:6px;align-items:center;height:26px;font-size:12.5px;border-bottom:1px solid var(--border)}
+.ct-z.ein{padding-left:20px}
+.ct-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ct-img{font-family:var(--mono);font-size:11px;color:var(--ink-muted);margin-left:4px}
+.ct-zeit{font-size:12px;color:var(--ink-muted);white-space:nowrap}
+.leer{color:var(--ink-muted);padding:8px 0}
+@media (prefers-reduced-motion: reduce){
+.rm .fuell,.rm .pl-teil,.rm .seg,.rm .chev{transition:none}
+.rm .raster{transition:opacity .2s linear}
+.banner{animation:einblenden .2s linear}
+@keyframes einblenden{from{opacity:0}to{opacity:1}}
+}
+@media (prefers-reduced-transparency: reduce){
+.banner{background:var(--surface);-webkit-backdrop-filter:none;backdrop-filter:none}
+.pause-hinweis{background:#1c2c38;-webkit-backdrop-filter:none;backdrop-filter:none}
+}
+</style>
+</helmet>
+<div class="rm" data-thema="{{thema}}" style="width: 1440px; height: 900px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; color: var(--ink)">
+
+<header class="kopf">
+  <div class="vm">
+    <span class="vm-icon"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4.5" rx="1"></rect><rect x="2" y="9" width="12" height="4.5" rx="1"></rect><path d="M4.5 4.75h.01M4.5 11.25h.01M8 4.75h3.5M8 11.25h3.5"></path></svg></span>
+    <div style="display: flex; align-items: center">
+      
+      <div class="vm-name" title="Name der VM (Hostname), nicht der Titel des Dienstes">{{kopf.vm}}</div>
+    </div>
+  </div>
+  <div class="kopf-trenner"></div>
+  <div class="runner">
+    <div class="runner-name">{{kopf.runner}}</div>
+    <div class="labels"><sc-for list="{{kopf.labels}}" as="lb" hint-placeholder-count="4"><span class="label">{{lb}}</span></sc-for></div>
+  </div>
+  <div class="meldungen" role="status">
+    <sc-if value="{{ml.da}}" hint-placeholder-val="{{false}}">
+      <div class="meldung {{ml.cls}}">
+        <sc-if value="{{ml.isGetrennt}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l11 11M6 4.6A8.6 8.6 0 0114.5 6.6M1.5 6.6a8.7 8.7 0 012.2-1.4M4 9.4a5 5 0 014.6-1.2M8 12.6h.01"></path></svg></sc-if>
+        <sc-if value="{{ml.isX}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg></sc-if>
+        <sc-if value="{{ml.isWarn}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.9l6.4 11.3H1.6z"></path><path d="M8 6.3v3.2M8 11.4v.1"></path></svg></sc-if>
+        <sc-if value="{{ml.isUpd}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 4.8v6M5.4 8.6L8 11.2l2.6-2.6"></path></svg></sc-if>
+        <sc-if value="{{ml.isOkM}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if>
+        <sc-if value="{{ml.isKey}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="11" r="2.6"></circle><path d="M6.9 9.1L13 3M11 5l1.6 1.6M9.4 6.6l1.4 1.4"></path></svg></sc-if>
+        <b>{{ml.titel}}</b>
+        <span class="meldung-text">{{ml.text}}</span>
+        <sc-if value="{{ml.hatMehr}}" hint-placeholder-val="{{false}}"><span class="meldung-mehr">{{ml.mehr}}</span></sc-if>
+        <button type="button" class="meldung-link" onClick="{{ml.oeffnen}}">{{ml.linkText}}</button>
+      </div>
+    </sc-if>
+  </div>
+  <div class="kopf-rechts">
+    <span class="live {{kopf.liveCls}}">
+      <sc-if value="{{kopf.verbunden}}" hint-placeholder-val="{{true}}"><span class="punkt"></span></sc-if>
+      <sc-if value="{{kopf.getrennt}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l11 11M6 4.6A8.6 8.6 0 0114.5 6.6M1.5 6.6a8.7 8.7 0 012.2-1.4M4 9.4a5 5 0 014.6-1.2M8 12.6h.01"></path></svg></sc-if>
+      <span>{{kopf.liveText}}</span>
+      <span class="live-zeit">{{kopf.liveZeit}}</span>
+    </span>
+    <span class="uhr"><span class="uhr-datum">{{kopf.datum}}</span><span class="uhr-zeit">{{kopf.uhrzeit}}</span></span>
+    <button type="button" class="knopf modus-knopf" onClick="{{modus.weiter}}" aria-label="{{modus.aria}}" title="Darstellung: Automatisch, Hell oder Dunkel">
+      <sc-if value="{{modus.isSystem}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M8 2a6 6 0 010 12z" fill="currentColor" stroke="none"></path></svg></sc-if>
+      <sc-if value="{{modus.isHell}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="3"></circle><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"></path></svg></sc-if>
+      <sc-if value="{{modus.isDunkel}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 9.6A5.8 5.8 0 016.4 2.5a5.8 5.8 0 107.1 7.1z"></path></svg></sc-if>
+      {{modus.text}}
+    </button>
+    <button type="button" class="knopf info-knopf" onClick="{{info.oeffnenAllg}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 7.2v4M8 4.9v.1"></path></svg>Info &amp; Hilfe</button>
+  </div>
+</header>
+
+<sc-if value="{{kopf.bannerAus}}" hint-placeholder-val="{{false}}">
+  <div class="banner" role="status">
+    <svg class="ic" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l11 11M6 4.6A8.6 8.6 0 0114.5 6.6M1.5 6.6a8.7 8.7 0 012.2-1.4M4 9.4a5 5 0 014.6-1.2M8 12.6h.01"></path></svg>
+    <span><b>Verbindung zum Monitor unterbrochen.</b> Angezeigt wird der Stand von {{kopf.standZeit}} ({{kopf.standVor}}). Neuer Versuch läuft automatisch.</span>
+  </div>
+</sc-if>
+
+<main class="raster {{kopf.veraltetCls}}">
+
+  <div class="spalte a">
+    <section class="karte status" aria-label="Runner-Status">
+      <div class="karte-kopf">
+        <span class="karte-titel">Runner-Status</span>
+        <div class="pillen">
+          <span class="pill {{st.dienst.cls}}">
+            <sc-if value="{{st.dienst.ok}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if>
+            <sc-if value="{{st.dienst.nok}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg></sc-if>
+            {{st.dienst.text}}
+          </span>
+          <span class="pill {{st.gh.cls}}">
+            <sc-if value="{{st.gh.ok}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if>
+            <sc-if value="{{st.gh.nok}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg></sc-if>
+            <sc-if value="{{st.gh.unklar}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5 8h6"></path></svg></sc-if>
+            {{st.gh.text}}
+          </span>
+        </div>
+      </div>
+
+      <div class="zustand {{st.cls}}">
+        <sc-if value="{{st.isJob}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="6.6"></circle><path d="M6.6 5.4v5.2L10.6 8z" fill="currentColor" stroke="none"></path></svg></sc-if>
+        <sc-if value="{{st.isBereit}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.6"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if>
+        <sc-if value="{{st.isGestoppt}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.6"></circle><rect x="5.6" y="5.6" width="4.8" height="4.8" rx=".6" fill="currentColor" stroke="none"></rect></svg></sc-if>
+        <sc-if value="{{st.isOffline}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.9l6.4 11.3H1.6z"></path><path d="M8 6.3v3.2M8 11.4v.1"></path></svg></sc-if>
+        <span class="zustand-titel">{{st.titel}}</span>
+      </div>
+
+      <sc-if value="{{st.isJob}}" hint-placeholder-val="{{true}}">
+        <div>
+          <div class="job-repo">{{st.job.repo}}<sc-if value="{{st.job.privat}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" aria-label="privat" role="img"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 015 0v2"></path></svg></sc-if></div>
+          <div class="job-pfad">Workflow <b>{{st.job.workflow}}</b><span class="sep">›</span>Job <b>{{st.job.name}}</b></div>
+          <div class="job-ref"><span>{{st.job.refArt}}</span><span class="ref">{{st.job.ref}}</span><span class="ref-titel">{{st.job.refTitel}}</span></div>
+        </div>
+        <div class="schritt">
+          <div class="zeile-k"><span>Aktueller Schritt</span><span>{{st.job.schrittNr}} von {{st.job.schrittVon}}</span></div>
+          <div class="schritt-name">{{st.job.schrittName}}</div>
+          <div class="segmente" style="grid-template-columns: repeat({{st.job.schrittVon}}, minmax(0, 1fr))"><sc-for list="{{st.job.segs}}" as="sg" hint-placeholder-count="8"><span class="seg {{sg.cls}}"></span></sc-for></div>
+        </div>
+        <div class="zahlen">
+          <div><div class="zeile-k">Laufzeit</div><div class="zahl-gross">{{st.job.laufzeit}}</div></div>
+          <div><div class="zeile-k">Gestartet</div><div class="zahl-mittel">{{st.job.gestartet}}</div><div class="zahl-sub">{{st.job.datum}}</div></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{st.keinJob}}" hint-placeholder-val="{{false}}">
+        <p class="zustand-text">{{st.text}}</p>
+        <dl class="kv"><sc-for list="{{st.kv}}" as="k" hint-placeholder-count="3"><div class="kv-z"><dt>{{k.k}}</dt><dd>{{k.v}}</dd></div></sc-for></dl>
+        <sc-if value="{{st.zeigeLogs}}" hint-placeholder-val="{{false}}"><button type="button" class="link-knopf" onClick="{{st.logsOeffnen}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2.5h5.5L12 5v8.5H4z"></path><path d="M6 7.5h4M6 10h4"></path></svg>So rufst du die Runner-Logs ab ›</button></sc-if>
+      </sc-if>
+
+      <div class="letzte">
+        <div class="letzte-titel">Letzte Jobs</div>
+        <sc-for list="{{st.letzte}}" as="j" hint-placeholder-count="5">
+          <div class="jobzeile">
+            <span class="erg {{j.cls}}">
+              <sc-if value="{{j.isOk}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if>
+              <sc-if value="{{j.isFehler}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg></sc-if>
+              <sc-if value="{{j.isAbbr}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M3.6 12.4l8.8-8.8"></path></svg></sc-if>
+              {{j.wort}}
+            </span>
+            <span class="jz-name">{{j.repo}} <span class="jz-wf">· {{j.wf}}</span></span>
+            <span class="jz-dauer">{{j.dauer}}</span>
+            <span class="jz-ende">{{j.ende}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </section>
+
+    <section class="karte wf" aria-label="Workflows je Repository">
+      <div class="karte-kopf"><span class="karte-titel">Workflows</span><span class="karte-meta">{{wf.meta}}</span></div>
+
+      <sc-if value="{{wf.keinToken}}" hint-placeholder-val="{{false}}">
+        <div class="leerzustand">
+          <svg class="leer-ic" viewBox="0 0 16 16" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="11" r="2.6"></circle><path d="M6.9 9.1L13 3M11 5l1.6 1.6M9.4 6.6l1.4 1.4"></path></svg>
+          <div class="leer-titel">Kein GitHub-Token eingerichtet</div>
+          <div class="leer-text">Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.</div>
+          <div class="leer-pfad">/etc/runner-monitor/github-token</div>
+          <button type="button" class="knopf" style="margin-top: 8px" onClick="{{info.zuToken}}">So richtest du das Token ein</button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{wf.hatDaten}}" hint-placeholder-val="{{true}}">
+        <div class="wf-inhalt {{wf.altCls}}">
+          <div class="summen">
+            <div class="summe laeuft"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M6.6 5.4v5.2L10.6 8z" fill="currentColor" stroke="none"></path></svg><span class="summe-zahl">{{wf.l}}</span><span class="summe-text">{{wf.lText}}</span></div>
+            <div class="summe wartet"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 4.6V8l2.3 1.5"></path></svg><span class="summe-zahl">{{wf.w}}</span><span class="summe-text">{{wf.wText}}</span></div>
+          </div>
+          <sc-for list="{{wf.aktiv}}" as="r" hint-placeholder-count="3">
+            <div class="repo">
+              <span class="repo-name">{{r.name}}<sc-if value="{{r.privat}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" role="img" aria-label="privat"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 015 0v2"></path></svg></sc-if></span>
+              <span class="repo-pillen">
+                <sc-if value="{{r.hasL}}" hint-placeholder-val="{{true}}"><span class="pill laeuft"><svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true"><path d="M4.5 3v10l8-5z" fill="currentColor"></path></svg>{{r.lText}}</span></sc-if>
+                <sc-if value="{{r.hasW}}" hint-placeholder-val="{{false}}"><span class="pill wartet"><svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.8V8l2 1.3"></path></svg>{{r.wText}}</span></sc-if>
+              </span>
+            </div>
+          </sc-for>
+          <sc-if value="{{wf.alleRuhig}}" hint-placeholder-val="{{false}}"><div class="alle-ruhig"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg>Nichts läuft, nichts wartet</div></sc-if>
+          <button type="button" class="ruhig-knopf" onClick="{{wf.toggle}}" aria-expanded="{{wf.offenText}}"><svg class="chev {{wf.chevCls}}" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5"></path></svg>{{wf.ruhigText}}</button>
+          <sc-if value="{{wf.offen}}" hint-placeholder-val="{{false}}"><div class="ruhig-liste"><sc-for list="{{wf.ruhig}}" as="q" hint-placeholder-count="6"><span class="ruhig-repo">{{q.name}}</span></sc-for></div></sc-if>
+        </div>
+      </sc-if>
+
+      <div class="wf-fuss">
+        <sc-if value="{{wf.fehler}}" hint-placeholder-val="{{false}}"><div class="hinweis warn"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.9l6.4 11.3H1.6z"></path><path d="M8 6.3v3.2M8 11.4v.1"></path></svg><div>GitHub nicht erreichbar <span>– angezeigt wird der Stand von {{wf.standZeit}}. Neuer Versuch in {{wf.naechste}} s.</span></div></div></sc-if>
+        <sc-if value="{{wf.tokenWarn}}" hint-placeholder-val="{{false}}"><div class="hinweis warn"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><circle cx="5" cy="11" r="2.6"></circle><path d="M6.9 9.1L13 3M11 5l1.6 1.6M9.4 6.6l1.4 1.4"></path></svg><div>Token läuft in 14 Tagen ab <span>({{wf.ablauf}}). Danach bleibt dieser Bereich leer.</span></div></div></sc-if>
+        <div class="wf-zeit">{{wf.zeitText}}</div>
+      </div>
+    </section>
+  </div>
+
+  <div class="spalte b">
+    <section class="karte ausl" aria-label="Auslastung" style="flex: 0 0 auto; height: auto; min-height: 0; align-self: stretch; display: flex; flex-direction: column">
+      <div class="karte-kopf"><span class="karte-titel">Auslastung</span><span class="karte-meta">{{sys.meta}}</span></div>
+      <div class="ausl-raster" style="flex: 1 1 auto; align-items: stretch">
+        <div class="ausl-spalte" style="display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+          <div class="gross-zeile"><span class="mess-label">CPU gesamt</span><span class="gross-wert">{{sys.cpu}}<span class="einheit">%</span></span></div>
+          <div class="spark" style="flex: 1 1 0; min-height: 32px">
+            <svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="CPU-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"></line><path class="spark-flaeche" d="{{sys.cpuFlaeche}}"></path><path class="spark-linie" d="{{sys.cpuLinie}}"></path></svg>
+            <div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
+          </div>
+          <div class="kerne" style="grid-template-rows: repeat({{sys.kernZeilen}}, minmax(12px, 24px)); flex: 0 0 auto; align-content: start">
+            <sc-for list="{{sys.kerne}}" as="c" hint-placeholder-count="4">
+              <div class="kern"><span class="kern-l">{{c.label}}</span><span class="balken"><span class="fuell" style="transform: scaleX({{c.s}})"></span></span><span class="kern-w">{{c.text}}</span></div>
+            </sc-for>
+          </div>
+        </div>
+        <div class="ausl-spalte" style="display: flex; flex-direction: column; justify-content: space-between; gap: 10px">
+          <div class="gross-zeile"><span class="mess-label">Arbeitsspeicher</span><span class="gross-wert">{{sys.ram}}<span class="einheit">von {{sys.ramGesamt}} GB</span></span></div>
+          <div class="spark" style="flex: 1 1 0; min-height: 32px">
+            <svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="RAM-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"></line><path class="spark-flaeche" d="{{sys.ramFlaeche}}"></path><path class="spark-linie" d="{{sys.ramLinie}}"></path></svg>
+            <div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
+          </div>
+          <div class="meter"><span class="m-l">RAM</span><span class="balken"><span class="fuell" style="transform: scaleX({{sys.ramS}})"></span></span><span class="m-w">{{sys.ramPct}} %</span></div>
+          <div class="meter"><span class="m-l">Swap</span><span class="balken"><span class="fuell gedimmt" style="transform: scaleX({{sys.swapS}})"></span></span><span class="m-w">{{sys.swap}}</span></div>
+          <div class="last"><span class="m-l">Last</span><span class="last-werte"><span><b>{{sys.l1}}</b><i>1 Min.</i></span><span><b>{{sys.l5}}</b><i>5 Min.</i></span><span><b>{{sys.l15}}</b><i>15 Min.</i></span><span><b class="mut">{{sys.n}}</b><i>Kerne</i></span></span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="karte log" aria-label="Live-Log" style="flex: 1 1 0; min-height: 0">
+      <div class="karte-kopf">
+        <span class="karte-titel">Live-Log</span>
+        <sc-if value="{{lg.hatSchritt}}" hint-placeholder-val="{{true}}"><span class="schritt-chip">{{lg.schritt}}</span></sc-if>
+        <span class="luecke"></span>
+        <div class="segment" role="group" aria-label="Lange Zeilen">
+          <button type="button" class="seg-knopf {{lg.umbrCls}}" aria-pressed="{{lg.umbrP}}" onClick="{{lg.setUmbr}}">Umbrechen</button>
+          <button type="button" class="seg-knopf {{lg.kurzCls}}" aria-pressed="{{lg.kurzP}}" onClick="{{lg.setKurz}}">Abschneiden</button>
+        </div>
+        <button type="button" class="knopf" onClick="{{lg.togglePause}}">
+          <sc-if value="{{lg.laeuft}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><rect x="4" y="3" width="2.6" height="10" rx=".6" fill="currentColor"></rect><rect x="9.4" y="3" width="2.6" height="10" rx=".6" fill="currentColor"></rect></svg></sc-if>
+          <sc-if value="{{lg.paused}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true"><path d="M4.5 3v10l8-5z" fill="currentColor"></path></svg></sc-if>
+          {{lg.pauseText}}
+        </button>
+      </div>
+      <div class="ereignisse" aria-label="Ereignisse">
+        <sc-for list="{{lg.events}}" as="e" hint-placeholder-count="3">
+          <div class="ev">
+            <span class="ev-zeit">{{e.zeit}}</span>
+            <span class="{{e.cls}}">
+              <sc-if value="{{e.isPlay}}" hint-placeholder-val="{{true}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M6.6 5.4v5.2L10.6 8z" fill="currentColor" stroke="none"></path></svg></sc-if>
+              <sc-if value="{{e.isOk}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if>
+              <sc-if value="{{e.isX}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg></sc-if>
+              <sc-if value="{{e.isWarn}}" hint-placeholder-val="{{false}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.9l6.4 11.3H1.6z"></path><path d="M8 6.3v3.2M8 11.4v.1"></path></svg></sc-if>
+            </span>
+            <span class="ev-text"><b>{{e.titel}}</b> · {{e.text}}</span>
+            <span class="ev-rechts {{e.cls}}">{{e.rechts}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <div class="term-rahmen">
+        <div class="term {{lg.termCls}}" role="log" aria-label="Ausgabe des laufenden Schritts">
+          <div>
+            <sc-for list="{{lg.zeilen}}" as="z" hint-placeholder-count="12">
+              <sc-if value="{{z.isT}}" hint-placeholder-val="{{false}}"><div class="trenner"><span class="tr-nr">{{z.nr}}</span><span class="tr-name">{{z.name}}</span><span class="tr-linie"></span><span class="tr-zeit">{{z.zeit}}</span></div></sc-if>
+              <sc-if value="{{z.isZ}}" hint-placeholder-val="{{true}}"><div class="z {{z.cls}}"><span class="zt">{{z.zeit}}</span><span class="zx"><sc-for list="{{z.segs}}" as="s" hint-placeholder-count="1"><span class="{{s.c}}">{{s.t}}</span></sc-for></span></div></sc-if>
+            </sc-for>
+            <sc-if value="{{lg.leer}}" hint-placeholder-val="{{false}}"><div class="term-leer">{{lg.leerText}}</div></sc-if>
+          </div>
+        </div>
+        <sc-if value="{{lg.paused}}" hint-placeholder-val="{{false}}">
+          <div class="pause-hinweis" role="status"><span>Angehalten · {{lg.neu}}</span><button type="button" class="knopf" onClick="{{lg.togglePause}}">Weiter</button></div>
+        </sc-if>
+      </div>
+    </section>
+  </div>
+
+  <div class="spalte c">
+    <section class="karte proz" aria-label="Prozesse, Platte und Container" style="display: flex; flex-direction: column; height: 100%; box-sizing: border-box">
+      <div class="karte-kopf"><span class="karte-titel">Prozesse</span><span class="karte-meta">Top 6 nach CPU</span></div>
+      <div class="pz pz-kopf"><span>PID</span><span>Benutzer</span><span class="r">CPU %</span><span class="r">RAM %</span><span>Befehl</span></div>
+      <sc-for list="{{proz}}" as="p" hint-placeholder-count="6">
+        <div class="pz"><span class="mut">{{p.pid}}</span><span class="eng">{{p.user}}</span><span class="r">{{p.cpu}}</span><span class="r mut">{{p.ram}}</span><span class="cmd" title="{{p.befehl}}">{{p.kurz}}</span></div>
+      </sc-for>
+
+      <div class="platte" aria-label="Platte" style="margin-top: auto; padding-top: 16px">
+      <div class="karte-kopf" style="margin-bottom: 4px"><span class="karte-titel">Platten</span><span class="karte-meta">{{pl.anzahl}}</span></div>
+      <sc-for list="{{pl.liste}}" as="d" hint-placeholder-count="2">
+        <div class="pl-z">
+          <div class="pl-z-kopf"><span class="mono pl-pfad">{{d.pfad}}</span><span class="pl-frei-k {{d.cls}}">{{d.frei}} GB frei</span><span class="karte-meta">{{d.belegt}} von {{d.gesamt}} GB</span></div>
+          <div class="pl-balken" role="img" aria-label="{{d.aria}}">
+            <span class="pl-teil" style="width: {{d.pctA}}%"></span>
+            <span class="pl-teil ueber" style="left: {{d.schwelle}}%; width: {{d.pctB}}%"></span>
+            <sc-if value="{{d.hatSchwelle}}" hint-placeholder-val="{{true}}"><span class="pl-marke" style="left: {{d.schwelle}}%"></span></sc-if>
+          </div>
+          <sc-if value="{{d.zeigeLegende}}" hint-placeholder-val="{{true}}"><div class="pl-legende"><span style="right: {{d.rest}}%">Aufräumen unter 25 GB frei</span></div></sc-if>
+        </div>
+      </sc-for>
+      <sc-if value="{{pl.knapp}}" hint-placeholder-val="{{false}}"><div class="hinweis warn pl-warn"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.9l6.4 11.3H1.6z"></path><path d="M8 6.3v3.2M8 11.4v.1"></path></svg><div>Unter 25 GB frei <span>– der Runner räumt vor jedem Job auf.</span></div></div></sc-if>
+      </div>
+
+      
+    </section>
+  </div>
+
+</main>
+
+<sc-if value="{{info.offen}}" hint-placeholder-val="{{false}}">
+  <div class="info-scrim" onClick="{{info.schliessen}}"></div>
+  <aside class="info" role="dialog" aria-label="Info und Hilfe">
+    <div class="info-kopf">
+      <div><div class="vm-eyebrow">{{kopf.vm}} · {{kopf.runner}}</div><div class="info-titel">Info &amp; Hilfe</div></div>
+      <button type="button" class="knopf" onClick="{{info.schliessen}}">Schließen</button>
+    </div>
+    <div class="info-body">
+      <section class="info-abschnitt">
+        <h2 class="info-h">Updates</h2>
+        <dl class="kv"><sc-for list="{{upd.kv}}" as="k" hint-placeholder-count="4"><div class="kv-z"><dt>{{k.k}}</dt><dd class="{{k.cls}}">{{k.v}}</dd></div></sc-for></dl>
+        <sc-if value="{{upd.zeigeNeu}}" hint-placeholder-val="{{true}}">
+          <div class="upd-neu"><div class="upd-neu-titel">{{upd.neuTitel}}</div><ul><sc-for list="{{upd.notizen}}" as="n" hint-placeholder-count="3"><li>{{n}}</li></sc-for></ul><a href="https://github.com/">Alle Änderungen auf GitHub ↗</a></div>
+        </sc-if>
+        <sc-if value="{{upd.verfuegbar}}" hint-placeholder-val="{{true}}">
+          <div class="upd-aktion"><button type="button" class="knopf primaer gross" onClick="{{upd.starten}}"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.8 7.6L8 10.8l3.2-3.2M3 13.5h10"></path></svg>Jetzt auf 0.2.0 aktualisieren</button><p class="info-notiz" style="margin: 0">Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.</p></div>
+        </sc-if>
+        <sc-if value="{{upd.zeigeSchritte}}" hint-placeholder-val="{{false}}">
+          <ol class="upd-schritte" aria-live="polite"><sc-for list="{{upd.schritte}}" as="s" hint-placeholder-count="5"><li class="{{s.cls}}">
+            <sc-if value="{{s.fertig}}" hint-placeholder-val="{{true}}"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="erledigt"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if>
+            <sc-if value="{{s.aktiv}}" hint-placeholder-val="{{false}}"><svg class="laeuft upd-dreh" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" role="img" aria-label="läuft"><path d="M8 1.5a6.5 6.5 0 106.5 6.5"></path></svg></sc-if>
+            <sc-if value="{{s.offen}}" hint-placeholder-val="{{false}}"><svg class="mut" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.4" role="img" aria-label="ausstehend"><circle cx="8" cy="8" r="6.5" stroke-dasharray="2 2.4"></circle></svg></sc-if>
+            <sc-if value="{{s.fehler}}" hint-placeholder-val="{{false}}"><svg class="fehler" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" role="img" aria-label="fehlgeschlagen"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg></sc-if>
+            <span>{{s.text}}</span><span class="upd-zusatz">{{s.zusatz}}</span>
+          </li></sc-for></ol>
+        </sc-if>
+        <sc-if value="{{upd.erfolg}}" hint-placeholder-val="{{false}}"><div class="hinweis ok" style="margin-top: 10px"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><div>Aktualisiert auf 0.2.0 <span>– um {{upd.zeit}}. Dienst läuft, alle Daten kommen an.</span></div></div></sc-if>
+        <sc-if value="{{upd.fehler}}" hint-placeholder-val="{{false}}">
+          <div class="hinweis fehler" style="margin-top: 10px"><svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"></path></svg><div>Update fehlgeschlagen <span>– Version 0.2.0 hat nach dem Neustart nicht geantwortet. Version 0.1.0 wurde automatisch wiederhergestellt und läuft wieder. Details: <code class="inl">journalctl -u runner-monitor-update -n 50</code></span></div></div>
+          <div class="upd-aktion" style="flex-direction: row; align-items: center"><button type="button" class="knopf" onClick="{{upd.starten}}">Erneut versuchen</button><a class="knopf" href="https://github.com/" style="text-decoration: none">Fehler melden ↗</a></div>
+        </sc-if>
+        <label class="upd-auto"><input type="checkbox" checked="{{upd.auto}}" onChange="{{upd.toggleAuto}}">Automatisch aktualisieren – nachts um 3 Uhr, nur wenn kein Job läuft</label>
+      </section>
+
+      <section class="info-abschnitt">
+        <h2 class="info-h">Darstellung</h2>
+        <div class="info-zeile">
+          <span class="mut">Modus</span>
+          <div class="segment" role="group" aria-label="Hell oder dunkel">
+            <sc-for list="{{info.modi}}" as="md" hint-placeholder-count="3"><button type="button" class="seg-knopf {{md.cls}}" aria-pressed="{{md.p}}" onClick="{{md.waehle}}">{{md.text}}</button></sc-for>
+          </div>
+        </div>
+        <p class="info-notiz">„System“ folgt der Einstellung des Mac. Die Wahl gilt nur für diesen Browser.</p>
+      </section>
+
+      <section class="info-abschnitt">
+        <h2 class="info-h">Was tun, wenn …</h2>
+        <sc-for list="{{info.anleitungen}}" as="a" hint-placeholder-count="7">
+          <div class="anl">
+            <button type="button" class="anl-kopf" onClick="{{a.toggle}}" aria-expanded="{{a.offenText}}">
+              <svg class="chev {{a.chevCls}}" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5"></path></svg>
+              <span class="anl-titel">{{a.titel}}</span>
+              <sc-if value="{{a.aktuell}}" hint-placeholder-val="{{false}}"><span class="pill {{a.pillCls}}">jetzt aktiv</span></sc-if>
+            </button>
+            <sc-if value="{{a.offen}}" hint-placeholder-val="{{false}}">
+              <p class="anl-wann">{{a.wann}}</p>
+              <ol class="anl-schritte">
+                <sc-for list="{{a.schritte}}" as="s" hint-placeholder-count="3"><li><span>{{s.text}}</span><sc-if value="{{s.hatCode}}" hint-placeholder-val="{{false}}"><pre class="code">{{s.code}}</pre></sc-if></li></sc-for>
+              </ol>
+            </sc-if>
+          </div>
+        </sc-for>
+      </section>
+
+      <section class="info-abschnitt">
+        <h2 class="info-h">GitHub-Verbindung</h2>
+        <dl class="kv"><sc-for list="{{info.gh}}" as="k" hint-placeholder-count="7"><div class="kv-z"><dt>{{k.k}}</dt><dd class="{{k.cls}}">{{k.v}}</dd></div></sc-for></dl>
+        <p class="info-notiz">Geändert wird das auf der VM, nicht hier – die Seite ist nur zum Anschauen.</p>
+      </section>
+
+      <section class="info-abschnitt">
+        <h2 class="info-h">Über diesen Monitor</h2>
+        <p class="info-text">Monitor für die GitHub-Actions-Runner-VM: Runner-Status, Auslastung, Prozesse, Platte, Docker-Container, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.</p>
+        <dl class="kv"><sc-for list="{{info.monitor}}" as="k" hint-placeholder-count="4"><div class="kv-z"><dt>{{k.k}}</dt><dd>{{k.v}}</dd></div></sc-for></dl>
+        <p class="info-text">Ersteller: Bamberger IT Services · <a href="https://bamberger-it-services.de">bamberger-it-services.de</a><br>Quellcode und Doku: <a href="https://github.com">GitHub-Repository (Link eintragen)</a></p>
+      </section>
+
+      <section class="info-abschnitt">
+        <h2 class="info-h">Fehler gefunden oder Idee?</h2>
+        <p class="info-text">Der Monitor ist ein offenes Projekt. Fehler und Wünsche landen als Issue im GitHub-Repository. Der Knopf öffnet GitHub mit einer vorbereiteten Vorlage, in der die technischen Angaben schon stehen:</p>
+        <dl class="kv"><sc-for list="{{info.bug}}" as="k" hint-placeholder-count="4"><div class="kv-z"><dt>{{k.k}}</dt><dd>{{k.v}}</dd></div></sc-for></dl>
+        <div style="display: flex; gap: 8px; margin-top: 12px">
+          <a class="knopf" href="https://github.com/" style="text-decoration: none"><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="8" cy="9" rx="3.6" ry="4.4"></ellipse><path d="M8 4.6V13.4M4.4 9H1.8M14.2 9h-2.6M4.9 6.2L2.8 4.6M11.1 6.2l2.1-1.6M4.9 11.8l-2.1 1.6M11.1 11.8l2.1 1.6M6 4.8a2 2 0 014 0"></path></svg>Fehler melden ↗</a>
+          <a class="knopf" href="https://github.com/" style="text-decoration: none">Idee vorschlagen ↗</a>
+        </div>
+        <p class="info-notiz">Vor dem Absenden prüfen: Keine IP-Adressen, Rechnernamen, Tokens oder Passwörter in das Issue schreiben, das Repository ist öffentlich. Log-Ausschnitte nur gekürzt einfügen.</p>
+      </section>
+    </div>
+  </aside>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"zustand":{"editor":"enum","options":["volllast","leerlauf","gestoppt","offline","platte","getrennt"],"default":"volllast","section":"Zustand"},"github":{"editor":"enum","options":["ok","kein-token","nicht-erreichbar","token-ablauf"],"default":"ok","section":"Zustand"},"thema":{"editor":"enum","options":["system","hell","dunkel"],"default":"system","section":"Darstellung"},"kerne":{"editor":"int","min":2,"max":16,"step":1,"default":4,"section":"Darstellung"},"update":{"editor":"enum","options":["aktuell","verfuegbar","laeuft","erfolg","fehler"],"default":"aktuell","section":"Updates"},"info":{"editor":"boolean","default":false,"section":"Updates"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this._a = setInterval(() => { this._tickSystem(); this.forceUpdate(); }, 1000);
+    this._b = setInterval(() => { if (this._tickLog()) this.forceUpdate(); }, 350);
+  }
+  componentWillUnmount() { clearInterval(this._a); clearInterval(this._b); }
+
+  _opts() {
+    const P = this.props || {};
+    const z = ['volllast', 'leerlauf', 'gestoppt', 'offline', 'platte', 'getrennt'].indexOf(P.zustand) >= 0 ? P.zustand : 'volllast';
+    const g = ['ok', 'kein-token', 'nicht-erreichbar', 'token-ablauf'].indexOf(P.github) >= 0 ? P.github : 'ok';
+    const t = ['system', 'hell', 'dunkel'].indexOf(P.thema) >= 0 ? P.thema : 'system';
+    let n = parseInt(P.kerne, 10); if (!(n >= 2 && n <= 16)) n = 4;
+    return { zustand: z, github: g, thema: t, kerne: n, key: z + '|' + g + '|' + n };
+  }
+  _r(a, b) { return a + Math.random() * (b - a); }
+  _cl(v, a, b) { return Math.max(a, Math.min(b, v)); }
+  _de(x, d) { return Number(x).toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  _p2(v) { return String(v).padStart(2, '0'); }
+  _hms(t) { const d = new Date(t); return this._p2(d.getHours()) + ':' + this._p2(d.getMinutes()) + ':' + this._p2(d.getSeconds()); }
+  _hm(t) { const d = new Date(t); return this._p2(d.getHours()) + ':' + this._p2(d.getMinutes()); }
+  _dm(t) { const d = new Date(t); return this._p2(d.getDate()) + '.' + this._p2(d.getMonth() + 1) + '.'; }
+  _dauer(s) { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return h ? h + ':' + this._p2(m) + ':' + this._p2(x) : m + ':' + this._p2(x); }
+  _vor(s) { s = Math.max(0, Math.round(s)); if (s < 60) return 'vor ' + s + ' s'; const m = Math.floor(s / 60); if (m < 60) return 'vor ' + m + ' Min.'; const h = Math.floor(m / 60); if (h < 24) return 'vor ' + h + ' Std.'; return 'vor ' + Math.floor(h / 24) + ' T'; }
+  _seit(s) { s = Math.max(0, Math.round(s)); if (s < 60) return s + ' s'; const m = Math.floor(s / 60); if (m < 60) return m + ' Min.'; const h = Math.floor(m / 60); if (h < 24) return h + ' Std. ' + (m % 60) + ' Min.'; return Math.floor(h / 24) + ' T ' + (h % 24) + ' Std.'; }
+
+  _daten() {
+    if (this._D) return this._D;
+    const E = '\u001b[';
+    this._D = {
+      jobs: [
+        { repo: 'projekt-a', privat: true, workflow: 'CI', name: 'test', refArt: 'PR', ref: '#142', refTitel: 'Suche nach Datum filtern' },
+        { repo: 'projekt-b', privat: true, workflow: 'CI', name: 'test', refArt: 'Branch', ref: 'main', refTitel: 'Abhängigkeiten aktualisiert' },
+        { repo: 'projekt-b', privat: true, workflow: 'Release', name: 'build', refArt: 'Tag', ref: 'v1.8.0', refTitel: 'Release 1.8.0' }
+      ],
+      steps: ['Set up job', 'Run actions/checkout@v4', 'Abhängigkeiten installieren', 'Supabase starten (ci)', 'Migrationen anwenden', 'Tests', 'Supabase stoppen', 'Complete job'],
+      len: [6, 8, 18, 22, 10, 110, 10, 5],
+      pools: [
+        ["Current runner version: '2.329.0'", "Runner name: 'runner-vm-01'", "Runner group name: 'Default'", "Machine name: 'runner-vm'", E + '90m##[group]GITHUB_TOKEN Permissions' + E + '0m', 'Secret source: Actions', 'Prepare workflow directory', 'Prepare all required actions', "Download action repository 'actions/checkout@v4'", 'Complete job name: test'],
+        ['Syncing repository: beispiel-org/projekt-a', E + '36m[command]' + E + '0m/usr/bin/git version', 'git version 2.43.0', 'Temporarily overriding HOME for checkout', E + '36m[command]' + E + '0m/usr/bin/git init /opt/actions-runner/_work/projekt-a/projekt-a', 'Fetching the repository', 'remote: Enumerating objects: 1342, done.', 'remote: Counting objects: 100% (1342/1342), done.', 'Determining the checkout info', 'HEAD is now at 4f2c9e1 Suche: Filter nach Datum'],
+        ['npm ci', E + '33mnpm warn' + E + '39m deprecated inflight@1.0.6: This module is not supported, and leaks memory.', E + '33mnpm warn' + E + '39m deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported', 'added 1184 packages, and audited 1185 packages in 21s', '198 packages are looking for funding', '  run `npm fund` for details', 'found ' + E + '32m' + E + '1m0' + E + '22m' + E + '39m vulnerabilities'],
+        ['supabase start --workdir ci', 'Starting database...', 'Initialising schema...', 'Seeding globals from roles.sql...', 'Starting containers...', 'Waiting for health checks...', E + '32mStarted' + E + '39m supabase local development setup.', '         API URL: http://127.0.0.1:54321', '          DB URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres', '      Studio URL: http://127.0.0.1:54323'],
+        ['supabase migration up --workdir ci', 'Connecting to local database...', 'Applying migration 20260912_init.sql...', 'Applying migration 20260930_konten.sql...', 'Applying migration 20261001_suche.sql...', 'Applying migration 20261019_rechte.sql...', 'Local database is up to date.'],
+        [],
+        ['supabase stop --workdir ci --no-backup', 'Stopping containers...', E + '32mStopped' + E + '39m supabase local development setup.'],
+        ['Post job cleanup.', E + '36m[command]' + E + '0m/usr/bin/git version', 'Cleaning up orphan processes']
+      ],
+      tests: ['src/suche/filter.test.ts', 'src/suche/index.test.ts', 'src/api/konten.test.ts', 'src/api/rechte.test.ts', 'src/sync/import.test.ts', 'src/sync/export.test.ts', 'src/ui/tabelle.test.tsx', 'src/ui/formular.test.tsx', 'src/db/migrationen.test.ts', 'src/db/rls.test.ts', 'src/lib/datum.test.ts', 'src/lib/zahlen.test.ts', 'src/mail/vorlagen.test.ts', 'src/api/login.test.ts'],
+      lang: E + '90mstdout' + E + '39m | src/sync/import.test.ts > Import > verarbeitet große Dateien in Stapeln: Stapel 12/40 fertig (3.000 Datensätze in 1,8 s), die nächste Stapelgröße wird aus der gemessenen Latenz neu berechnet, Ziel 250 ms je Stapel, Obergrenze 500 Datensätze',
+      fail: [' ' + E + '31m×' + E + '39m src/api/login.test.ts ' + E + '2m>' + E + '22m Login ' + E + '2m>' + E + '22m lehnt abgelaufene Sitzung ab ' + E + '33m88ms' + E + '39m', '   ' + E + '31mAssertionError: expected 401 to be 403' + E + '39m', '    ' + E + '90m❯ src/api/login.test.ts:57:24' + E + '39m'],
+      letzteBusy: [
+        { repo: 'projekt-b', wf: 'CI · test', erg: 'erfolg', dauer: 348 },
+        { repo: 'projekt-a', wf: 'CI · lint', erg: 'erfolg', dauer: 52 },
+        { repo: 'projekt-b', wf: 'Release · build', erg: 'erfolg', dauer: 666 },
+        { repo: 'projekt-b', wf: 'CI · test', erg: 'fehler', dauer: 372 },
+        { repo: 'projekt-a', wf: 'CI · test', erg: 'abgebrochen', dauer: 151 }
+      ],
+      letzteIdle: [
+        { repo: 'projekt-b', wf: 'Release · build', erg: 'erfolg', dauer: 666 },
+        { repo: 'projekt-b', wf: 'CI · test', erg: 'erfolg', dauer: 348 },
+        { repo: 'projekt-a', wf: 'CI · lint', erg: 'erfolg', dauer: 52 },
+        { repo: 'projekt-b', wf: 'CI · test', erg: 'fehler', dauer: 372 },
+        { repo: 'projekt-a', wf: 'CI · test', erg: 'abgebrochen', dauer: 151 }
+      ],
+      procBusy: [
+        [4182, 'github-runner', 96, 3.1, 'node /opt/actions-runner/_work/projekt-a/projekt-a/node_modules/.bin/vitest run'],
+        [4227, 'github-runner', 88, 2.7, 'node /opt/actions-runner/_work/projekt-a/projekt-a/node_modules/vitest/dist/workers/forks.js'],
+        [4228, 'github-runner', 84, 2.6, 'node /opt/actions-runner/_work/projekt-a/projekt-a/node_modules/vitest/dist/workers/forks.js'],
+        [3311, '999', 61, 4.8, 'postgres: postgres postgres 172.18.0.9(41522) SELECT'],
+        [3298, 'root', 22, 3.9, 'beam.smp -- -root /app -bindir /app/erts-14.2/bin -- realtime'],
+        [2210, 'root', 14.8, 1.1, '/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock'],
+        [3402, 'root', 9.6, 2.2, 'edge-runtime start --main-service /home/deno/main'],
+        [3350, 'root', 7.1, 1.4, 'kong start --vv'],
+        [1987, 'github-runner', 5.2, 0.9, '/opt/actions-runner/bin/Runner.Worker spawnclient 118 121'],
+        [3377, 'root', 3.9, 1.6, 'node dist/server/server.js'],
+        [1042, 'root', 1.1, 0.3, '/usr/bin/containerd']
+      ],
+      procIdle: [
+        [1010, 'github-runner', 0.7, 0.6, '/opt/actions-runner/bin/Runner.Listener run --startuptype service'],
+        [1203, 'monitor', 0.4, 0.2, 'python3 /opt/runner-monitor/dienst.py'],
+        [890, 'root', 0.3, 0.8, '/usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock'],
+        [512, 'root', 0.1, 0.3, '/usr/bin/containerd'],
+        [2101, 'root', 0.1, 0.3, 'registry serve /etc/docker/registry/config.yml'],
+        [402, 'root', 0.0, 0.2, '/usr/lib/systemd/systemd-journald'],
+        [1, 'root', 0.0, 0.1, '/sbin/init'],
+        [655, 'root', 0.0, 0.1, 'sshd: /usr/sbin/sshd -D [listener]'],
+        [602, 'systemd-resolve', 0.0, 0.1, '/usr/lib/systemd/systemd-resolved'],
+        [710, 'root', 0.0, 0.1, '/usr/sbin/cron -f -P'],
+        [733, 'syslog', 0.0, 0.1, '/usr/sbin/rsyslogd -n -iNONE']
+      ],
+      supa: [['supabase_db_ci', 'supabase/postgres:15.8.1'], ['supabase_kong_ci', 'kong:2.8.1'], ['supabase_auth_ci', 'supabase/gotrue:v2.177'], ['supabase_rest_ci', 'postgrest/postgrest:v12.2'], ['supabase_realtime_ci', 'supabase/realtime:v2.34'], ['supabase_storage_ci', 'supabase/storage-api:v1.25'], ['supabase_imgproxy_ci', 'darthsim/imgproxy:v3.8'], ['supabase_meta_ci', 'supabase/postgres-meta:v0.91'], ['supabase_studio_ci', 'supabase/studio:2025.10'], ['supabase_inbucket_ci', 'inbucket/inbucket:3.0'], ['supabase_analytics_ci', 'supabase/logflare:1.14'], ['supabase_vector_ci', 'timberio/vector:0.28'], ['supabase_pooler_ci', 'supabase/supavisor:2.5'], ['supabase_edge_runtime_ci', 'supabase/edge-runtime:v1.69']],
+      repos: [['projekt-a', true], ['projekt-b', true], ['website', false], ['werkzeuge', true], ['doku', false], ['vorlagen', false], ['infrastruktur', true], ['projekt-c', true], ['projekt-d', true], ['app-mobil', true], ['api-client', false], ['design-system', true], ['skripte', true], ['archiv-import', true], ['newsletter', false]],
+      wfAktiv: {
+        volllast: { 'projekt-a': [1, 1], 'projekt-b': [0, 2], website: [1, 0] },
+        getrennt: { 'projekt-a': [1, 1], 'projekt-b': [0, 2], website: [1, 0] },
+        gestoppt: { 'projekt-a': [0, 2], 'projekt-b': [0, 1] },
+        offline: { 'projekt-a': [0, 1] },
+        leerlauf: {}, platte: {}
+      }
+    };
+    return this._D;
+  }
+
+  _ansi(raw) {
+    const segs = []; let st = { b: 0, d: 0, i: 0, u: 0, f: 0, g: 0 };
+    const re = /\u001b\[([0-9;]*)m/g; let last = 0, mm;
+    const push = (t) => { if (!t) return; const c = []; if (st.b) c.push('a1'); if (st.d) c.push('a2'); if (st.i) c.push('a3'); if (st.u) c.push('a4'); if (st.f) c.push('f' + st.f); if (st.g) c.push('b' + st.g); segs.push({ t: t, c: c.join(' ') }); };
+    while ((mm = re.exec(raw))) {
+      push(raw.slice(last, mm.index)); last = re.lastIndex;
+      const k = (mm[1] || '0').split(';').map(Number);
+      for (let i = 0; i < k.length; i++) {
+        const v = k[i];
+        if (v === 38 || v === 48) { i += (k[i + 1] === 5 ? 2 : 4); continue; }
+        if (v === 0) st = { b: 0, d: 0, i: 0, u: 0, f: 0, g: 0 };
+        else if (v === 1) st.b = 1; else if (v === 2) st.d = 1; else if (v === 3) st.i = 1; else if (v === 4) st.u = 1;
+        else if (v === 22) { st.b = 0; st.d = 0; } else if (v === 23) st.i = 0; else if (v === 24) st.u = 0;
+        else if ((v >= 30 && v <= 37) || (v >= 90 && v <= 97)) st.f = v; else if (v === 39) st.f = 0;
+        else if (v >= 40 && v <= 47) st.g = v; else if (v === 49) st.g = 0;
+      }
+    }
+    push(raw.slice(last));
+    return segs;
+  }
+  _istFehler(raw) { return /\u001b\[(?:1;)?(?:31|91)m|##\[error\]|(^|\s)(ERROR|FAIL)\b/.test(raw); }
+
+  _zeile(m, raw, t) { m.seq++; m.lines.push({ id: m.seq, art: 'z', t: t, segs: this._ansi(raw), fehler: this._istFehler(raw) }); if (m.lines.length > 160) m.lines.shift(); }
+  _trenner(m, t) { const D = this._daten(); m.seq++; m.lines.push({ id: m.seq, art: 't', t: t, nr: m.step + 1, name: D.steps[m.step] }); m.stepT = 0; m.stepLen = D.len[m.step]; m.li = 0; }
+  _testZeile(m, t, zwang) {
+    const D = this._daten(), E = '\u001b[';
+    if (zwang || Math.random() < 0.006) { m.fail = true; D.fail.forEach((l) => this._zeile(m, l, t)); return; }
+    if (Math.random() < 0.05) { this._zeile(m, D.lang, t); return; }
+    const f = D.tests[m.testN++ % D.tests.length], n = 3 + Math.floor(Math.random() * 22), ms = Math.floor(this._r(20, 900));
+    this._zeile(m, ' ' + E + '32m✓' + E + '39m ' + f + ' ' + E + '2m(' + n + ' tests)' + E + '22m ' + E + '33m' + ms + 'ms' + E + '39m', t);
+  }
+  _zusammenfassung(m, t) {
+    const E = '\u001b[';
+    this._zeile(m, '', t);
+    this._zeile(m, ' ' + E + '1mTest Files' + E + '22m  ' + (m.fail ? E + '1m' + E + '31m1 failed' + E + '39m' + E + '22m | ' : '') + E + '1m' + E + '32m' + (m.fail ? 41 : 42) + ' passed' + E + '39m' + E + '22m' + E + '90m (42)' + E + '39m', t);
+    this._zeile(m, '      ' + E + '1mTests' + E + '22m  ' + (m.fail ? E + '1m' + E + '31m1 failed' + E + '39m' + E + '22m | ' : '') + E + '1m' + E + '32m' + (m.fail ? 385 : 386) + ' passed' + E + '39m' + E + '22m' + E + '90m (386)' + E + '39m', t);
+    this._zeile(m, '   ' + E + '2mDuration' + E + '22m  ' + this._de(this._r(38, 52), 2) + 's', t);
+    if (m.fail) this._zeile(m, E + '31m##[error]Process completed with exit code 1.' + E + '39m', t);
+  }
+
+  _init(o) {
+    const now = Date.now(), z = o.zustand, D = this._daten();
+    const busy = z === 'volllast' || z === 'getrennt';
+    const T = z === 'getrennt' ? now - 72000 : now;
+    const m = { key: o.key, z: z, gh: o.github, n: o.kerne, busy: busy, T: T, seq: 0, lines: [], events: [], paused: false, frozen: null, pauseSeq: 0, umbruch: true, wfOffen: false, grpOffen: false,
+      cores: [], cpu: 0, cpuH: [], ramH: [], ram: busy ? 13.1 : 1.96, swap: busy ? 0.42 : 0.03,
+      load: busy ? [o.kerne * 0.97, o.kerne * 0.92, o.kerne * 0.71] : [0.08, 0.11, 0.09],
+      job: null, step: 0, stepT: 0, stepLen: 0, li: 0, fail: false, pauseUntil: 0, jobNo: 0, testN: 0,
+      boot: now - (6 * 86400 + 3 * 3600 + 12 * 60) * 1000, ghStand: Math.floor((now - 150000) / 30000) * 30000 };
+    for (let i = 0; i < 600; i++) {
+      let c, r;
+      if (busy) {
+        if (i < 170) { c = this._r(2, 8); r = 2 + this._r(-0.05, 0.05); }
+        else if (i < 190) { const k = (i - 170) / 20; c = 8 + k * 85; r = 2 + k * 5; }
+        else { c = (i % 97) < 6 ? this._r(55, 72) : this._r(90, 100); r = Math.min(13.3, 7 + (i - 190) * 0.08) + this._r(-0.2, 0.2); }
+      } else { c = (i % 143) < 4 ? this._r(12, 20) : this._r(1.5, 7); r = 1.96 + this._r(-0.04, 0.04); }
+      m.cpuH.push(c); m.ramH.push(r / 14 * 100);
+    }
+    this._sample(m);
+    const lz = busy ? [408, 1140, 1980, 3120, 4200] : [1080, 1860, 2640, 3780, 4800];
+    m.letzte = (busy ? D.letzteBusy : D.letzteIdle).map((j, i) => Object.assign({}, j, { ende: T - lz[i] * 1000 }));
+    if (busy) {
+      m.job = Object.assign({}, D.jobs[0], { start: T - 402000 });
+      m.events.push({ art: 'start', t: T - 756000, job: D.jobs[1] });
+      m.events.push({ art: 'ende', t: T - 408000, job: D.jobs[1], erg: 'erfolg', dauer: 348 });
+      m.events.push({ art: 'start', t: T - 402000, job: D.jobs[0] });
+      m.step = 5; this._trenner(m, T - 95000);
+      for (let i = 0; i < 64; i++) this._testZeile(m, T - 95000 + i * 1450, i === 46);
+      m.fail = false; m.stepT = 40;
+    } else if (z === 'gestoppt') {
+      m.events.push({ art: 'ende', t: now - 1860000, job: D.jobs[1], erg: 'erfolg', dauer: 348 });
+      m.events.push({ art: 'dienst', t: now - 1440000 });
+      m.letzte = D.letzteBusy.map((j, i) => Object.assign({}, j, { ende: now - lz[i] * 1000 - 780000 }));
+    } else if (z === 'offline') {
+      m.events.push({ art: 'start', t: now - 1746000, job: D.jobs[2] });
+      m.events.push({ art: 'ende', t: now - 1080000, job: D.jobs[2], erg: 'erfolg', dauer: 666 });
+      m.events.push({ art: 'offline', t: now - 240000 });
+    } else {
+      m.events.push({ art: 'start', t: now - 1746000, job: D.jobs[2] });
+      m.events.push({ art: 'ende', t: now - 1080000, job: D.jobs[2], erg: 'erfolg', dauer: 666 });
+    }
+    return m;
+  }
+
+  _sample(m) {
+    const n = m.n, D = this._daten(); m.cores = [];
+    for (let i = 0; i < n; i++) { let v = m.busy ? (Math.random() < 0.08 ? this._r(55, 85) : Math.min(100, this._r(93, 101))) : this._r(0.5, 7); m.cores.push(v); }
+    m.cpu = m.cores.reduce((a, b) => a + b, 0) / n;
+    if (m.busy) {
+      m.ram = this._cl(m.ram + this._r(-0.12, 0.12), 12.5, 13.7); m.swap = this._cl(m.swap + this._r(-0.02, 0.02), 0.3, 0.55);
+      m.load = [this._cl(m.load[0] + this._r(-0.15, 0.15), n * 0.85, n * 1.08), this._cl(m.load[1] + this._r(-0.05, 0.05), n * 0.8, n), this._cl(m.load[2] + this._r(-0.02, 0.03), n * 0.6, n * 0.85)];
+    } else {
+      m.ram = this._cl(m.ram + this._r(-0.02, 0.02), 1.9, 2.05);
+      m.load = [this._cl(m.load[0] + this._r(-0.03, 0.03), 0.02, 0.3), this._cl(m.load[1] + this._r(-0.01, 0.01), 0.05, 0.2), m.load[2]];
+    }
+    let src = m.busy ? D.procBusy : D.procIdle;
+    if (m.z === 'gestoppt') src = src.filter((p) => p[4].indexOf('Runner.Listener') < 0);
+    m.procs = src.map((p) => [p[0], p[1], p[2] > 0.05 ? p[2] * this._r(0.85, 1.12) : p[2], p[3], p[4]]).sort((a, b) => b[2] - a[2]).slice(0, 6);
+  }
+  _tickSystem() {
+    const m = this.m; if (!m || m.z === 'getrennt') return;
+    this._sample(m); m.cpuH.push(m.cpu); m.ramH.push(m.ram / 14 * 100); m.cpuH.shift(); m.ramH.shift();
+  }
+  _tickLog() {
+    const m = this.m; if (!m || !m.busy || m.z === 'getrennt') return false;
+    const now = Date.now(), D = this._daten();
+    if (m.pauseUntil) {
+      if (now < m.pauseUntil) return false;
+      m.pauseUntil = 0; m.jobNo = (m.jobNo + 1) % D.jobs.length;
+      const j = D.jobs[m.jobNo]; m.job = Object.assign({}, j, { start: now }); m.fail = false;
+      m.events.push({ art: 'start', t: now, job: j }); m.step = 0; this._trenner(m, now); return true;
+    }
+    if (!m.job) return false;
+    m.stepT++;
+    if (m.step === 5) { const k = 1 + Math.floor(Math.random() * 3); for (let i = 0; i < k; i++) this._testZeile(m, now, false); }
+    else if (Math.random() < 0.6) { const pool = D.pools[m.step]; if (m.li < pool.length) this._zeile(m, pool[m.li++].replace('projekt-a', m.job.repo), now); }
+    if (m.stepT >= m.stepLen) {
+      if (m.step === 5) this._zusammenfassung(m, now);
+      m.step++;
+      if (m.step >= D.steps.length) {
+        const dauer = (now - m.job.start) / 1000, erg = m.fail ? 'fehler' : 'erfolg';
+        m.events.push({ art: 'ende', t: now, job: m.job, erg: erg, dauer: dauer });
+        m.letzte.unshift({ repo: m.job.repo, wf: m.job.workflow + ' · ' + m.job.name, erg: erg, dauer: dauer, ende: now });
+        m.letzte = m.letzte.slice(0, 5); m.job = null; m.pauseUntil = now + 3500;
+      } else this._trenner(m, now);
+    }
+    if (m.events.length > 20) m.events.splice(0, m.events.length - 20);
+    return true;
+  }
+
+  _spark(h) {
+    const pts = []; const b = h.length / 120;
+    for (let i = 0; i < 120; i++) { let s = 0, c = 0; for (let j = Math.floor(i * b); j < Math.floor((i + 1) * b); j++) { s += h[j]; c++; } const v = c ? s / c : 0; pts.push([(i * 300 / 119).toFixed(1), (45 - this._cl(v, 0, 100) / 100 * 43).toFixed(1)]); }
+    const linie = 'M' + pts.map((p) => p[0] + ',' + p[1]).join(' L');
+    return { linie: linie, flaeche: linie + ' L300,46 L0,46 Z' };
+  }
+
+  renderVals() {
+    const o = this._opts();
+    if (!this.m || this.m.key !== o.key) this.m = this._init(o);
+    const m = this.m, D = this._daten(), now = Date.now();
+    const getr = m.z === 'getrennt', ref = getr ? m.T : now, N = D.steps.length;
+    const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(now).getDay()];
+
+    const kopf = {
+      vm: 'runner-vm', runner: 'runner-vm-01', labels: ['self-hosted', 'linux', 'x64', 'bits'],
+      verbunden: !getr, getrennt: getr, liveCls: getr ? 'weg' : 'ok', liveText: getr ? 'Getrennt' : 'Verbunden',
+      liveZeit: getr ? 'Stand ' + this._hms(m.T) : 'aktualisiert ' + this._hms(now),
+      datum: wd + ' ' + this._dm(now), uhrzeit: this._hms(now),
+      standZeit: this._hms(m.T), standVor: this._vor((now - m.T) / 1000), veraltetCls: getr ? 'veraltet' : ''
+    };
+
+    // Workflows
+    const akt = D.wfAktiv[m.z] || {};
+    const aktiv = [], ruhig = []; let sl = 0, sw = 0;
+    D.repos.forEach((r) => { const a = akt[r[0]]; if (a && (a[0] || a[1])) { sl += a[0]; sw += a[1]; aktiv.push({ name: r[0], privat: r[1], hasL: a[0] > 0, hasW: a[1] > 0, lText: a[0] === 1 ? '1 läuft' : a[0] + ' laufen', wText: a[1] === 1 ? '1 wartet' : a[1] + ' warten' }); } else ruhig.push({ name: r[0] }); });
+    const ghFehler = m.gh === 'nicht-erreichbar', keinToken = m.gh === 'kein-token';
+    const abg = Math.floor(ref / 30000) * 30000, naechste = 30 - Math.floor((now / 1000) % 30);
+    const wf = {
+      meta: keinToken ? 'beispiel-org' : 'beispiel-org · ' + D.repos.length + ' Repositories',
+      keinToken: keinToken, hatDaten: !keinToken, altCls: ghFehler ? 'alt' : '',
+      l: sl, w: sw, lText: sl === 1 ? 'läuft' : 'laufen', wText: sw === 1 ? 'wartet' : 'warten',
+      aktiv: aktiv, alleRuhig: aktiv.length === 0, ruhig: ruhig,
+      ruhigText: (aktiv.length ? ruhig.length + ' weitere ruhig' : 'Alle ' + ruhig.length + ' Repositories ruhig'),
+      offen: m.wfOffen, offenText: m.wfOffen ? 'true' : 'false', chevCls: m.wfOffen ? 'offen' : '',
+      toggle: () => { m.wfOffen = !m.wfOffen; this.forceUpdate(); },
+      fehler: ghFehler, standZeit: this._hms(m.ghStand), naechste: naechste,
+      tokenWarn: m.gh === 'token-ablauf', ablauf: this._dm(now + 14 * 86400000) + new Date(now + 14 * 86400000).getFullYear(),
+      zeitText: keinToken ? 'Abfrage aus' : (ghFehler ? 'Letzte erfolgreiche Abfrage ' + this._hms(m.ghStand) : (getr ? 'Abgefragt ' + this._hms(abg) : 'Abgefragt ' + this._hms(abg) + ' · nächste in ' + naechste + ' s'))
+    };
+
+    // Status
+    const art = m.z === 'gestoppt' ? 'gestoppt' : (m.z === 'offline' ? 'offline' : (m.job ? 'job' : 'bereit'));
+    const ok = { cls: 'ok', ok: true, nok: false, unklar: false };
+    const dienst = m.z === 'gestoppt' ? { cls: 'fehler', ok: false, nok: true, unklar: false, text: 'Dienst gestoppt' } : Object.assign({ text: 'Dienst aktiv' }, ok);
+    let gh;
+    if (keinToken) gh = { cls: 'neutral', ok: false, nok: false, unklar: true, text: 'GitHub: unbekannt' };
+    else if (ghFehler) gh = { cls: 'neutral', ok: false, nok: false, unklar: true, text: 'GitHub: keine Antwort' };
+    else if (m.z === 'offline' || m.z === 'gestoppt') gh = { cls: 'fehler', ok: false, nok: true, unklar: false, text: 'Offline bei GitHub' };
+    else gh = Object.assign({ text: 'Online bei GitHub' }, ok);
+    const l0 = m.letzte[0];
+    const letzterJob = l0 ? l0.repo + ' · ' + l0.wf + ' · ' + this._vor((now - l0.ende) / 1000) : '–';
+    const st = {
+      dienst: dienst, gh: gh, isJob: art === 'job', keinJob: art !== 'job', isBereit: art === 'bereit', isGestoppt: art === 'gestoppt', isOffline: art === 'offline',
+      cls: { job: 'laeuft', bereit: 'ok', gestoppt: 'fehler', offline: 'warn' }[art],
+      titel: { job: 'Job läuft', bereit: 'Bereit', gestoppt: 'Dienst gestoppt', offline: 'Offline bei GitHub' }[art],
+      text: { job: '', bereit: 'Wartet auf den nächsten Job. Neue Jobs starten automatisch.', gestoppt: 'Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.', offline: 'Der Dienst läuft, aber GitHub sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.' }[art],
+      kv: art === 'gestoppt' ? [{ k: 'Dienst', v: 'gestoppt seit ' + this._hms(now - 1440000) + ' (' + this._vor(1440) + ')' }, { k: 'Wartende Jobs', v: sw + ' in der Warteschlange' }, { k: 'Letzter Job', v: letzterJob }]
+        : art === 'offline' ? [{ k: 'Dienst', v: 'aktiv seit ' + this._seit((now - m.boot) / 1000) }, { k: 'Bei GitHub', v: 'offline seit ' + this._hms(now - 240000) + ' (' + this._vor(240) + ')' }, { k: 'Letzter Job', v: letzterJob }]
+        : [{ k: 'Dienst', v: 'aktiv seit ' + this._seit((now - m.boot) / 1000) }, { k: 'Letzter Job', v: letzterJob }, { k: 'Runner-Version', v: '2.329.0' }],
+      job: m.job ? {
+        repo: m.job.repo, privat: m.job.privat, workflow: m.job.workflow, name: m.job.name, refArt: m.job.refArt, ref: m.job.ref, refTitel: m.job.refTitel,
+        schrittNr: m.step + 1, schrittVon: N, schrittName: D.steps[Math.min(m.step, N - 1)],
+        segs: D.steps.map((s, i) => ({ cls: i < m.step ? 'fertig' : (i === m.step ? 'aktiv' : '') })),
+        laufzeit: this._dauer((ref - m.job.start) / 1000), gestartet: this._hms(m.job.start), datum: wd + ', ' + this._dm(m.job.start)
+      } : { segs: [] },
+      letzte: m.letzte.map((j) => ({ repo: j.repo, wf: j.wf, cls: j.erg === 'erfolg' ? 'ok' : (j.erg === 'fehler' ? 'fehler' : 'neutral'), isOk: j.erg === 'erfolg', isFehler: j.erg === 'fehler', isAbbr: j.erg === 'abgebrochen', wort: j.erg === 'erfolg' ? 'Erfolg' : (j.erg === 'fehler' ? 'Fehler' : 'Abgebrochen'), dauer: this._dauer(j.dauer), ende: this._hm(j.ende) }))
+    };
+
+    // System
+    const n = m.n, cs = this._spark(m.cpuH), rs = this._spark(m.ramH);
+    const sys = {
+      meta: n + ' Kerne · 14 GB RAM · läuft seit ' + this._seit((ref - m.boot) / 1000), n: n,
+      cpu: this._de(m.cpu, 0), cpuLinie: cs.linie, cpuFlaeche: cs.flaeche, ramLinie: rs.linie, ramFlaeche: rs.flaeche,
+      kernZeilen: Math.ceil(n / 2),
+      kerne: m.cores.map((v, i) => ({ label: i + 1, s: (v / 100).toFixed(3), text: this._de(v, 0) + ' %' })),
+      ram: this._de(m.ram, 1), ramGesamt: '14', ramS: (m.ram / 14).toFixed(3), ramPct: this._de(m.ram / 14 * 100, 0),
+      swap: this._de(m.swap, 1) + ' / 2,0 GB', swapS: (m.swap / 2).toFixed(3),
+      l1: this._de(m.load[0], 2), l5: this._de(m.load[1], 2), l15: this._de(m.load[2], 2)
+    };
+    const proz = (m.procs || []).map((p) => ({ pid: p[0], user: p[1], cpu: this._de(p[2], 1), ram: this._de(p[3], 1), befehl: p[4], kurz: p[4].replace('/opt/actions-runner/_work/', '…/').replace(/node_modules\/vitest\/dist\//, '…/') }));
+
+    // Platte
+    const belegt = m.z === 'platte' ? 61.6 : (m.busy ? 46.8 : 38.9), frei = 80 - belegt, knapp = frei < 25;
+    // Platten dynamisch: beliebig viele Einhängepunkte; die Aufräumschwelle gilt nur für „/“ (Arbeitsverzeichnis des Runners)
+    const platten = [
+      { pfad: '/', gesamt: 80, belegt: belegt, schwelleFrei: 25 },
+      { pfad: '/var/lib/docker', gesamt: 120, belegt: m.busy ? 58.2 : 41.3, schwelleFrei: 0 }
+    ];
+    const liste = platten.map((p) => {
+      const f = p.gesamt - p.belegt, sb = p.gesamt - p.schwelleFrei, hs = p.schwelleFrei > 0, kn = hs && f < p.schwelleFrei;
+      return { pfad: p.pfad, gesamt: this._de(p.gesamt, 0), frei: this._de(f, 1), belegt: this._de(p.belegt, 1), cls: kn ? 'warn' : '',
+        hatSchwelle: hs, zeigeLegende: hs && !kn, schwelle: hs ? (sb / p.gesamt * 100).toFixed(2) : 100, rest: hs ? (100 - sb / p.gesamt * 100).toFixed(2) : 0,
+        pctA: (Math.min(p.belegt, hs ? sb : p.gesamt) / p.gesamt * 100).toFixed(2), pctB: hs ? (Math.max(0, p.belegt - sb) / p.gesamt * 100).toFixed(2) : 0,
+        aria: p.pfad + ': ' + this._de(p.belegt, 1) + ' von ' + p.gesamt + ' GB belegt, ' + this._de(f, 1) + ' GB frei' };
+    });
+    const pl = { liste: liste, anzahl: liste.length === 1 ? '1 Laufwerk' : liste.length + ' Laufwerke', gesamt: 80, frei: this._de(frei, 1), belegt: this._de(belegt, 1), cls: knapp ? 'warn' : '', knapp: knapp, genug: !knapp, puffer: this._de(frei - 25, 1),
+      pctA: (Math.min(belegt, 55) / 80 * 100).toFixed(2), pctB: (Math.max(0, belegt - 55) / 80 * 100).toFixed(2), schwelle: 68.75, rest: 31.25,
+      aria: this._de(belegt, 1) + ' von 80 GB belegt, ' + this._de(frei, 1) + ' GB frei, Aufräumschwelle 25 GB frei' };
+
+    // Container
+    const gruppen = [], einzel = [{ name: 'registry-cache', image: 'registry:2', zeit: this._seit((ref - m.boot) / 1000 + 40) }];
+    if (m.job && m.step >= 3) {
+      const ab = m.job.start + 150000;
+      const items = D.supa.map((c) => ({ name: c[0], image: c[1], zeit: this._seit(Math.max(5, (ref - ab) / 1000)) }));
+      gruppen.push({ kurz: 'Supabase ci · ' + items.length, titel: 'Supabase · Instanz ci', zahl: items.length + ' Container', status: items.length + ' laufen', items: items, offen: m.grpOffen, offenText: m.grpOffen ? 'true' : 'false', chevCls: m.grpOffen ? 'offen' : '', toggle: () => { m.grpOffen = !m.grpOffen; this.forceUpdate(); } });
+    }
+    const anz = einzel.length + gruppen.reduce((a, g) => a + g.items.length, 0);
+    const ct = { meta: anz + (anz === 1 ? ' läuft' : ' laufen'), gruppen: gruppen, einzel: einzel, leer: anz === 0 };
+
+    // Log
+    const quelle = m.paused && m.frozen ? m.frozen : m.lines;
+    const evs = m.events.slice(-3).map((e) => {
+      const j = e.job || {};
+      if (e.art === 'start') return { zeit: this._hms(e.t), cls: 'laeuft', isPlay: true, titel: 'Job gestartet', text: j.repo + ' · ' + j.workflow + ' / ' + j.name, rechts: j.refArt + ' ' + j.ref };
+      if (e.art === 'ende') return { zeit: this._hms(e.t), cls: e.erg === 'erfolg' ? 'ok' : 'fehler', isOk: e.erg === 'erfolg', isX: e.erg !== 'erfolg', titel: 'Job beendet', text: j.repo + ' · ' + j.workflow + ' / ' + j.name, rechts: (e.erg === 'erfolg' ? 'Erfolg' : 'Fehler') + ' · ' + this._dauer(e.dauer) };
+      if (e.art === 'dienst') return { zeit: this._hms(e.t), cls: 'fehler', isX: true, titel: 'Dienst gestoppt', text: 'actions.runner.…service: inactive (dead)', rechts: '' };
+      return { zeit: this._hms(e.t), cls: 'warn', isWarn: true, titel: 'Offline bei GitHub', text: 'Runner meldet sich nicht mehr bei GitHub', rechts: '' };
+    });
+    const lg = {
+      hatSchritt: !!m.job, schritt: m.job ? 'Schritt ' + (m.step + 1) + '/' + N + ' · ' + D.steps[Math.min(m.step, N - 1)] : '',
+      umbrCls: m.umbruch ? 'an' : '', kurzCls: m.umbruch ? '' : 'an', umbrP: m.umbruch ? 'true' : 'false', kurzP: m.umbruch ? 'false' : 'true',
+      setUmbr: () => { m.umbruch = true; this.forceUpdate(); }, setKurz: () => { m.umbruch = false; this.forceUpdate(); },
+      paused: m.paused, laeuft: !m.paused, pauseText: m.paused ? 'Weiter' : 'Anhalten',
+      togglePause: () => { if (m.paused) { m.paused = false; m.frozen = null; } else { m.paused = true; m.frozen = m.lines.slice(); m.pauseSeq = m.seq; } this.forceUpdate(); },
+      neu: (m.seq - m.pauseSeq) === 1 ? '1 neue Zeile' : (m.seq - m.pauseSeq) + ' neue Zeilen',
+      termCls: (m.umbruch ? '' : 'kurz ') + (m.paused ? 'pausiert' : ''),
+      events: evs,
+      zeilen: quelle.map((l) => l.art === 't' ? { isT: true, isZ: false, nr: 'Schritt ' + l.nr + '/' + N, name: l.name, zeit: this._hms(l.t), segs: [] } : { isT: false, isZ: true, cls: l.fehler ? 'fehler' : '', zeit: this._hms(l.t), segs: l.segs }),
+      leer: quelle.length === 0,
+      leerText: m.z === 'gestoppt' ? 'Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.' : (m.z === 'offline' ? 'Kein Schritt läuft. GitHub stellt dem Runner gerade keine Jobs zu.' : 'Kein Schritt läuft. Die Ausgabe erscheint hier, sobald ein Job startet.')
+    };
+
+    // Darstellung: Automatisch (System) / Hell / Dunkel – reine Ansichtssache
+    const NAME = { system: 'Automatisch', hell: 'Hell', dunkel: 'Dunkel' };
+    const wahl = this._thema || o.thema;
+    const setze = (t) => () => { this._thema = t; this.forceUpdate(); };
+    const folgt = { system: 'hell', hell: 'dunkel', dunkel: 'system' }[wahl];
+    const modus = { text: { system: 'Auto', hell: 'Hell', dunkel: 'Dunkel' }[wahl], isSystem: wahl === 'system', isHell: wahl === 'hell', isDunkel: wahl === 'dunkel', weiter: setze(folgt), aria: 'Darstellung ' + NAME[wahl] + ', umschalten auf ' + NAME[folgt] };
+
+    // Updates: Prüfung gegen GitHub-Releases, Installation über root-Hilfsdienst
+    const P0 = this.props || {};
+    const uStart = ['aktuell', 'verfuegbar', 'laeuft', 'erfolg', 'fehler'].indexOf(P0.update) >= 0 ? P0.update : 'aktuell';
+    if (!this._u || this._u.prop !== uStart) {
+      this._u = { prop: uStart, status: uStart, schritt: uStart === 'laeuft' ? 2 : 0, auto: false, zeit: this._hms(now - 120000) };
+      if (P0.info) m.info = 'update';
+    }
+    const u = this._u;
+    const SCHR = [['Release 0.2.0 herunterladen', '1,4 MB'], ['Prüfsumme prüfen', 'SHA-256 stimmt'], ['Installieren', 'alte Version gesichert'], ['Monitor neu starten', 'kurz nicht erreichbar'], ['Funktion prüfen', 'Daten kommen an']];
+    const lauf = () => {
+      u.status = 'laeuft'; u.schritt = 0; this.forceUpdate();
+      const weiter = () => { if (u.status !== 'laeuft') return; if (u.schritt < SCHR.length - 1) { u.schritt++; this.forceUpdate(); setTimeout(weiter, 1300); } else { u.status = 'erfolg'; u.zeit = this._hms(Date.now()); this.forceUpdate(); } };
+      setTimeout(weiter, 1300);
+    };
+    const nachher = u.status === 'erfolg';
+    const upd = {
+      zeit: u.zeit,
+      kv: [
+        { k: 'Installiert', v: nachher ? '0.2.0' : '0.1.0' },
+        { k: 'Neueste', v: u.status === 'aktuell' || nachher ? (nachher ? '0.2.0 – aktuell' : '0.1.0 – du bist auf dem neuesten Stand') : '0.2.0 · erschienen am 20.10.2026', cls: u.status === 'aktuell' || nachher ? 'ok' : 'laeuft' },
+        { k: 'Geprüft', v: 'heute ' + this._hm(now - 47 * 60000) + ' bei GitHub · alle 6 Std.' },
+        { k: 'Runner', v: 'actions-runner 2.329.0 · aktualisiert sich selbst' }
+      ],
+      zeigeNeu: u.status !== 'aktuell', neuTitel: nachher ? 'Neu seit dem Update' : 'Neu in 0.2.0',
+      notizen: ['Mehrere Platten werden einzeln angezeigt', 'Anleitungen direkt aus den Meldungen erreichbar', 'Kleinere Korrekturen im Live-Log'],
+      verfuegbar: u.status === 'verfuegbar', zeigeSchritte: u.status === 'laeuft' || u.status === 'fehler',
+      erfolg: nachher, fehler: u.status === 'fehler', auto: u.auto,
+      starten: lauf, toggleAuto: () => { u.auto = !u.auto; this.forceUpdate(); },
+      schritte: u.status === 'fehler'
+        ? SCHR.map((s, i) => ({ text: s[0], zusatz: i < 4 ? '' : 'keine Antwort nach 30 s', fertig: i < 4, aktiv: false, offen: false, fehler: i === 4, cls: '' })).concat([{ text: 'Version 0.1.0 wiederhergestellt', zusatz: 'läuft wieder', fertig: true, aktiv: false, offen: false, fehler: false, cls: '' }])
+        : SCHR.map((s, i) => ({ text: s[0], zusatz: i < u.schritt ? s[1] : (i === u.schritt ? 'läuft …' : ''), fertig: i < u.schritt, aktiv: i === u.schritt, offen: i > u.schritt, fehler: false, cls: i === u.schritt ? 'aktiv' : (i > u.schritt ? 'offen' : '') }))
+    };
+    u.schritteText = SCHR[Math.min(u.schritt, SCHR.length - 1)][0] + ' (' + (u.schritt + 1) + '/' + SCHR.length + ') · Runner arbeitet weiter';
+
+    // Info & Hilfe mit Anleitungen
+    const oeffne = (id) => () => { m.info = id || 'alle'; this.forceUpdate(); };
+    const A = [
+      { id: 'token', titel: 'GitHub-Token einrichten oder erneuern', aktiv: keinToken || m.gh === 'token-ablauf', wann: 'Wenn „Kein GitHub-Token“ oder „Token läuft ab“ gemeldet wird.', schritte: [
+        { text: 'Auf github.com: Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.' },
+        { text: 'Resource owner: die Organisation. Repository access: All repositories. Ablauf zum Beispiel 90 Tage.' },
+        { text: 'Nur lesende Rechte: Repository › Actions und Metadata jeweils „Read-only“. Für den Online-Status des Runners zusätzlich Organization › Self-hosted runners „Read-only“.' },
+        { text: 'Auf der VM das Token in die Datei schreiben. Nur root kann sie lesen, Jobs nicht:', code: 'sudo nano /etc/runner-monitor/github-token' },
+        { text: 'Spätestens die nächste Abfrage nach 30 s übernimmt es. Sofort abfragen:', code: 'sudo systemctl start runner-monitor-repos.service' }
+      ] },
+      { id: 'github', titel: 'GitHub nicht erreichbar', aktiv: ghFehler, wann: 'Wenn die Abfrage der Workflows fehlschlägt. Die Karte zeigt dann den letzten Stand.', schritte: [
+        { text: 'Zuerst den Status von GitHub prüfen: githubstatus.com.' },
+        { text: 'Von der VM aus testen, ob die API antwortet:', code: 'curl -sI https://api.github.com | head -1' },
+        { text: 'Antwort 401: Token ungültig oder abgelaufen, siehe „GitHub-Token einrichten oder erneuern“. Antwort 403: API-Kontingent erschöpft, die Abfrage setzt bis zum Reset aus.' },
+        { text: 'Keine Antwort: DNS, Firewall oder Proxy der VM prüfen. Letzte Meldungen der Abfrage:', code: 'journalctl -u runner-monitor-repos -n 20' }
+      ] },
+      { id: 'gestoppt', titel: 'Runner-Dienst gestoppt', aktiv: m.z === 'gestoppt', cls: 'fehler', wann: 'Wenn der systemd-Dienst des Runners nicht läuft. Jobs bleiben dann in der Warteschlange.', schritte: [
+        { text: 'Status und letzte Meldungen ansehen:', code: "systemctl status 'actions.runner.*'" },
+        { text: 'Dienst starten:', code: "sudo systemctl start 'actions.runner.*'" },
+        { text: 'Startet er nicht, das Protokoll prüfen:', code: "journalctl -u 'actions.runner.*' -n 50" },
+        { text: 'Wartende Jobs laufen danach von selbst an.' },
+        { text: 'Woran es lag, steht in den Logs – siehe „Runner-Logs abrufen“.' }
+      ] },
+      { id: 'offline', titel: 'Runner offline bei GitHub', aktiv: m.z === 'offline', cls: 'fehler', wann: 'Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.', schritte: [
+        { text: 'Netz der VM prüfen:', code: 'curl -sI https://github.com | head -1' },
+        { text: 'Dienst neu starten, damit er sich neu anmeldet:', code: "sudo systemctl restart 'actions.runner.*'" },
+        { text: 'Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:', code: 'sudo bash runner-einrichten.sh --umziehen' },
+        { text: 'Warum die Verbindung fehlt, steht im Diagnoseprotokoll des Runners – siehe „Runner-Logs abrufen“.' }
+      ] },
+      { id: 'platte', titel: 'Platte knapp', aktiv: knapp, wann: 'Wenn auf „/“ weniger als 25 GB frei sind.', schritte: [
+        { text: 'Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:', code: 'sudo runner-aufraeumen' },
+        { text: 'Wer belegt den Platz?', code: 'docker system df' },
+        { text: 'Freien Platz an Proxmox zurückgeben:', code: 'sudo fstrim -av' },
+        { text: 'Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.' }
+      ] },
+      { id: 'monitor', titel: 'Verbindung zum Monitor unterbrochen', aktiv: getr, cls: 'fehler', wann: 'Wenn diese Seite keine Daten mehr von der VM bekommt. Sie zeigt dann den letzten Stand.', schritte: [
+        { text: 'Die Seite versucht es selbst weiter. Ist die VM im Netz erreichbar?', code: 'ping runner-vm' },
+        { text: 'Monitor-Dienst auf der VM neu starten:', code: 'sudo systemctl restart runner-monitor' },
+        { text: 'Letzte Meldungen des Monitors:', code: 'journalctl -u runner-monitor -n 30' }
+      ] }
+    ];
+    A.splice(4, 0, { id: 'logs', titel: 'Runner-Logs abrufen (Diagnose)', aktiv: m.z === 'gestoppt' || m.z === 'offline', cls: m.z === 'gestoppt' ? 'fehler' : 'warn', wann: 'Wenn der Runner-Dienst stoppt, abstürzt, offline ist oder Jobs nicht annimmt. Alle Befehle auf der VM ausführen.', schritte: [
+      { text: 'Dienst-Protokoll: Start, Stopp, Abstürze, Job-Start und -Ende. Die letzten 100 Zeilen:', code: "journalctl -u 'actions.runner.*' -n 100 --no-pager" },
+      { text: 'Dasselbe live mitlesen (Strg+C beendet):', code: "journalctl -u 'actions.runner.*' -f" },
+      { text: 'Diagnoseprotokoll des Runners: Anmeldung bei GitHub, Verbindungsfehler, Updates. Neueste Datei:', code: 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Runner_*.log | head -1)"' },
+      { text: 'Protokoll des letzten Jobs (Worker), wenn ein Job abbricht oder hängt:', code: 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Worker_*.log | head -1)"' },
+      { text: 'Ausgabe der einzelnen Schritte, eine Datei je Schritt:', code: 'ls -lt /opt/actions-runner/_diag/pages/ | head' },
+      { text: 'Logs abgeschlossener Jobs liegen bei GitHub: Repository › Actions › Lauf öffnen › Job › „Download log archive“.' },
+      { text: 'Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:', code: "sudo tar czf ~/runner-diag.tgz -C /opt/actions-runner _diag\njournalctl -u 'actions.runner.*' --since today > ~/runner-journal.txt" }
+    ] });
+    st.zeigeLogs = m.z === 'gestoppt' || m.z === 'offline';
+    st.logsOeffnen = oeffne('logs');
+    A.push({ id: 'update', titel: 'Monitor aktualisieren', aktiv: u.status === 'verfuegbar' || u.status === 'fehler', cls: u.status === 'fehler' ? 'fehler' : 'warn', wann: 'Wenn eine neue Version gemeldet wird oder ein Update fehlgeschlagen ist.', schritte: [
+      { text: 'Am einfachsten oben in „Updates“ auf „Jetzt aktualisieren“ klicken. Ein Hilfsdienst auf der VM lädt das offizielle Release, prüft die Prüfsumme, installiert es und startet den Monitor neu. Antwortet die neue Version nicht, stellt er die alte wieder her.' },
+      { text: 'Oder per SSH auf der VM:', code: 'sudo ./einrichten.sh aktualisieren' },
+      { text: 'Protokoll des letzten Updates:', code: 'journalctl -u runner-monitor-update -n 50' },
+      { text: 'Zur vorherigen Version zurück:', code: 'sudo ./einrichten.sh zurueck' }
+    ] });
+    const info = {
+      offen: !!m.info, oeffnenAllg: oeffne('alle'), zuToken: oeffne('token'),
+      schliessen: () => { m.info = null; this.forceUpdate(); },
+      modi: [['system', 'Automatisch'], ['hell', 'Hell'], ['dunkel', 'Dunkel']].map((x) => ({ text: x[1], cls: wahl === x[0] ? 'an' : '', p: wahl === x[0] ? 'true' : 'false', waehle: setze(x[0]) })),
+      anleitungen: A.map((a) => ({ titel: a.titel, aktuell: !!a.aktiv, pillCls: a.cls || 'warn', wann: a.wann, offen: m.info === a.id, offenText: m.info === a.id ? 'true' : 'false', chevCls: m.info === a.id ? 'offen' : '',
+        toggle: () => { m.info = m.info === a.id ? 'alle' : a.id; this.forceUpdate(); },
+        schritte: a.schritte.map((s) => ({ text: s.text, code: s.code || '', hatCode: !!s.code })) })),
+      gh: [
+        { k: 'Organisation', v: 'beispiel-org' },
+        { k: 'Token', v: keinToken ? 'nicht eingerichtet' : 'hinterlegt, nur lesend', cls: keinToken ? 'warn' : '' },
+        { k: 'Rechte', v: 'Actions, Metadata, Self-hosted runners – je Read-only' },
+        { k: 'Ablauf', v: keinToken ? '–' : (m.gh === 'token-ablauf' ? wf.ablauf + ' (in 14 Tagen)' : this._dm(now + 83 * 86400000) + new Date(now + 83 * 86400000).getFullYear() + ' (in 83 Tagen)'), cls: m.gh === 'token-ablauf' ? 'warn' : '' },
+        { k: 'Letzte Abfrage', v: keinToken ? 'aus' : (ghFehler ? 'fehlgeschlagen · letzte erfolgreiche ' + this._hms(m.ghStand) : this._hms(abg) + ' · erfolgreich'), cls: ghFehler ? 'warn' : '' },
+        { k: 'Nächste Abfrage', v: keinToken ? '–' : 'in ' + naechste + ' s (alle 30 s)' },
+        { k: 'API-Kontingent', v: keinToken ? '–' : '4.812 von 5.000 frei, Reset ' + this._hm(now + 38 * 60000) },
+        { k: 'Token-Datei', v: '/etc/runner-monitor/github-token' }
+      ],
+      bug: [
+        { k: 'Version', v: 'Runner-Monitor 0.1' },
+        { k: 'System', v: 'Ubuntu 24.04 LTS, Python 3.12' },
+        { k: 'Runner', v: 'actions-runner 2.329.0' },
+        { k: 'Browser', v: 'wird automatisch ergänzt' }
+      ],
+      monitor: [
+        { k: 'Version', v: '0.1 (Prototyp)' },
+        { k: 'Adresse', v: 'http://<ip-der-vm>:8090' },
+        { k: 'Dienst', v: 'runner-monitor (systemd, eigener Benutzer)' },
+        { k: 'Aktualisierung', v: 'Systemwerte jede Sekunde, GitHub alle 30 s' }
+      ]
+    };
+
+    // Meldungen oben mittig – wichtigste zuerst
+    const M = [];
+    if (u.status === 'laeuft') M.push({ id: 'update', cls: 'laeuft', isUpd: true, link: 'Details', titel: 'Update auf 0.2.0 läuft', text: u.schritteText });
+    if (u.status === 'fehler') M.push({ id: 'update', cls: 'fehler', isX: true, link: 'Details', titel: 'Update fehlgeschlagen', text: 'Version 0.1.0 wurde wiederhergestellt und läuft' });
+    if (getr) M.push({ id: 'monitor', cls: 'fehler', isGetrennt: true, titel: 'Verbindung zum Monitor unterbrochen', text: 'Stand ' + this._hms(m.T) + ' (' + this._vor((now - m.T) / 1000) + ') · neuer Versuch läuft' });
+    if (m.z === 'gestoppt') M.push({ id: 'gestoppt', cls: 'fehler', isX: true, titel: 'Runner-Dienst gestoppt', text: 'Jobs bleiben in der Warteschlange (' + sw + ' warten)' });
+    if (m.z === 'offline') M.push({ id: 'offline', cls: 'fehler', isX: true, titel: 'Runner offline bei GitHub', text: 'seit ' + this._hms(now - 240000) + ' – Jobs werden nicht zugestellt' });
+    if (ghFehler) M.push({ id: 'github', cls: 'warn', isWarn: true, titel: 'GitHub nicht erreichbar', text: 'Workflows zeigen den Stand von ' + this._hms(m.ghStand) + ' · neuer Versuch in ' + naechste + ' s' });
+    if (keinToken) M.push({ id: 'token', cls: 'neutral', isKey: true, titel: 'Kein GitHub-Token', text: 'Workflows und GitHub-Status sind aus' });
+    if (knapp) M.push({ id: 'platte', cls: 'warn', isWarn: true, titel: 'Platte knapp: ' + this._de(frei, 1) + ' GB frei', text: 'unter 25 GB räumt der Runner vor jedem Job auf' });
+    if (m.gh === 'token-ablauf') M.push({ id: 'token', cls: 'warn', isKey: true, titel: 'GitHub-Token läuft in 14 Tagen ab', text: 'am ' + wf.ablauf + ' – danach bleiben die Workflows leer' });
+    if (u.status === 'verfuegbar') M.push({ id: 'update', cls: 'laeuft', isUpd: true, link: 'Was ist neu?', titel: 'Version 0.2.0 verfügbar', text: 'installiert ist 0.1.0' });
+    if (u.status === 'erfolg') M.push({ id: 'update', cls: 'ok', isOkM: true, link: 'Was ist neu?', titel: 'Aktualisiert auf 0.2.0', text: 'um ' + upd.zeit + ' · alles läuft' });
+    const m0 = M[0] || {};
+    const ml = { linkText: m0.link || 'Was tun?', isUpd: !!m0.isUpd, isOkM: !!m0.isOkM, da: M.length > 0, cls: m0.cls || '', isGetrennt: !!m0.isGetrennt, isX: !!m0.isX, isWarn: !!m0.isWarn, isKey: !!m0.isKey, titel: m0.titel || '', text: m0.text || '', hatMehr: M.length > 1, mehr: '+' + (M.length - 1) + ' weitere', oeffnen: oeffne(m0.id) };
+
+    return { upd: upd, thema: wahl, modus: modus, info: info, kopf: kopf, st: st, wf: wf, sys: sys, proz: proz, pl: pl, ct: ct, lg: lg, ml: ml };
+  }
+}
+</script>
+</body>
+</html>

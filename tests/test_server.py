@@ -1,0 +1,119 @@
+"""HTTP-Schicht: Weiterleitungen, Sicherheits-Header, CSRF, Einrichtung und Anmeldung."""
+import http.client
+import json
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+
+from runner_monitor import konfig, server, zugang
+
+WEB = Path(__file__).resolve().parent.parent / "web"
+
+
+class ServerTest(unittest.TestCase):
+    def setUp(self):
+        self.verz = tempfile.TemporaryDirectory()
+        d = Path(self.verz.name)
+        (d / "lauf").mkdir()
+        self.k = konfig.lade(datei=d / "fehlt.env", umgebung={
+            "MONITOR_ADRESSE": "127.0.0.1", "MONITOR_PORT": "1", "MONITOR_DATEN_VERZ": str(d / "daten"),
+            "MONITOR_LAUF_VERZ": str(d / "lauf"), "MONITOR_WEB_VERZ": str(WEB),
+        })
+        self.k.auftraege_verz.mkdir(parents=True)
+        self.srv = server.ThreadingHTTPServer(("127.0.0.1", 0), type("H", (server.Handler,), {"app": server.App(self.k)}))
+        self.port = self.srv.server_address[1]
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.cookies: dict[str, str] = {}
+
+    def tearDown(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+        self.verz.cleanup()
+
+    def anfrage(self, methode, pfad, daten=None, origin=True, typ="application/json"):
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        kopf = {"Host": f"127.0.0.1:{self.port}"}
+        if self.cookies:
+            kopf["Cookie"] = "; ".join(f"{k}={v}" for k, v in self.cookies.items())
+        koerper = None
+        if methode == "POST":
+            koerper = json.dumps(daten or {}).encode()
+            kopf["Content-Type"] = typ
+            if origin:
+                kopf["Origin"] = f"http://127.0.0.1:{self.port}"
+        c.request(methode, pfad, body=koerper, headers=kopf)
+        r = c.getresponse()
+        inhalt = r.read()
+        c.close()
+        for wert in r.headers.get_all("Set-Cookie") or []:
+            name, _, rest = wert.partition("=")
+            self.cookies[name] = rest.split(";")[0]
+        return r, inhalt
+
+    def test_kopfzeilen_und_weiterleitung(self):
+        r, _ = self.anfrage("GET", "/")
+        self.assertEqual(r.status, 302)
+        self.assertEqual(r.headers["Location"], "/einrichtung")
+        self.assertIn("default-src 'self'", r.headers["Content-Security-Policy"])
+        self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
+        r, _ = self.anfrage("GET", "/api/health")
+        self.assertEqual(r.status, 200)
+        r, _ = self.anfrage("GET", "/static/../server.py")
+        self.assertEqual(r.status, 404)
+        r, _ = self.anfrage("DELETE", "/")
+        self.assertEqual(r.status, 405)
+
+    def test_csrf(self):
+        r, _ = self.anfrage("POST", "/api/anmelden", {"nutzer": "a"}, origin=False)
+        self.assertEqual(r.status, 403)
+        r, _ = self.anfrage("POST", "/api/anmelden", {"nutzer": "a"}, typ="text/plain")
+        self.assertEqual(r.status, 415)
+
+    def test_einrichtung_und_anmeldung(self):
+        zugang.schreibe_code(self.k.einrichtungscode_datei, "ABCD-2345")
+        r, _ = self.anfrage("POST", "/api/einrichtung/zugang", {"nutzer": "admin", "passwort": "x" * 14})
+        self.assertEqual(r.status, 401)  # ohne Code
+        r, _ = self.anfrage("POST", "/api/einrichtung/code", {"code": "abcd-0000"})
+        self.assertEqual(r.status, 401)
+        r, _ = self.anfrage("POST", "/api/einrichtung/code", {"code": "abcd2345"})
+        self.assertEqual(r.status, 200)
+        r, b = self.anfrage("POST", "/api/einrichtung/zugang", {"nutzer": "admin", "passwort": "kurz"})
+        self.assertEqual(r.status, 400)
+        r, _ = self.anfrage("POST", "/api/einrichtung/zugang", {"nutzer": "admin", "passwort": "ein langer satz zum merken"})
+        self.assertEqual(r.status, 200)
+        r, _ = self.anfrage("POST", "/api/einrichtung/fertig")
+        self.assertEqual(r.status, 200)
+        self.assertFalse(self.k.einrichtungscode_datei.exists())
+        # Zweiter Inhaber ausgeschlossen
+        r, _ = self.anfrage("POST", "/api/einrichtung/code", {"code": "abcd2345"})
+        self.assertEqual(r.status, 409)
+        # Ohne Sitzung: Anmeldeseite und 401 für die API
+        self.cookies.clear()
+        r, _ = self.anfrage("GET", "/")
+        self.assertEqual(r.headers["Location"], "/anmelden")
+        r, _ = self.anfrage("GET", "/events")
+        self.assertEqual(r.status, 401)
+        r, b = self.anfrage("POST", "/api/anmelden", {"nutzer": "admin", "passwort": "falsch falsch falsch"})
+        self.assertEqual(r.status, 401)
+        self.assertIn("verbleibend", json.loads(b))
+        r, _ = self.anfrage("POST", "/api/anmelden", {"nutzer": "admin", "passwort": "ein langer satz zum merken"})
+        self.assertEqual(r.status, 200)
+        self.assertIn("rm_sitzung", self.cookies)
+        r, b = self.anfrage("GET", "/")
+        self.assertEqual(r.status, 200)
+        self.assertIn(b"dashboard.js", b)
+        # Update nur, wenn ein neueres Release bekannt ist
+        r, _ = self.anfrage("POST", "/api/update/starten")
+        self.assertEqual(r.status, 409)
+        (self.k.lauf_verz / "release.json").write_text(json.dumps({"version": "99.0.0"}))
+        r, _ = self.anfrage("POST", "/api/update/starten")
+        self.assertEqual(r.status, 202)
+        self.assertEqual(json.loads((self.k.auftraege_verz / "update").read_text())["version"], "99.0.0")
+        r, _ = self.anfrage("POST", "/api/abmelden")
+        r, _ = self.anfrage("GET", "/api/sitzung")
+        self.assertEqual(r.status, 401)
+
+
+if __name__ == "__main__":
+    unittest.main()

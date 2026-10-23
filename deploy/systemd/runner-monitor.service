@@ -1,0 +1,41 @@
+# Runner-Monitor – Oberfläche (HTTP + Server-Sent Events auf Port 8090).
+# Läuft als eigener, unprivilegierter Benutzer. Liest /proc, das Journal (Gruppe systemd-journal)
+# und die Runner-Dateien; schreibt nur nach /var/lib/runner-monitor.
+[Unit]
+Description=Runner-Monitor (Oberfläche)
+Documentation=https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor
+After=network-online.target runner-monitor-sammler.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=runner-monitor
+Group=runner-monitor
+SupplementaryGroups=systemd-journal
+WorkingDirectory=/opt/runner-monitor/aktuell
+Environment=PYTHONPATH=/opt/runner-monitor/aktuell
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 -m runner_monitor
+Restart=on-failure
+RestartSec=3
+
+# Härtung
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/runner-monitor
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
