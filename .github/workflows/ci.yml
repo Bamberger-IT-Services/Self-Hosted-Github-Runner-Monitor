@@ -36,7 +36,7 @@ jobs:
         run: python -W error::ResourceWarning -m unittest discover -s tests -t . -v
       - name: Shell-Skripte (shellcheck)
         run: shellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
       - name: JavaScript-Syntax
