@@ -8,7 +8,7 @@
 // (Dashboard mit Demo-Daten) und einen normalen für Einrichtung und Anmeldung.
 // Als normaler Benutzer ausführen – der Monitor startet nicht als root.
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
@@ -20,9 +20,9 @@ mkdirSync(ZIEL, { recursive: true });
 for (const d of ['dev', 'daten', 'lauf']) mkdirSync(join(tmp, d), { recursive: true });
 
 writeFileSync(join(tmp, 'daten/systempruefung.json'), JSON.stringify({
-  zeit: Date.now() / 1000, vm: 'runner-vm', port: 8090, monitorVersion: '0.1.0',
-  runner: { gefunden: true, name: 'runner-vm-01', version: '2.329.0', dienst: 'actions.runner.beispiel-org.runner-vm-01.service' },
-  firewall: { aktiv: true },
+  zeit: Date.now() / 1000, vm: 'runner-vm', port: 8090, monitorVersion: readFileSync(join(WURZEL, 'VERSION'), 'utf8').trim(),
+  runner: { gefunden: true, name: 'runner-vm-01', version: '2.329.0', dienst: 'actions.runner.beispiel-org.runner-vm-01.service', aktiv: true },
+  firewall: { aktiv: true, netz: '192.0.2.0/24' },
 }));
 execFileSync('python3', ['-c', `import pathlib; from runner_monitor import zugang; zugang.schreibe_code(pathlib.Path(${JSON.stringify(join(tmp, 'daten/einrichtungscode.json'))}), 'ABCD-2345')`], { cwd: WURZEL });
 
@@ -42,7 +42,8 @@ async function seite({ breite = 1440, hoehe = 900, dunkel = false } = {}) {
   return ctx.newPage();
 }
 const D = 'http://127.0.0.1:18091/?demo&leiste=0', E = 'http://127.0.0.1:18092';
-const bild = (p, name) => p.screenshot({ path: join(ZIEL, name) });
+// Kurz warten: Einblendungen (0,35 s) und Abfragen wie /api/health sollen fertig sein
+const bild = async (p, name) => { await p.waitForTimeout(700); await p.screenshot({ path: join(ZIEL, name) }); };
 
 try {
   let p = await seite();

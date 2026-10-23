@@ -191,6 +191,7 @@ class Zustand:
             "labels": labels,
             "version": runner.runner_version(self.k.runner_verz) if reg else "",
             "monitorVersion": VERSION,
+            "system": system.beschreibung(),
             "dienst": {"zustand": dienst["zustand"], "seit": dienst.get("seit")},
             "github": {"zustand": gh_zustand, "seit": self.offline_seit},
             "job": job,

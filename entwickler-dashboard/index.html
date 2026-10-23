@@ -3,78 +3,420 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="color-scheme" content="light dark">
-<title>Entwickler-Dashboard · Runner-Monitor</title>
-<!-- Lokal öffnen (Doppelklick). Inhalt kommt aus daten.js. -->
+<title>Runner-Monitor Entwicklerdashboard</title>
+<!--
+  Lokales Entwicklerdashboard für den Runner-Monitor (Aufbau nach dem Helios-Entwicklerdashboard).
+  Öffnen per Doppelklick (file://) – braucht keinen Server.
+  Inhalte stehen in daten.js (pflegt Claude nach jeder Arbeitsrunde). Antworten auf Entscheidungen speichert
+  der Browser (localStorage) und „Antworten kopieren“ legt sie als Text für den Chat in die Zwischenablage.
+-->
 <style>
-  :root { --surface:#fff; --alt:#f6f6f6; --ink:#13212b; --muted:#4f5d67; --border:#d9dee2; --brand:#0e628f; --ok:#1f7a4d; --warn:#9a4d00; --danger:#b3261e; --r:4px; }
-  @media (prefers-color-scheme: dark) { :root { --surface:#0c1a24; --alt:#13283a; --ink:#eef2f5; --muted:#a9b6c0; --border:#2a3f50; --brand:#5aa9d6; --ok:#5cc08a; --warn:#f0a35e; --danger:#f08a80; } }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--surface); color: var(--ink); font: 14px/20px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
-  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { margin: 0; font-size: 26px; line-height: 32px; letter-spacing: -.02em; }
-  h2 { margin: 32px 0 12px; font-size: 17px; }
-  .kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; }
-  .muted { color: var(--muted); }
-  .kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 20px; }
-  .kachel { background: var(--alt); border-radius: var(--r); padding: 14px 16px; }
-  .kachel b { display: block; font-size: 24px; line-height: 30px; }
-  .karte { background: var(--alt); border-radius: var(--r); padding: 16px 18px; }
-  ol, ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: top; }
-  th { font-size: 12px; color: var(--muted); font-weight: 600; border-top: 0; }
-  td.id { font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
-  .pill { display: inline-block; padding: 0 8px; border-radius: 2px; font-size: 12px; font-weight: 600; white-space: nowrap; background: color-mix(in srgb, currentColor 12%, transparent); }
-  .erledigt { color: var(--ok); } .offen { color: var(--warn); } .später { color: var(--muted); } .hoch { color: var(--danger); } .mittel { color: var(--warn); } .niedrig { color: var(--muted); }
-  .filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .filter button { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 2px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; }
-  .filter button[aria-pressed="true"] { border-color: var(--brand); color: var(--brand); font-weight: 600; }
-  a { color: var(--brand); }
-  .notiz { display: block; font-size: 12.5px; color: var(--muted); }
-  .verlauf li { padding-left: 4px; }
+:root{
+  --navy:#12233D;--akzent:#2B59C3;--akzent-flaeche:#E8EEFB;--hintergrund:#F3F5F8;--flaeche:#fff;--gedimmt:#F7F9FB;
+  --chip:#EEF1F5;--rahmen:#DCE2EA;--rahmen-leise:#EDF0F4;--kante:rgba(18,35,61,.07);--gedaempft:#5B6B84;--leise:#9AA7BA;
+  --erfolg:#1E7A47;--erfolg-flaeche:#E3F4EA;--warnung:#8A5A00;--warnung-flaeche:#FFF4DB;--fehler:#B42323;--fehler-flaeche:#FDECEC;
+  --schatten:0 1px 2px rgba(18,35,61,.04),0 8px 20px -12px rgba(18,35,61,.14);
+  --kurve:cubic-bezier(.2,.8,.2,1);
+  --glas:rgba(255,255,255,.76);--code:#12233D;--code-text:#E6ECF5;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --navy:#E6ECF5;--akzent:#7FA6FF;--akzent-flaeche:rgba(127,166,255,.14);--hintergrund:#0B1424;--flaeche:#12233D;--gedimmt:#16294A;
+  --chip:#1A2E4D;--rahmen:#2A4066;--rahmen-leise:#1E3253;--kante:rgba(230,236,245,.08);--gedaempft:#9AAAC4;--leise:#6F82A3;
+  --erfolg:#5FD08F;--erfolg-flaeche:rgba(95,208,143,.14);--warnung:#F2C46B;--warnung-flaeche:rgba(242,196,107,.14);--fehler:#FF8A8A;--fehler-flaeche:rgba(255,138,138,.14);
+  --schatten:0 1px 2px rgba(0,0,0,.3),0 8px 24px -12px rgba(0,0,0,.6);
+  --glas:rgba(18,35,61,.72);--code:#0B1424;--code-text:#E6ECF5;color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+body{margin:0;background:var(--hintergrund);color:var(--navy);font:15px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue",system-ui,sans-serif;-webkit-font-smoothing:antialiased;font-optical-sizing:auto}
+a{color:var(--akzent);text-decoration:none}a:hover{text-decoration:underline}
+code,pre{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.zahl{font-variant-numeric:tabular-nums}
+button{font:inherit;cursor:pointer;transition:transform 180ms var(--kurve),background-color 180ms var(--kurve),border-color 180ms var(--kurve),opacity 180ms var(--kurve)}
+button:active{transform:scale(.96)}
+header{position:sticky;top:0;z-index:10;background:var(--glas);-webkit-backdrop-filter:blur(20px) saturate(180%);backdrop-filter:blur(20px) saturate(180%);border-bottom:1px solid transparent;transition:border-color 220ms var(--kurve),box-shadow 220ms var(--kurve)}
+header.gescrollt{border-bottom-color:var(--kante);box-shadow:0 8px 16px -14px rgba(18,35,61,.35)}
+.kopf{max-width:1180px;margin:0 auto;padding:0 20px;height:60px;display:flex;align-items:center;gap:18px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px;letter-spacing:-.021em;white-space:nowrap}
+.logo i{width:22px;height:22px;border:2px solid var(--akzent);border-radius:6px;display:flex;align-items:flex-end;justify-content:flex-end}
+.logo i::after{content:"";width:10px;height:10px;background:var(--akzent);border-radius:1px}
+.logo span{font-weight:400;color:var(--gedaempft);font-size:15px;padding-left:10px;border-left:1px solid var(--rahmen)}
+nav{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;flex:1}
+nav a{color:var(--gedaempft);font-size:14px;padding:6px 10px;border-radius:8px;white-space:nowrap}
+nav a:hover{background:var(--chip);color:var(--navy);text-decoration:none}
+nav a[aria-current=true]{color:var(--navy);font-weight:600;background:var(--chip)}
+.meta{font-size:12px;color:var(--gedaempft);white-space:nowrap}
+main{max-width:1180px;margin:0 auto;padding:28px 20px 60px;display:flex;flex-direction:column;gap:36px}
+h1{font-size:34px;line-height:1.12;letter-spacing:-.028em;margin:0}
+h2{font-size:22px;letter-spacing:-.021em;margin:0 0 4px}
+.unter{color:var(--gedaempft);margin:0 0 14px;font-size:14px}
+.raster{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.karte{background:var(--flaeche);border:1px solid var(--kante);border-radius:12px;box-shadow:var(--schatten)}
+.dienst{display:flex;align-items:center;gap:12px;padding:12px 14px;color:var(--navy)}
+.dienst:hover{text-decoration:none;border-color:var(--rahmen)}
+.dienst:active{transform:scale(.985)}
+.punkt{width:10px;height:10px;border-radius:50%;background:var(--leise);flex-shrink:0;box-shadow:0 0 0 3px var(--chip)}
+.punkt.an{background:#22A35A;box-shadow:0 0 0 3px var(--erfolg-flaeche)}
+.punkt.aus{background:var(--fehler);box-shadow:0 0 0 3px var(--fehler-flaeche)}
+.punkt.unbekannt{background:transparent;border:2px dashed var(--leise);box-shadow:none;width:6px;height:6px}
+.dienst b{font-weight:600;font-size:14px;display:block}
+.dienst small{color:var(--gedaempft);font-size:12px}
+.gruppe{font-size:13px;font-weight:600;color:var(--gedaempft);margin:14px 0 8px}
+.knopf{border:1px solid var(--rahmen);background:var(--flaeche);color:var(--navy);border-radius:10px;padding:7px 12px;font-size:13px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.knopf:hover{border-color:var(--leise)}
+.knopf.haupt{background:#2B59C3;border-color:#2B59C3;color:#fff}
+.knopf.haupt:hover{background:#234AA6}
+.befehl{padding:16px;display:flex;flex-direction:column;gap:8px}
+.befehl h3{margin:0;font-size:16px}
+.befehl p{margin:0;color:var(--gedaempft);font-size:13px}
+.befehl pre{margin:4px 0 0;background:var(--code);color:var(--code-text);border-radius:10px;padding:12px 14px;font-size:13px;white-space:pre-wrap;word-break:break-all;position:relative;padding-right:84px}
+.befehl pre button{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.12);color:#fff;border:0;border-radius:8px;padding:4px 9px;font-size:12px}
+.leiste{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.filter button{border:1px solid var(--rahmen);background:var(--flaeche);border-radius:999px;padding:5px 12px;font-size:13px;color:var(--navy)}
+.filter button[aria-pressed=true]{background:var(--navy);border-color:var(--navy);color:var(--hintergrund)}
+.filter button small{opacity:.7;margin-left:4px;font-variant-numeric:tabular-nums}
+.entscheidung{padding:14px 16px;display:grid;grid-template-columns:64px 1fr;gap:6px 14px;align-items:start}
+.entscheidung+.entscheidung{border-top:1px solid var(--rahmen-leise)}
+.id{font:600 13px/1.6 ui-monospace,"SF Mono",Menlo,monospace;color:var(--akzent);background:var(--akzent-flaeche);border-radius:6px;padding:1px 7px;justify-self:start;border:0}
+.id:hover{background:#D6E1F8}
+.thema{font-size:12px;color:var(--gedaempft);font-weight:600}
+.frage{margin:2px 0 8px}
+.optionen{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.optionen button{border:1px solid var(--rahmen);background:var(--flaeche);border-radius:999px;padding:4px 11px;font-size:13px;color:var(--navy)}
+.optionen button[aria-pressed=true]{background:#2B59C3;border-color:#2B59C3;color:#fff}
+.optionen input{background:var(--flaeche);color:var(--navy)}
+.quelle{font-weight:400;color:var(--leise);margin-left:6px}
+.wer{font-size:11px;font-weight:600;color:var(--akzent);margin-right:6px}
+.gemerkt{font-size:12px;color:var(--erfolg);opacity:0;transition:opacity 220ms var(--kurve)}
+.gemerkt.an{opacity:1}
+.optionen input{border:1px solid var(--rahmen);border-radius:8px;padding:5px 10px;font:inherit;font-size:13px;min-width:200px;flex:1;max-width:420px;outline:none}
+.optionen input:focus{border-color:var(--akzent);box-shadow:0 0 0 3px rgba(43,89,195,.14)}
+.entschieden{grid-column:2;font-size:13px;color:var(--erfolg)}
+.badge{font-size:12px;font-weight:600;border-radius:6px;padding:1px 8px;white-space:nowrap}
+.badge.offen{background:var(--chip);color:var(--navy)}
+.badge.läuft{background:var(--warnung-flaeche);color:var(--warnung)}
+.aufgabe.in-arbeit{box-shadow:inset 3px 0 0 var(--warnung)}
+.badge.erledigt{background:var(--erfolg-flaeche);color:var(--erfolg)}
+.aufgabe{display:flex;gap:12px;align-items:flex-start;padding:12px 16px}
+.aufgabe+.aufgabe{border-top:1px solid var(--rahmen-leise)}
+.aufgabe p{margin:0;flex:1}
+.hinweis{padding:14px 16px}
+.hinweis b{display:block;margin-bottom:2px}
+.hinweis p{margin:0;color:var(--gedaempft);font-size:14px}
+ul.links{list-style:none;margin:0;padding:6px 0}
+ul.links li a{display:flex;justify-content:space-between;gap:10px;padding:9px 16px;color:var(--navy)}
+ul.links li a:hover{background:var(--gedimmt);text-decoration:none}
+ul.links small{color:var(--leise);font-family:ui-monospace,Menlo,monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50%}
+.hilfe{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);gap:16px;padding:12px 16px}
+.hilfe+.hilfe{border-top:1px solid var(--rahmen-leise)}
+.ortgruppe{margin:0 0 6px;font-size:13px;font-weight:600;color:var(--gedaempft);text-transform:uppercase;letter-spacing:.04em}
+.ortgruppe~.karte{margin-bottom:16px}
+.hilfe code{font-size:12.5px;background:var(--rahmen-leise);border-radius:5px;padding:1px 5px;word-break:break-all}
+.hilfe .kopie{margin-left:6px;border:1px solid var(--rahmen);background:none;border-radius:6px;padding:1px 7px;font-size:12px;cursor:pointer;color:var(--navy)}
+.hilfe b{font-weight:600;font-size:14px}
+.hilfe p{margin:0;color:var(--gedaempft);font-size:14px}
+@media (max-width:820px){.hilfe{grid-template-columns:1fr;gap:4px}}
+.verlauf{padding:6px 16px}
+.verlauf div{display:flex;gap:14px;padding:8px 0;font-size:14px}
+.verlauf div+div{border-top:1px solid var(--rahmen-leise)}
+.verlauf span{color:var(--gedaempft);white-space:nowrap}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);background:var(--navy);color:#fff;border-radius:12px;padding:10px 16px;font-size:14px;opacity:0;pointer-events:none;transition:opacity 220ms var(--kurve),transform 220ms var(--kurve)}
+.toast.an{opacity:1;transform:translateX(-50%) translateY(0)}
+.zwei{display:grid;gap:12px;grid-template-columns:1fr 1fr}
+@media (max-width:1400px){.meta{display:none}}
+@media (max-width:820px){.zwei{grid-template-columns:1fr}.meta{display:none}.entscheidung{grid-template-columns:1fr}.entschieden{grid-column:1}}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;scroll-behavior:auto!important}button:active{transform:none}}
+@media (prefers-reduced-transparency:reduce){header{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--flaeche)}}
+@media (prefers-contrast:more){header{backdrop-filter:none;-webkit-backdrop-filter:none;background:var(--flaeche);border-bottom-color:var(--gedaempft)}.karte{border-color:var(--rahmen)}}
 </style>
 </head>
 <body>
-<main id="app"></main>
+<header>
+  <div class="kopf">
+    <div class="logo"><i></i>Runner-Monitor<span>Entwickler</span></div>
+    <nav aria-label="Abschnitte">
+      <a href="#status">Status</a><a href="#befehle">Starten</a><a href="#hilfe">Wenn etwas nicht geht</a><a href="#protokolle">Protokolle</a><a href="#orte">Wo finde ich was</a><a href="#entscheidungen">Entscheidungen</a><a href="#aufgaben">Aufgaben</a><a href="#hinweise">Merkzettel</a><a href="#links">Links</a><a href="#verlauf">Verlauf</a>
+    </nav>
+    <span class="meta zahl" id="meta"></span>
+  </div>
+</header>
+
+<main>
+  <section id="status">
+    <div class="leiste" style="justify-content:space-between">
+      <div><h2>Läuft gerade</h2><p class="unter" style="margin:0">Grün = antwortet. Klick öffnet die Seite.</p></div>
+      <button class="knopf" id="pruefen">Neu prüfen</button>
+    </div>
+    <div id="dienste"></div>
+  </section>
+
+  <section id="befehle">
+    <h2>Starten, neu starten, beenden</h2>
+    <p class="unter">Im Terminal auf dem Mac ausführen. „Kopieren“ legt den Befehl in die Zwischenablage.</p>
+    <div class="raster" id="befehlsliste" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))"></div>
+  </section>
+
+  <section id="hilfe">
+    <h2>Wenn etwas nicht geht</h2>
+    <p class="unter">Anzeichen links, was zu tun ist rechts. Hilft nichts davon: Fehlermeldung oder Protokoll an Claude geben.</p>
+    <div class="karte" id="hilfeliste"></div>
+  </section>
+
+  <section id="protokolle">
+    <div class="leiste" style="justify-content:space-between;margin-bottom:4px">
+      <h2>Protokolle</h2>
+      <a class="knopf" id="logordner" target="_blank">Ordner öffnen</a>
+    </div>
+    <p class="unter" id="protokollhinweis"></p>
+    <div class="raster" id="protokollliste"></div>
+  </section>
+
+  <section id="orte">
+    <h2>Wo finde ich was</h2>
+    <p class="unter">Umgebungsvariablen, Protokolle und E-Mails – lokal auf dem Mac, in der App und auf der VM. Geheimnisse aus diesen Dateien nie in Chat, Git oder Wiki kopieren.</p>
+    <div id="ortliste"></div>
+  </section>
+
+  <section id="entscheidungen">
+    <h2>Offene Entscheidungen</h2>
+    <p class="unter">Im Chat einfach die Nummer nennen („E-03: 0.9.0“) – oder hier antworten und „Antworten kopieren“ in den Chat einfügen. Deine Auswahl merkt sich dieser Browser.</p>
+    <div class="leiste">
+      <div class="filter" role="group" aria-label="Filter">
+        <button data-f="offen" aria-pressed="true">Offen<small id="n-offen"></small></button>
+        <button data-f="entschieden" aria-pressed="false">Entschieden<small id="n-entschieden"></small></button>
+        <button data-f="alle" aria-pressed="false">Alle<small id="n-alle"></small></button>
+      </div>
+      <select id="thema" class="knopf" aria-label="Thema" style="font-weight:400"></select>
+      <span style="flex:1"></span>
+      <button class="knopf" id="leeren">Meine Antworten leeren</button>
+      <button class="knopf haupt" id="kopieren">Antworten kopieren</button>
+    </div>
+    <div class="karte" id="entscheidungsliste"></div>
+  </section>
+
+  <div class="zwei">
+    <section id="aufgaben">
+      <h2>Aufgaben</h2>
+      <p class="unter">Was Claude gerade baut und was als Nächstes kommt. Nummer anklicken = kopieren. „In Bearbeitung“ heißt: Claude arbeitet gerade daran – bitte nicht ändern.</p>
+      <div class="leiste">
+        <div class="filter" id="aufgabenfilter" role="group" aria-label="Aufgaben filtern">
+          <button data-a="offen" aria-pressed="true">Offen<small id="na-offen"></small></button>
+          <button data-a="läuft" aria-pressed="false">In Bearbeitung<small id="na-läuft"></small></button>
+          <button data-a="erledigt" aria-pressed="false">Erledigt<small id="na-erledigt"></small></button>
+          <button data-a="alle" aria-pressed="false">Alle<small id="na-alle"></small></button>
+        </div>
+      </div>
+      <div class="karte" id="aufgabenliste"></div>
+    </section>
+    <section id="hinweise">
+      <h2>Merkzettel</h2>
+      <p class="unter">Wichtiges, das sonst im Chat untergeht.</p>
+      <div class="karte" id="hinweisliste"></div>
+    </section>
+  </div>
+
+  <div class="zwei">
+    <section id="links">
+      <h2>Dokumente und Links</h2>
+      <p class="unter">Lokale Dateien öffnen im Browser bzw. Finder.</p>
+      <div class="karte"><ul class="links" id="linkliste"></ul></div>
+    </section>
+    <section id="verlauf">
+      <h2>Verlauf</h2>
+      <p class="unter">Was sich zuletzt geändert hat.</p>
+      <div class="karte verlauf" id="verlaufsliste"></div>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script src="daten.js"></script>
 <script>
-  const D = window.DATEN;
-  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  let filter = 'offen';
-  function zeichne() {
-    const A = D.aufgaben, zaehl = st => A.filter(a => a.status === st).length;
-    const sichtbar = A.filter(a => filter === 'alle' || a.status === filter);
-    document.getElementById('app').innerHTML = `
-      <div class="kopf"><h1>${esc(D.projekt)}</h1><span class="muted">Version ${esc(D.version)} · ${esc(D.versionStatus)}</span><span class="muted">Stand ${esc(D.stand)}</span></div>
-      <div class="kacheln">
-        <div class="kachel"><span class="muted">Offene Aufgaben</span><b class="offen">${zaehl('offen')}</b></div>
-        <div class="kachel"><span class="muted">Erledigt</span><b class="erledigt">${zaehl('erledigt')}</b></div>
-        <div class="kachel"><span class="muted">Später</span><b>${zaehl('später')}</b></div>
-        <div class="kachel"><span class="muted">Entscheidungen</span><b>${D.entscheidungen.length}</b></div>
-      </div>
-      <h2>Nächste Schritte</h2>
-      <div class="karte"><ol>${D.naechsteSchritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>
-      <h2>Aufgaben</h2>
-      <div class="filter" role="group" aria-label="Filter">${['offen', 'erledigt', 'später', 'alle'].map(f => `<button type="button" data-f="${f}" aria-pressed="${filter === f}">${f}</button>`).join('')}</div>
-      <div class="karte"><table><thead><tr><th>Nr.</th><th>Aufgabe</th><th>Bereich</th><th>Priorität</th><th>Status</th><th>Wer</th></tr></thead><tbody>
-        ${sichtbar.map(a => `<tr><td class="id">${a.id}</td><td>${esc(a.titel)}${a.notiz ? `<span class="notiz">${esc(a.notiz)}</span>` : ''}</td><td>${esc(a.bereich)}</td><td><span class="pill ${a.prio}">${a.prio}</span></td><td><span class="pill ${a.status}">${a.status}</span></td><td class="muted">${esc(a.wer || 'Claude')}</td></tr>`).join('')}
-      </tbody></table></div>
-      <h2>Entscheidungen</h2>
-      <div class="karte"><table><thead><tr><th>Nr.</th><th>Datum</th><th>Entscheidung</th><th>Von</th></tr></thead><tbody>
-        ${D.entscheidungen.map(e => `<tr><td class="id">${e.id}</td><td>${esc(e.datum)}</td><td>${esc(e.titel)}${e.beleg ? `<span class="notiz"><a href="../${esc(e.beleg)}">${esc(e.beleg)}</a></span>` : ''}</td><td class="muted">${esc(e.von)}</td></tr>`).join('')}
-      </tbody></table></div>
-      <h2>Abweichungen von den Anweisungen</h2>
-      <div class="karte"><table><thead><tr><th>Anweisung</th><th>Abweichung</th><th>Beleg</th></tr></thead><tbody>
-        ${D.abweichungen.map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td class="muted">${esc(c)}</td></tr>`).join('')}
-      </tbody></table></div>
-      <h2>Verlauf</h2>
-      <div class="karte"><ul class="verlauf">${D.verlauf.map(v => `<li><b>${esc(v.datum)}</b> – ${esc(v.text)}</li>`).join('')}</ul></div>
-      <h2>Links</h2>
-      <div class="karte"><ul>${D.links.map(([n, u]) => `<li><a href="${esc(u)}">${esc(n)}</a></li>`).join('')}</ul></div>`;
+(() => {
+  const D = window.RUNNER_MONITOR;
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // Eigene Schlüssel: Unter file:// teilen sich alle lokalen Dashboards (auch Helios) denselben Speicher.
+  const SPEICHER = "runner-monitor-dashboard-antworten";
+  const lesen = () => { try { return JSON.parse(localStorage.getItem(SPEICHER) || "{}"); } catch { return {}; } };
+  const schreiben = (o) => { try { localStorage.setItem(SPEICHER, JSON.stringify(o)); } catch {} };
+  const toast = (t) => { const e = $("toast"); e.textContent = t; e.classList.add("an"); clearTimeout(toast.z); toast.z = setTimeout(() => e.classList.remove("an"), 1800); };
+  const kopiere = async (t, meldung = "Kopiert") => {
+    try { await navigator.clipboard.writeText(t); toast(meldung); }
+    catch { const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); document.execCommand("copy"); a.remove(); toast(meldung); }
+  };
+  // Dateien liegen relativ zur Wurzel des Repositorys (eine Ebene über entwickler-dashboard/).
+  const datei = (p) => "../" + p.split("/").map(encodeURIComponent).join("/");
+
+  $("meta").textContent = `Stand ${D.stand} · Branch ${D.branch}`;
+
+  // Kante unter der Kopfleiste erst, wenn Inhalt darunter läuft; aktiver Abschnitt in der Navigation.
+  const kopf = document.querySelector("header");
+  addEventListener("scroll", () => kopf.classList.toggle("gescrollt", scrollY > 4), { passive: true });
+  const navLinks = [...document.querySelectorAll("nav a")];
+  const beobachter = new IntersectionObserver((eintraege) => {
+    eintraege.forEach((e) => { if (e.isIntersecting) navLinks.forEach((a) => a.setAttribute("aria-current", a.getAttribute("href") === "#" + e.target.id)); });
+  }, { rootMargin: "-80px 0px -65% 0px" });
+  document.querySelectorAll("main section[id]").forEach((s) => beobachter.observe(s));
+
+  // --- Status ---------------------------------------------------------------
+  const gruppen = [...new Set(D.dienste.map((d) => d.gruppe))];
+  $("dienste").innerHTML = gruppen.map((g) => `
+    <div class="gruppe">${esc(g)}</div>
+    <div class="raster">${D.dienste.map((d, i) => d.gruppe !== g ? "" : `
+      <a class="karte dienst" href="${esc(d.url)}" target="_blank" rel="noopener">
+        <span class="punkt" id="p${i}" title="wird geprüft"></span>
+        <span><b>${esc(d.name)}</b><small class="zahl">${esc(d.url.replace(/^https?:\/\//, ""))}</small></span>
+      </a>`).join("")}</div>`).join("");
+  async function pruefe() {
+    await Promise.all(D.dienste.map(async (d, i) => {
+      const p = $("p" + i);
+      // Manche Dienste verbieten das Abfragen von fremden Seiten (Cross-Origin-Resource-Policy) oder sind nur
+      // Platzhalter (z. B. der Monitor auf der VM); ihr Zustand ist dann nicht feststellbar – kein falsches „offline“.
+      if (!d.pruefen) { p.className = "punkt unbekannt"; p.title = d.hinweis || "aus dem Dashboard nicht prüfbar"; return; }
+      p.className = "punkt"; p.title = "wird geprüft";
+      const ab = new AbortController(); const t = setTimeout(() => ab.abort(), 2500);
+      try { await fetch(d.pruefen, { mode: "no-cors", cache: "no-store", signal: ab.signal }); p.className = "punkt an"; p.title = "antwortet"; }
+      catch { p.className = "punkt aus"; p.title = "antwortet nicht"; }
+      finally { clearTimeout(t); }
+    }));
   }
-  document.addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { filter = b.dataset.f; zeichne(); } });
-  zeichne();
+  $("pruefen").onclick = pruefe; pruefe(); setInterval(pruefe, 20000);
+
+  // --- Befehle --------------------------------------------------------------
+  $("befehlsliste").innerHTML = D.befehle.map((b, i) => `
+    <div class="karte befehl"><h3>${esc(b.titel)}</h3><p>${esc(b.wann)}</p>
+      <pre><code>${esc(b.code)}</code><button data-b="${i}">Kopieren</button></pre></div>`).join("");
+  $("befehlsliste").onclick = (e) => { const i = e.target.dataset.b; if (i !== undefined) kopiere(D.befehle[i].code, "Befehl kopiert – im Terminal einfügen"); };
+
+  // --- Fehlerhilfe -----------------------------------------------------------
+  $("hilfeliste").innerHTML = (D.fehlerhilfe || []).map((f) => `
+    <div class="hilfe"><b>${esc(f.anzeichen)}</b><p>${esc(f.tun)}${f.datei ? ` <a href="${datei(f.datei)}">Öffnen</a>` : ""}</p></div>`).join("");
+
+  // --- Protokolle --------------------------------------------------------------
+  // Einträge mit „datei“ öffnen eine Datei im Protokollordner (D.protokollordner, relativ zur Repo-Wurzel);
+  // Einträge mit „code“ (z. B. journalctl auf der VM) kopieren den Befehl. Ohne Ordner kein „Ordner öffnen“.
+  const logOrdner = D.protokollordner || "";
+  if (logOrdner) $("logordner").href = datei(logOrdner) + "/"; else $("logordner").style.display = "none";
+  $("protokollhinweis").innerHTML = (D.protokolle || []).some((l) => l.datei)
+    ? `Klick öffnet die Datei in einem neuen Tab (neueste Zeilen stehen unten – mit ⌘↓ ans Ende). Liegt in <code>${esc(logOrdner)}</code>.`
+    : "Klick kopiert den Befehl – im Terminal einfügen (wo angegeben, auf der VM).";
+  $("protokollliste").innerHTML = (D.protokolle || []).map((l, i) => l.datei ? `
+    <a class="karte dienst" href="${datei(logOrdner + "/" + l.datei)}" target="_blank">
+      <span class="punkt" style="background:var(--akzent);box-shadow:0 0 0 3px var(--akzent-flaeche)"></span>
+      <span><b>${esc(l.titel)}</b><small>${esc(l.datei)} · ${esc(l.wann)}</small></span>
+    </a>` : `
+    <a class="karte dienst" href="#protokolle" data-l="${i}" title="${esc(l.code)}">
+      <span class="punkt" style="background:var(--akzent);box-shadow:0 0 0 3px var(--akzent-flaeche)"></span>
+      <span><b>${esc(l.titel)}</b><small>${esc(l.einheit || l.code)} · ${esc(l.wann)}</small></span>
+    </a>`).join("");
+  $("protokollliste").onclick = (e) => {
+    const k = e.target.closest("[data-l]"); if (!k) return;
+    e.preventDefault(); kopiere(D.protokolle[k.dataset.l].code, "Befehl kopiert – im Terminal einfügen");
+  };
+
+  // --- Wo finde ich was --------------------------------------------------------
+  const orte = D.orte || [];
+  const ortGruppen = [...new Set(orte.map((o) => o.gruppe))];
+  $("ortliste").innerHTML = ortGruppen.map((g) => `
+    <h3 class="ortgruppe">${esc(g)}</h3>
+    <div class="karte">${orte.map((o, i) => o.gruppe !== g ? "" : `
+      <div class="hilfe"><b>${esc(o.titel)}</b><p>${o.wo ? `<code>${esc(o.wo)}</code> ` : ""}${esc(o.was || "")}${o.datei ? ` <a href="${datei(o.datei)}" target="_blank">Öffnen</a>` : ""}${o.url ? ` <a href="${esc(o.url)}" target="_blank">Öffnen</a>` : ""}${o.code ? ` <button class="kopie" data-o="${i}">Befehl kopieren</button>` : ""}</p></div>`).join("")}
+    </div>`).join("");
+  $("ortliste").onclick = (e) => { const i = e.target.dataset.o; if (i !== undefined) kopiere(orte[i].code, "Befehl kopiert – im Terminal einfügen"); };
+
+  // --- Entscheidungen -------------------------------------------------------
+  let filter = "offen", thema = "";
+  try { const g = localStorage.getItem("runner-monitor-dashboard-entscheidungsfilter"); if (["offen", "entschieden", "alle"].includes(g)) filter = g; } catch {}
+  const themen = [...new Set(D.entscheidungen.map((e) => e.thema))];
+  $("thema").innerHTML = `<option value="">Alle Themen</option>` + themen.map((t) => `<option>${esc(t)}</option>`).join("");
+  $("thema").onchange = (e) => { thema = e.target.value; zeigeEntscheidungen(); };
+  const erledigtE = (e) => e.status === "entschieden" || e.status === "zurückgestellt";
+  const offenAnzahl = () => D.entscheidungen.filter((e) => !erledigtE(e)).length;
+  $("n-offen").textContent = offenAnzahl(); $("n-alle").textContent = D.entscheidungen.length;
+  $("n-entschieden").textContent = D.entscheidungen.length - offenAnzahl();
+  function zeigeEntscheidungen() {
+    const a = lesen();
+    const zuFilter = { offen: (e) => !erledigtE(e), entschieden: (e) => erledigtE(e), alle: () => true }[filter];
+    const liste = D.entscheidungen.filter((e) => zuFilter(e) && (!thema || e.thema === thema));
+    document.querySelectorAll("#entscheidungen .filter button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.f === filter));
+    $("entscheidungsliste").innerHTML = liste.map((e) => {
+      const meine = a[e.id] || {};
+      const zu = erledigtE(e);
+      return `<div class="entscheidung" data-id="${e.id}">
+        <button class="id" data-kopie="${e.id}" title="Nummer kopieren">${e.id}</button>
+        <div><div class="thema">${esc(e.thema)}${e.quelle ? `<span class="quelle">· ${esc(e.quelle)}</span>` : ""}</div>
+          <div class="frage">${esc(e.frage)}${e.datei ? ` <a href="${datei(e.datei)}">Details</a>` : ""}</div>
+          ${zu ? "" : `<div class="optionen">
+            ${(e.optionen || []).map((o) => `<button data-wahl="${esc(o)}" aria-pressed="${meine.wahl === o}">${esc(o)}</button>`).join("")}
+            <input data-notiz placeholder="${(e.optionen || []).length ? "Anmerkung (optional)" : "Deine Antwort"}" value="${esc(meine.notiz || "")}">
+            <span class="gemerkt" aria-hidden="true">✓ gemerkt</span>
+          </div>`}
+        </div>
+        ${zu ? `<div class="entschieden">${e.status === "zurückgestellt" ? "Zurückgestellt" : "Entschieden"}: ${esc(e.antwort || "")}</div>` : ""}
+      </div>`;
+    }).join("") || `<p style="padding:16px;margin:0;color:var(--gedaempft)">Nichts offen in dieser Auswahl.</p>`;
+  }
+  const gemerkt = (el) => { const g = el.closest("[data-id]").querySelector(".gemerkt"); if (!g) return; g.classList.add("an"); clearTimeout(g.z); g.z = setTimeout(() => g.classList.remove("an"), 1200); };
+  $("entscheidungsliste").onclick = (e) => {
+    const k = e.target.dataset.kopie; if (k) return kopiere(k, `${k} kopiert`);
+    const w = e.target.dataset.wahl; if (w === undefined) return;
+    const id = e.target.closest("[data-id]").dataset.id; const a = lesen();
+    a[id] = { ...(a[id] || {}), wahl: a[id]?.wahl === w ? undefined : w }; schreiben(a); zeigeEntscheidungen();
+    gemerkt(document.querySelector(`[data-id="${id}"] .optionen`));
+  };
+  $("entscheidungsliste").oninput = (e) => {
+    if (!e.target.hasAttribute("data-notiz")) return;
+    const id = e.target.closest("[data-id]").dataset.id; const a = lesen();
+    a[id] = { ...(a[id] || {}), notiz: e.target.value }; schreiben(a); gemerkt(e.target);
+  };
+  document.querySelectorAll("#entscheidungen .filter button").forEach((b) => b.onclick = () => {
+    filter = b.dataset.f; try { localStorage.setItem("runner-monitor-dashboard-entscheidungsfilter", filter); } catch {} zeigeEntscheidungen();
+  });
+  $("kopieren").onclick = () => {
+    const a = lesen();
+    const zeilen = D.entscheidungen.filter((e) => !erledigtE(e) && (a[e.id]?.wahl || a[e.id]?.notiz?.trim()))
+      .map((e) => `${e.id}: ${[a[e.id].wahl, a[e.id].notiz?.trim()].filter(Boolean).join(" – ")}`);
+    if (!zeilen.length) return toast("Noch keine Antworten ausgewählt");
+    kopiere(`Entscheidungen (Entwicklerdashboard):\n${zeilen.join("\n")}`, `${zeilen.length} Antworten kopiert – im Chat einfügen`);
+  };
+  $("leeren").onclick = () => { schreiben({}); zeigeEntscheidungen(); toast("Antworten geleert"); };
+  zeigeEntscheidungen();
+
+  // --- Aufgaben, Hinweise, Links, Verlauf -----------------------------------
+  // Aufgaben: Standard „Offen“ (offen + in Bearbeitung), Erledigte nur auf Klick. „läuft“ = in Bearbeitung.
+  const inArbeit = (t) => t.status === "läuft" || t.status === "in_bearbeitung";
+  const STATUS_TEXT = { offen: "offen", läuft: "in Bearbeitung", in_bearbeitung: "in Bearbeitung", erledigt: "erledigt" };
+  const passt = { offen: (t) => t.status !== "erledigt", läuft: inArbeit, erledigt: (t) => t.status === "erledigt", alle: () => true };
+  let aFilter = "offen";
+  try { const g = localStorage.getItem("runner-monitor-dashboard-aufgabenfilter"); if (g && passt[g]) aFilter = g; } catch {}
+  function zeigeAufgaben() {
+    const liste = D.aufgaben.filter(passt[aFilter]).sort((a, b) => (inArbeit(b) - inArbeit(a)) || ((a.status === "erledigt") - (b.status === "erledigt")));
+    $("aufgabenliste").innerHTML = liste.map((t) => `
+    <div class="aufgabe${inArbeit(t) ? " in-arbeit" : ""}"><button class="id" data-kopie="${t.id}" title="Nummer kopieren">${t.id}</button>
+      <p>${t.wer === "Tobias" ? '<span class="wer">FÜR DICH</span>' : ""}${esc(t.text)}${t.link ? ` · <a href="${esc(t.link)}" target="_blank" rel="noopener">${esc(t.linkText || "Link")}</a>` : ""}</p>
+      <span class="badge ${inArbeit(t) ? "läuft" : esc(t.status)}">${esc(STATUS_TEXT[t.status] || t.status)}</span></div>`).join("")
+      || '<p class="aufgabe" style="color:var(--gedaempft)">Keine Aufgaben in dieser Ansicht.</p>';
+    for (const k of Object.keys(passt)) { const n = $("na-" + k); if (n) n.textContent = D.aufgaben.filter(passt[k]).length; }
+    document.querySelectorAll("#aufgabenfilter button").forEach((x) => x.setAttribute("aria-pressed", x.dataset.a === aFilter));
+  }
+  document.querySelectorAll("#aufgabenfilter button").forEach((b) => b.onclick = () => {
+    aFilter = b.dataset.a; try { localStorage.setItem("runner-monitor-dashboard-aufgabenfilter", aFilter); } catch {}
+    zeigeAufgaben();
+  });
+  zeigeAufgaben();
+  $("aufgabenliste").onclick = (e) => { const k = e.target.dataset.kopie; if (k) kopiere(k, `${k} kopiert`); };
+  $("hinweisliste").innerHTML = D.hinweise.map((h) => `
+    <div class="hinweis" ${D.hinweise.indexOf(h) ? 'style="border-top:1px solid var(--rahmen-leise)"' : ""}>
+      <b>${esc(h.titel)}</b><p>${esc(h.text)}${h.datei ? ` <a href="${datei(h.datei)}">Öffnen</a>` : ""}</p></div>`).join("");
+  $("linkliste").innerHTML = D.links.map((l) => {
+    const href = l.datei ? datei(l.datei) : l.url;
+    return `<li><a href="${esc(href)}" ${l.url ? 'target="_blank" rel="noopener"' : ""}><span>${esc(l.titel)}</span><small>${esc(l.datei || l.url.replace(/^https:\/\//, ""))}</small></a></li>`;
+  }).join("");
+  $("verlaufsliste").innerHTML = D.verlauf.map((v) => `<div><span class="zahl">${esc(v.datum)}</span>${esc(v.text)}</div>`).join("");
+})();
 </script>
 </body>
 </html>

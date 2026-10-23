@@ -12,61 +12,68 @@
 body{margin:0}
 .ew{--surface:#ffffff;--surface-alt:#f6f6f6;--ink:#13212b;--ink-muted:#4f5d67;--border:#d9dee2;--border-strong:#8a96a0;--track:#e2e6e9;--brand:#0e628f;--brand-strong:#0a4a6c;--on-brand:#ffffff;--success:#1f7a4d;--danger:#b3261e;--warning:#9a4d00;--mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;box-sizing:border-box;display:flex;flex-direction:column;background:var(--surface);color:var(--ink);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
 .ew[data-thema="dunkel"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--border-strong:#62798c;--track:#20384c;--brand:#5aa9d6;--brand-strong:#86c2e4;--on-brand:#0c1a24;--success:#5cc08a;--danger:#f08a80;--warning:#f0a35e}
-@media (prefers-color-scheme: dark){.ew[data-thema="system"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--border-strong:#62798c;--track:#20384c;--brand:#5aa9d6;--brand-strong:#86c2e4;--on-brand:#0c1a24;--success:#5cc08a;--danger:#f08a80;--warning:#f0a35e}}
+@media (prefers-color-scheme: dark){.ew[data-thema="system"]{--surface:#0c1a24;--surface-alt:#13283a;--ink:#eef2f5;--ink-muted:#a9b6c0;--border:#2a3f50;--border-strong:#62798c;--track:#20384c;--brand:#5aa9d6;--brand-strong:#86c2e4;--on-brand:#0c1a24;--success:#5cc08a;--danger:#f08a80;--warning:#f0a35e}
+}
 .ew *{box-sizing:border-box}
 .ew button,.ew input{font:inherit;color:inherit}
 .ew :focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-.ok{color:var(--success)}.fehler{color:var(--danger)}.warn{color:var(--warning)}.mut{color:var(--ink-muted)}
-.kopf{flex:0 0 60px;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--border)}
-.vm-icon{width:32px;height:32px;border-radius:4px;background:var(--brand);color:var(--on-brand);display:grid;place-items:center}
-.kopf-titel{font-size:17px;font-weight:650;letter-spacing:-.015em}
-.kopf-sub{color:var(--ink-muted);font-size:14px}
-.kopf-rechts{margin-left:auto;font-size:13px;color:var(--ink-muted);font-family:var(--mono)}
-.mitte{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;padding:28px 0 32px}
-.stepper{display:flex;align-items:center;gap:12px;margin-bottom:24px}
-.st{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-muted)}
-.st-nr{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:650;border:1.5px solid var(--border-strong)}
-.st.aktiv{color:var(--ink);font-weight:600}
-.st.aktiv .st-nr{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
-.st.fertig .st-nr{border-color:var(--success);color:var(--success)}
-.st-linie{width:40px;height:1px;background:var(--border)}
-.karte{width:880px;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface-alt);border-radius:4px;padding:32px 40px 28px;animation:rein .35s cubic-bezier(.22,1,.36,1)}
-@keyframes rein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-.eyebrow{font-size:12px;line-height:16px;font-weight:700;letter-spacing:1px;color:var(--brand);text-transform:uppercase}
-h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spacing:-.022em}
-.einl{margin:0 0 22px;font-size:15px;line-height:22px;color:var(--ink-muted);max-width:640px}
-.feld{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
-.feld label{font-size:13px;font-weight:600}
-.feld input{height:40px;padding:0 12px;border:1px solid var(--border-strong);border-radius:2px;background:var(--surface);font-size:15px}
-.feld input.gross{height:52px;font-family:var(--mono);font-size:24px;letter-spacing:.12em;text-transform:uppercase;width:280px}
-.feld input.mono{font-family:var(--mono);font-size:13px}
-.feld-hinweis{font-size:12.5px;line-height:18px;color:var(--ink-muted)}
-.feld-hinweis code,.code{font-family:var(--mono);font-size:12.5px;padding:1px 5px;border-radius:2px;background:var(--surface);border:1px solid var(--border)}
-.erkannt{display:flex;flex-direction:column;gap:8px;margin-bottom:24px;padding:14px 16px;border-radius:4px;background:var(--surface);border:1px solid var(--border)}
-.erkannt-titel{font-size:12px;font-weight:650;color:var(--ink-muted)}
-.zeile{display:flex;align-items:center;gap:8px;font-size:13.5px}
-.fuss{margin-top:auto;padding-top:20px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border)}
-.luecke{flex:1}
-.knopf{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 18px;border-radius:2px;border:1px solid var(--border-strong);background:var(--surface);font-size:14px;font-weight:550;text-decoration:none;color:var(--ink);transition:transform .1s ease-out}
-.knopf.primaer{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
-.knopf.primaer:hover{background:var(--brand-strong);border-color:var(--brand-strong)}
-.knopf:active{transform:scale(.97)}
-.knopf.klein{height:34px;padding:0 14px;font-size:13px}
-.staerke{display:flex;gap:4px;margin-top:2px}
-.staerke span{flex:1;height:4px;border-radius:1px;background:var(--track)}
-.staerke span.an{background:var(--brand)}
-.zwei{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;min-height:0}
-.anl{padding:16px 18px;border-radius:4px;background:var(--surface);border:1px solid var(--border);align-self:start}
-.anl-titel{font-size:13px;font-weight:650;margin-bottom:8px}
-.anl ol{margin:0 0 12px;padding-left:20px;display:flex;flex-direction:column;gap:7px;font-size:13px;line-height:18px}
-.anl a{color:var(--brand);font-weight:600;font-size:13px}
-.optional{display:inline-block;margin-left:8px;padding:0 7px;border-radius:2px;border:1px solid var(--border-strong);font-size:12px;font-weight:550;color:var(--ink-muted);vertical-align:6px;letter-spacing:0}
-.pruef{display:flex;flex-direction:column;gap:6px;margin-top:4px}
-.fertig-ic{color:var(--success);margin-bottom:6px}
-.liste{display:flex;flex-direction:column;border-top:1px solid var(--border);margin-bottom:16px}
-.liste .zeile{min-height:44px;border-bottom:1px solid var(--border);gap:10px}
-.liste b{font-weight:600}
-@media (prefers-reduced-motion: reduce){.karte{animation:einbl .2s linear}@keyframes einbl{from{opacity:0}to{opacity:1}}}
+.ew .ok{color:var(--success)}
+.ew .fehler{color:var(--danger)}
+.ew .warn{color:var(--warning)}
+.ew .mut{color:var(--ink-muted)}
+.ew .kopf{flex:0 0 60px;display:flex;align-items:center;gap:12px;padding:0 24px;border-bottom:1px solid var(--border)}
+.ew .vm-icon{width:32px;height:32px;border-radius:4px;background:var(--brand);color:var(--on-brand);display:grid;place-items:center}
+.ew .kopf-titel{font-size:17px;font-weight:650;letter-spacing:-.015em}
+.ew .kopf-sub{color:var(--ink-muted);font-size:14px}
+.ew .kopf-rechts{margin-left:auto;font-size:13px;color:var(--ink-muted);font-family:var(--mono)}
+.ew .mitte{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;padding:28px 0 32px}
+.ew .stepper{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.ew .st{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-muted)}
+.ew .st-nr{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:650;border:1.5px solid var(--border-strong)}
+.ew .st.aktiv{color:var(--ink);font-weight:600}
+.ew .st.aktiv .st-nr{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.ew .st.fertig .st-nr{border-color:var(--success);color:var(--success)}
+.ew .st-linie{width:40px;height:1px;background:var(--border)}
+.ew .karte{width:880px;flex:1;min-height:0;display:flex;flex-direction:column;background:var(--surface-alt);border-radius:4px;padding:32px 40px 28px;animation:rein-ew .35s cubic-bezier(.22,1,.36,1)}
+@keyframes rein-ew{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.ew .eyebrow{font-size:12px;line-height:16px;font-weight:700;letter-spacing:1px;color:var(--brand);text-transform:uppercase}
+.ew h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spacing:-.022em}
+.ew .einl{margin:0 0 22px;font-size:15px;line-height:22px;color:var(--ink-muted);max-width:640px}
+.ew .feld{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.ew .feld label{font-size:13px;font-weight:600}
+.ew .feld input{height:40px;padding:0 12px;border:1px solid var(--border-strong);border-radius:2px;background:var(--surface);font-size:15px}
+.ew .feld input.gross{height:52px;font-family:var(--mono);font-size:24px;letter-spacing:.12em;text-transform:uppercase;width:280px}
+.ew .feld input.mono{font-family:var(--mono);font-size:13px}
+.ew .feld-hinweis{font-size:12.5px;line-height:18px;color:var(--ink-muted)}
+.ew .feld-hinweis code,.ew .code{font-family:var(--mono);font-size:12.5px;padding:1px 5px;border-radius:2px;background:var(--surface);border:1px solid var(--border)}
+.ew .erkannt{display:flex;flex-direction:column;gap:8px;margin-bottom:24px;padding:14px 16px;border-radius:4px;background:var(--surface);border:1px solid var(--border)}
+.ew .erkannt-titel{font-size:12px;font-weight:650;color:var(--ink-muted)}
+.ew .zeile{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.ew .fuss{margin-top:auto;padding-top:20px;display:flex;align-items:center;gap:10px;border-top:1px solid var(--border)}
+.ew .luecke{flex:1}
+.ew .knopf{display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 18px;border-radius:2px;border:1px solid var(--border-strong);background:var(--surface);font-size:14px;font-weight:550;text-decoration:none;color:var(--ink);transition:transform .1s ease-out}
+.ew .knopf.primaer{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
+.ew .knopf.primaer:hover{background:var(--brand-strong);border-color:var(--brand-strong)}
+.ew .knopf:active{transform:scale(.97)}
+.ew .knopf.klein{height:34px;padding:0 14px;font-size:13px}
+.ew .staerke{display:flex;gap:4px;margin-top:2px}
+.ew .staerke span{flex:1;height:4px;border-radius:1px;background:var(--track)}
+.ew .staerke span.an{background:var(--brand)}
+.ew .zwei{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;min-height:0}
+.ew .anl{padding:16px 18px;border-radius:4px;background:var(--surface);border:1px solid var(--border);align-self:start}
+.ew .anl-titel{font-size:13px;font-weight:650;margin-bottom:8px}
+.ew .anl ol{margin:0 0 12px;padding-left:20px;display:flex;flex-direction:column;gap:7px;font-size:13px;line-height:18px}
+.ew .anl a{color:var(--brand);font-weight:600;font-size:13px}
+.ew .optional{display:inline-block;margin-left:8px;padding:0 7px;border-radius:2px;border:1px solid var(--border-strong);font-size:12px;font-weight:550;color:var(--ink-muted);vertical-align:6px;letter-spacing:0}
+.ew .pruef{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.ew .fertig-ic{color:var(--success);margin-bottom:6px}
+.ew .liste{display:flex;flex-direction:column;border-top:1px solid var(--border);margin-bottom:16px}
+.ew .liste .zeile{min-height:44px;border-bottom:1px solid var(--border);gap:10px}
+.ew .liste b{font-weight:600}
+@media (prefers-reduced-motion: reduce){.ew .karte{animation:einbl-ew .2s linear}
+@keyframes einbl-ew{from{opacity:0}to{opacity:1}}
+}
+
 </style>
 </helmet>
 <div class="ew" data-thema="{{thema}}" style="width: 1440px; height: 900px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; color: var(--ink)">
@@ -100,7 +107,7 @@ h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spaci
         <div class="feld">
           <label for="code">Einrichtungscode</label>
           <input id="code" class="gross" placeholder="XXXX-XXXX" autocomplete="one-time-code" value="{{code}}" onChange="{{setCode}}">
-          <span class="feld-hinweis">Code verloren oder abgelaufen? Neuen Code auf der VM anzeigen: <code>sudo ./einrichten.sh code</code></span>
+          <span class="feld-hinweis">Code verloren oder abgelaufen? Neuen Code auf der VM anzeigen: <code>sudo /opt/runner-monitor/aktuell/einrichten.sh code</code></span>
         </div>
         <div class="fuss"><span class="mut" style="font-size: 13px">Der Code gilt 60 Minuten.</span><span class="luecke"></span><button type="button" class="knopf primaer" onClick="{{weiter}}">Weiter</button></div>
       </section>
@@ -110,7 +117,7 @@ h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spaci
       <section class="karte" aria-label="Schritt 2: Zugang schützen">
         <div class="eyebrow">Schritt 2 von 4</div>
         <h1>Zugang schützen</h1>
-        <p class="einl">Der Monitor ist nur mit Benutzername und Passwort erreichbar. Damit meldest du dich gleich nach der Einrichtung an. Auf Wunsch bleibt der Browser 30 Tage angemeldet.</p>
+        <p class="einl">Der Monitor ist nur mit Benutzername und Passwort erreichbar. Damit melden Sie sich gleich nach der Einrichtung an. Auf Wunsch bleibt der Browser 30 Tage angemeldet.</p>
         <div style="width: 420px">
           <div class="feld"><label for="nutzer">Benutzername</label><input id="nutzer" autocomplete="username" value="{{nutzer}}" onChange="{{setNutzer}}"></div>
           <div class="feld"><label for="pw1">Passwort</label><input id="pw1" type="password" autocomplete="new-password" value="{{pw1}}" onChange="{{setPw1}}">
@@ -121,7 +128,7 @@ h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spaci
             <span class="feld-hinweis {{gleichCls}}">{{gleichText}}</span>
           </div>
         </div>
-        <p class="feld-hinweis" style="margin: 4px 0 0">Auf der VM wird nur ein Hash gespeichert, nur für root lesbar. Ändern später mit <code>sudo ./einrichten.sh passwort</code>.</p>
+        <p class="feld-hinweis" style="margin: 4px 0 0">Auf der VM wird nur ein Hash gespeichert, nur für root lesbar. Ändern später mit <code>sudo /opt/runner-monitor/aktuell/einrichten.sh passwort</code>.</p>
         <div class="fuss"><button type="button" class="knopf" onClick="{{zurueck}}">Zurück</button><span class="luecke"></span><button type="button" class="knopf primaer" onClick="{{weiter}}">Weiter</button></div>
       </section>
     </sc-if>
@@ -149,7 +156,7 @@ h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spaci
             </sc-if>
           </div>
           <div class="anl">
-            <div class="anl-titel">So erstellst du das Token</div>
+            <div class="anl-titel">So erstellen Sie das Token</div>
             <ol>
               <li>Auf GitHub ein „Fine-grained token“ anlegen (Link unten).</li>
               <li>Resource owner: die Organisation. Repository access: <b>All repositories</b>.</li>
@@ -162,6 +169,7 @@ h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spaci
           </div>
         </div>
         <div class="fuss"><button type="button" class="knopf" onClick="{{zurueck}}">Zurück</button><span class="luecke"></span><button type="button" class="knopf" onClick="{{ohneGithub}}">Ohne GitHub fortfahren</button><button type="button" class="knopf primaer" onClick="{{weiter}}">Weiter</button></div>
+        <p class="feld-hinweis" style="margin: 10px 0 0">Später auf der VM nachholen: <code>sudo /opt/runner-monitor/aktuell/einrichten.sh token</code></p>
       </section>
     </sc-if>
 
@@ -169,15 +177,15 @@ h1{margin:6px 0 8px;font-size:28px;line-height:34px;font-weight:650;letter-spaci
       <section class="karte" aria-label="Schritt 4: Fertig">
         <svg class="fertig-ic" viewBox="0 0 16 16" width="44" height="44" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.6"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg>
         <h1>Alles eingerichtet</h1>
-        <p class="einl">Der Monitor läuft. Lege dir die Adresse als Lesezeichen an. Auf einem zweiten Bildschirm kann die Seite dauerhaft offen bleiben.</p>
+        <p class="einl">Der Monitor läuft. Legen Sie die Adresse als Lesezeichen an. Auf einem zweiten Bildschirm kann die Seite dauerhaft offen bleiben.</p>
         <div class="liste">
           <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><b>Zugang geschützt</b><span class="mut">Benutzer {{nutzer}}</span></div>
           <div class="zeile"><sc-if value="{{githubOk}}" hint-placeholder-val="{{true}}"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg></sc-if><sc-if value="{{githubAus}}" hint-placeholder-val="{{false}}"><svg class="mut" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5 8h6"></path></svg></sc-if><b>{{githubTitel}}</b><span class="mut">{{githubText}}</span></div>
           <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><b>Firewall aktiv</b><span class="mut">Port 8090 nur aus 192.0.2.0/24</span></div>
           <div class="zeile"><svg class="ok" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M5.2 8.2l1.9 1.9 3.7-4"></path></svg><b>Runner wird überwacht</b><span class="mut">runner-vm-01</span></div>
         </div>
-        <p class="feld-hinweis" style="margin: 0">Diese Einrichtung lässt sich nicht erneut im Browser aufrufen. Ändern auf der VM mit <code>sudo ./einrichten.sh</code>. Hilfe findest du später im Monitor unter „Info“.</p>
-        <div class="fuss"><button type="button" class="knopf" onClick="{{zurueck}}">Zurück</button><span class="luecke"></span><a class="knopf primaer" href="Login.dc.html">Zum Monitor anmelden</a></div>
+        <p class="feld-hinweis" style="margin: 0">Diese Einrichtung lässt sich nicht erneut im Browser aufrufen. Ändern auf der VM mit <code>sudo /opt/runner-monitor/aktuell/einrichten.sh</code>. Hilfe finden Sie später im Monitor unter „Info &amp; Hilfe“.</p>
+        <div class="fuss"><button type="button" class="knopf" onClick="{{zurueck}}">Zurück</button><span class="luecke"></span><button type="button" class="knopf primaer" onClick="{{zumLogin}}">Zum Monitor anmelden</button></div>
       </section>
     </sc-if>
   </div>
@@ -219,6 +227,7 @@ class Component extends DCLogic {
       pruefText: s.pruefung === 'laeuft' ? 'Prüfe …' : (s.pruefung === 'ok' ? 'Erneut prüfen' : 'Verbindung prüfen'),
       pruefen: () => { s.pruefung = 'laeuft'; up(); setTimeout(() => { s.pruefung = 'ok'; up(); }, 900); },
       hatErgebnis: s.pruefung === 'ok', ergebnis: ergebnis,
+      zumLogin: () => { if (this.props.onFertig) this.props.onFertig(); },
       weiter: () => { if (s.schritt === 3) s.ohne = false; s.schritt = Math.min(4, s.schritt + 1); up(); },
       zurueck: () => { s.schritt = Math.max(1, s.schritt - 1); up(); },
       ohneGithub: () => { s.ohne = true; s.schritt = 4; up(); },

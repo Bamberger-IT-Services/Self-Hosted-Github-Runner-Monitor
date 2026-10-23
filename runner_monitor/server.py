@@ -12,6 +12,7 @@ import logging
 import mimetypes
 import re
 import secrets
+import socket
 import threading
 import time
 import uuid
@@ -181,7 +182,8 @@ class Handler(BaseHTTPRequestHandler):
         pfad = urlsplit(self.path).path
         app = self.app
         if pfad == "/api/health":
-            self._json(HTTPStatus.OK, {"ok": True, "version": VERSION})
+            # Name der VM für die Anmeldeseite (Design 0.3.0: unter „Runner-Monitor“)
+            self._json(HTTPStatus.OK, {"ok": True, "version": VERSION, "vm": app.k.vm_name or socket.gethostname()})
             return
         if pfad.startswith("/static/"):
             name = pfad[len("/static/"):]

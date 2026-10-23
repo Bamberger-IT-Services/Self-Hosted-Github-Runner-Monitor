@@ -1,6 +1,6 @@
 # Erstinstallation auf der VM
 
-**Stand: 23.10.2026 · Version 0.1.2**
+**Stand: 23.10.2026 · Version 0.3.0**
 
 Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 `beispiel-org` durch die eigenen Werte ersetzen.
@@ -15,7 +15,7 @@ Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 ## 1. Herunterladen und entpacken
 
 ```bash
-V=0.1.2
+V=0.3.0
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz.sha256
 sha256sum -c runner-monitor-$V.tar.gz.sha256     # muss „OK“ melden
@@ -28,47 +28,37 @@ tar xzf runner-monitor-$V.tar.gz && cd runner-monitor-$V
 sudo ./einrichten.sh
 ```
 
-Das Skript erledigt in sechs Schritten:
+Das Skript arbeitet in drei Abschnitten:
 
-| Schritt | Was passiert |
+| Abschnitt | Was passiert |
 |---|---|
-| 1 Benutzer und Ordner | Systembenutzer `runner-monitor` (ohne Anmeldung, darf das Journal lesen), `/var/lib/runner-monitor`, `/etc/runner-monitor/konfig.env` |
-| 2 Programm | Kopie nach `/opt/runner-monitor/versionen/0.1.2`, Verweis `aktuell`. Eine alte Terminalansicht (ttyd, `monitor-einrichten.sh`) wird erkannt und ersetzt; ihr Token wird übernommen. |
-| 3 Runner | Sucht `/opt/actions-runner/.runner`. Fehlt der Runner, fragt das Skript, ob es ihn einrichten soll (siehe unten). |
-| 4 Firewall | `ufw`: SSH bleibt offen, Port 8090 nur aus dem eigenen Netz (z. B. `192.0.2.0/24`). Ist ufw aus, fragt das Skript, ob es ihn einschalten soll. |
-| 5 Dienste | `runner-monitor`, `runner-monitor-sammler`, `runner-monitor-update.path` – starten und beim Booten aktiv |
-| 6 Einrichtung im Browser | Zeigt Adresse und **Einrichtungscode** (60 Minuten gültig) |
+| System prüfen | Betriebssystem, Python, Docker, Netz (Adresse, lokales Netz). Sucht den Runner in `/opt/actions-runner`; ist er da, bleibt er unverändert. Fehlt er, fragt das Skript, ob es ihn einrichten soll (siehe unten). |
+| Monitor einrichten | Systembenutzer `runner-monitor` (kein root, keine Anmeldung, darf das Journal lesen), `/var/lib/runner-monitor`, `/etc/runner-monitor/konfig.env`, Programm nach `/opt/runner-monitor/versionen/0.3.0` mit Verweis `aktuell`, Dienste `runner-monitor`, `runner-monitor-sammler`, `runner-monitor-update.path`. Eine alte Terminalansicht (ttyd, `monitor-einrichten.sh`) wird ersetzt, ihr Token übernommen. |
+| Firewall (ufw) | SSH bleibt erlaubt, Port 8090 nur aus dem lokalen Netz (z. B. `192.0.2.0/24`). Ist ufw aus, fragt das Skript, ob es ihn einschalten soll. |
 
-Am Ende steht da zum Beispiel:
+Am Ende stehen Adresse und **Einrichtungscode** (60 Minuten gültig), zum Beispiel:
 
 ```
-Weiter im Browser:  http://192.0.2.20:8090
-  Einrichtungscode:   K7QM-4XTB   (60 Minuten gültig, neuer Code: sudo ./einrichten.sh code)
+──────────────────────────────────────────────────────────
+Fast geschafft. Schließen Sie die Einrichtung im Browser ab:
+
+    http://192.0.2.25:8090
+
+    Einrichtungscode:  K7QF-2M9D    (gilt 60 Minuten, danach: sudo /opt/runner-monitor/aktuell/einrichten.sh code)
 ```
-
-### Runner gleich mit einrichten
-
-Gibt es noch keinen Runner, beantwortet man die Frage mit `j` und braucht:
-
-1. den Namen der Organisation, z. B. `beispiel-org`
-2. einen **Registrierungs-Token**: GitHub › Organisation › Settings › Actions › Runners ›
-   „New self-hosted runner“ – der Token steht im Befehl `./config.sh … --token …` und gilt eine Stunde.
-
-Das Skript installiert Docker und den Runner, registriert ihn bei der Organisation und
-richtet das automatische Aufräumen ein (unter 25 GB frei vor jedem Job, gründlich jede Nacht).
-Später nachholen: `sudo ./einrichten.sh runner`.
 
 ## 3. Im Browser abschließen
 
 ![Schritt 1: Einrichtungscode](handbuch/bilder/einrichtung-1-code.png)
 
-1. **Code:** den angezeigten Code eingeben. Oben steht, was das Skript erkannt hat.
-2. **Zugang:** Benutzername und Passwort (mindestens 12 Zeichen; ein Satz aus mehreren
+1. **Code:** den angezeigten Code eingeben. Oben steht, was das Skript erledigt hat.
+2. **Zugang schützen:** Benutzername und Passwort (mindestens 12 Zeichen; ein Satz aus mehreren
    Wörtern ist gut). Es gibt genau einen Zugang.
-3. **GitHub (optional):** Organisation und ein **Fine-grained Token**, siehe unten. „Verbindung
-   prüfen“ zeigt, welche Rechte ankommen. „Überspringen“ geht auch – dann bleibt die Karte
-   „Workflows“ leer, alles andere läuft.
-4. **Fertig** → „Zum Monitor“ → anmelden.
+3. **GitHub anbinden (optional):** Organisation und ein **Fine-grained Token**, siehe unten.
+   „Verbindung prüfen“ zeigt, welche Rechte ankommen; „Weiter“ prüft und speichert. „Ohne GitHub
+   fortfahren“ geht auch – dann bleibt die Karte „Workflows“ leer, alles andere läuft.
+4. **Alles eingerichtet** → „Zum Monitor anmelden“. Erst dieser Knopf schließt die Einrichtung ab;
+   bis dahin führt „Zurück“ noch in die vorigen Schritte.
 
 ![Schritt 3: GitHub verbinden](handbuch/bilder/einrichtung-3-github.png)
 
@@ -103,7 +93,7 @@ Organisation › Settings › Personal access tokens › **Pending requests**.
 ```bash
 sudo ./einrichten.sh status                       # Dienste und Version
 journalctl -u runner-monitor -u runner-monitor-sammler -n 30
-curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.1.2"}
+curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.3.0", "vm": "runner-vm"}
 ```
 
 ## Einstellungen

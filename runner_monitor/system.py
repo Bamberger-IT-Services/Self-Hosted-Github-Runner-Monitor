@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import pwd
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -278,6 +279,21 @@ def netz_rate(vorher: dict[str, tuple[int, int]], jetzt: dict[str, tuple[int, in
         empfangen = round(empfangen / sekunden)
         gesendet = round(gesendet / sekunden)
     return {"empfangen": empfangen, "gesendet": gesendet, "schnittstellen": sorted(jetzt)}
+
+
+# ---------------------------------------------------------------- Betriebssystem
+
+
+def beschreibung(os_release: Path = Path("/etc/os-release")) -> str:
+    """Kurz für Fehlermeldungen: „Ubuntu 24.04.1 LTS, Python 3.12“."""
+    name = ""
+    text = _lies(os_release) or ""
+    for zeile in text.splitlines():
+        if zeile.startswith("PRETTY_NAME="):
+            name = zeile.split("=", 1)[1].strip().strip('"')
+            break
+    py = f"Python {sys.version_info.major}.{sys.version_info.minor}"
+    return f"{name}, {py}" if name else py
 
 
 # ---------------------------------------------------------------- Zusammenfassung

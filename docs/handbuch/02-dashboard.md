@@ -1,6 +1,6 @@
 # 2 Das Dashboard
 
-**Stand: 23.10.2026 · Version 0.1.2**
+**Stand: 23.10.2026 · Version 0.3.0**
 
 ![Dashboard mit laufendem Job](bilder/dashboard-job.png)
 
@@ -48,8 +48,10 @@ CPU gesamt mit Verlauf der letzten 10 Minuten, jeder Kern als Balken, Arbeitsspe
 Verlauf, RAM und Swap, **Netz** und Last (1, 5, 15 Minuten) im Vergleich zur Zahl der Kerne.
 Bei 16 und mehr Kernen werden die Balken schmaler.
 
-**Netz** zeigt, was die VM gerade empfängt (↓) und sendet (↑), summiert über alle echten
-Netzwerkschnittstellen, dazu den höchsten Wert der letzten 10 Minuten. Verkehr von Docker-
+**Netzwerk** (eigener Block unter RAM und Swap) zeigt, was die VM gerade empfängt (↓) und sendet
+(↑), summiert über alle echten Netzwerkschnittstellen. Darunter der Verlauf der letzten
+10 Minuten: empfangen als blaue Fläche, gesendet als goldene Linie; die Skala richtet sich nach
+der Spitze im Fenster (mindestens 64 KB/s), die unter dem Verlauf steht. Verkehr von Docker-
 Containern und VPN-Tunneln steckt schon in der echten Schnittstelle und wird nicht doppelt
 gezählt. Einheiten dezimal: 1 MB/s = 1 000 000 Byte je Sekunde (≈ 8 Mbit/s). Viel Empfang
 während eines Jobs ist normal – der Runner lädt dann Docker-Images und Pakete.
@@ -73,8 +75,9 @@ Teil über der Schwelle wird orange.
 - Die neueste Zeile steht immer unten. **Anhalten** friert die Ansicht ein (neue Zeilen werden
   gezählt), **Weiter** springt wieder nach unten.
 - **Hochscrollen** (Mausrad oder Trackpad) hält das Mitlaufen ebenfalls an, um ältere Zeilen
-  des Schritts zu lesen. Unten steht „Angehalten · n neue Zeilen“. Wer wieder ganz nach unten
-  scrollt oder **Weiter** klickt, sieht die gesammelten Zeilen und es läuft wieder mit.
+  des Schritts zu lesen. Unten steht „Mitlaufen angehalten · n neue Zeilen“ mit **Zum Ende ↓**.
+  Wer wieder ganz nach unten scrollt oder „Zum Ende“ klickt, sieht die gesammelten Zeilen und es
+  läuft wieder mit.
   Im Log stehen die letzten 1 500 Zeilen.
 - **Umbrechen / Abschneiden** für lange Zeilen.
 - Ältere Ausgaben stehen im Runner (`_diag/pages`) und bei GitHub („Download log archive“).

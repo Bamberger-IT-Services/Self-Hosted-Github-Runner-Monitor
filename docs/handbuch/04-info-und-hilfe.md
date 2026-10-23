@@ -1,6 +1,6 @@
 # 4 Info & Hilfe
 
-**Stand: 23.10.2026 · Version 0.1.2**
+**Stand: 23.10.2026 · Version 0.3.0**
 
 „Info“ oben rechts öffnet ein Blatt von rechts. Schließen mit „Schließen“, Escape oder einem
 Klick daneben.
@@ -12,12 +12,12 @@ aufgeklappte Anleitung bleiben.
 
 | Abschnitt | Inhalt |
 |---|---|
-| **Updates** | installierte und neueste Version, wann zuletzt geprüft, Knopf **„Jetzt prüfen“** (fragt GitHub sofort, höchstens einmal je Minute), Neuerungen, Knopf „Jetzt aktualisieren“ mit Fortschritt, Schalter „Automatisch aktualisieren“ ([UPDATE.md](../UPDATE.md)) |
+| **Updates** | installierte und neueste Version, wann zuletzt geprüft, Knopf **„Jetzt prüfen“** (fragt GitHub sofort, höchstens einmal je Minute; gesperrt, solange ein Update läuft), Neuerungen, Knopf „Jetzt aktualisieren“ mit Fortschritt, Schalter „Automatisch aktualisieren“ ([UPDATE.md](../UPDATE.md)) |
 | **Darstellung** | Automatisch (folgt dem System), Hell, Dunkel – gilt für diesen Browser. Derselbe Umschalter sitzt als Knopf in der Kopfzeile. |
-| **Was tun, wenn …** | Schritt-für-Schritt-Anleitungen mit Befehlen zum Kopieren: Token, GitHub nicht erreichbar, Dienst gestoppt, offline, **Runner-Logs abrufen**, Platte knapp, Verbindung zum Monitor, Monitor aktualisieren |
-| **GitHub-Verbindung** | Organisation, Token-Zustand, Rechte, Ablaufdatum, letzte und nächste Abfrage, API-Kontingent, Ort der Token-Datei und der Befehl zum Ändern auf der VM: `sudo /opt/runner-monitor/aktuell/einrichten.sh token` (fragt Token und Organisation ab) |
+| **Was tun, wenn …** | Schritt-für-Schritt-Anleitungen; jeder Befehl hat einen Knopf **Kopieren**: Token, GitHub nicht erreichbar, Dienst gestoppt, offline, **Runner-Logs abrufen**, Platte knapp, Verbindung zum Monitor, Monitor aktualisieren |
+| **GitHub-Verbindung** | Organisation, Token-Zustand, Rechte, Ablaufdatum, letzte und nächste Abfrage, API-Kontingent, Ort der Token-Datei – nur zum Anschauen. Ändern auf der VM: „Was tun, wenn …“ › „GitHub-Token einrichten oder erneuern“ (`sudo /opt/runner-monitor/aktuell/einrichten.sh token`) |
 | **Über diesen Monitor** | Version, Adresse, Dienst, Aktualisierungstakt, Ersteller und Link zum Repository |
-| **Fehler gefunden oder Idee?** | öffnet ein vorbereitetes GitHub-Issue (Version, Runner-Version und Browser sind eingetragen). **Keine IPs, Namen oder Tokens hineinschreiben – das Repository ist öffentlich.** |
+| **Fehler gefunden oder Idee?** | zeigt die technischen Angaben (Version, System, Runner, Browser) und öffnet ein vorbereitetes GitHub-Issue, in dem sie schon stehen. **Keine IPs, Namen oder Tokens hineinschreiben – das Repository ist öffentlich.** |
 
 ## Runner-Logs abrufen
 

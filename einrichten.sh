@@ -32,7 +32,11 @@ fett() { printf '\033[1m%s\033[0m\n' "$*"; }
 ok() { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 hinweis() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 fehler() { printf '\033[31mFehler:\033[0m %s\n' "$*" >&2; exit 1; }
-frage() { local a; read -r -p "  $1 [j/N] " a </dev/tty || true; [[ "${a,,}" == j* ]]; }
+frage() { local a; read -r -p "    $1 [j/N] " a </dev/tty || true; [[ "${a,,}" == j* ]]; }
+# Ausgabe wie im Design 0.3.0 (Setup-Skript): Abschnitte, Trennlinien, graue Hinweise
+abschnitt() { printf '\033[1;94m%s\033[0m\n' "$*"; }
+regel() { printf '\033[90m%s\033[0m\n' '──────────────────────────────────────────────────────────'; }
+hin() { printf '\033[90m    %s\033[0m\n' "$*"; }
 
 [ "$(id -u)" = 0 ] || fehler "Bitte mit sudo ausführen: sudo $0 ${*}"
 
@@ -57,24 +61,28 @@ c = zugang.neuer_code()
 zugang.schreibe_code(pathlib.Path(sys.argv[1]), c)
 print(c)' "$DATEN/einrichtungscode.json")"
   chown "$NUTZER:$NUTZER" "$DATEN/einrichtungscode.json"
+  regel
+  fett "Fast geschafft. Schließen Sie die Einrichtung im Browser ab:"
   echo
-  fett "Weiter im Browser:  http://$(eigene_ip):$PORT"
-  echo "  Einrichtungscode:   $code   (60 Minuten gültig, neuer Code: sudo $0 code)"
+  printf '    \033[1;4;94m%s\033[0m\n' "http://$(eigene_ip):$PORT"
+  echo
+  printf '    Einrichtungscode: \033[1;30;43m %s \033[0m\033[90m   (gilt 60 Minuten, danach: sudo %s code)\033[0m\n' "$code" "$BASIS/aktuell/einrichten.sh"
   echo
 }
 
 systempruefung() {
-  local name unit ver fw=false
-  name="$(runner_name)"; unit="$(runner_unit)"
+  local name unit ver fw=false netz aktiv=false
+  name="$(runner_name)"; unit="$(runner_unit)"; netz="$(lan_netz)"
+  [ -n "$unit" ] && systemctl is-active --quiet "$unit" && aktiv=true
   ver=""
   if [ -x "$RUNNER_VERZ/bin/Runner.Listener" ]; then ver="$("$RUNNER_VERZ/bin/Runner.Listener" --version 2>/dev/null || true)"; fi
   command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active" && fw=true
-  "$PYTHON" - "$DATEN/systempruefung.json" "$VERSION" "$PORT" "$name" "$unit" "$ver" "$fw" <<'PY'
+  "$PYTHON" - "$DATEN/systempruefung.json" "$VERSION" "$PORT" "$name" "$unit" "$ver" "$fw" "$netz" "$aktiv" <<'PY'
 import json, sys, time, socket
-ziel, version, port, name, unit, ver, fw = sys.argv[1:]
+ziel, version, port, name, unit, ver, fw, netz, aktiv = sys.argv[1:]
 json.dump({"zeit": time.time(), "vm": socket.gethostname(), "port": int(port), "monitorVersion": version,
-           "runner": {"gefunden": bool(name), "name": name, "dienst": unit, "version": ver},
-           "firewall": {"aktiv": fw == "true"}}, open(ziel, "w", encoding="utf-8"))
+           "runner": {"gefunden": bool(name), "name": name, "dienst": unit, "version": ver, "aktiv": aktiv == "true"},
+           "firewall": {"aktiv": fw == "true", "netz": netz}}, open(ziel, "w", encoding="utf-8"))
 PY
   chown "$NUTZER:$NUTZER" "$DATEN/systempruefung.json"; chmod 640 "$DATEN/systempruefung.json"
 }
@@ -108,61 +116,73 @@ installiere_dateien() {
 }
 
 installieren() {
-  fett "Runner-Monitor $VERSION einrichten"
+  local os py docker_v dev ip netz
+  echo
+  fett "Runner-Monitor $VERSION – Einrichtung"
+  regel
+  abschnitt "System prüfen"
   "$PYTHON" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fehler "Python 3.10 oder neuer nötig (Ubuntu 22.04+)."
-  grep -qi ubuntu /etc/os-release || hinweis "getestet für Ubuntu – hier: $(. /etc/os-release && echo "${PRETTY_NAME:-unbekannt}")"
+  os="$(. /etc/os-release && echo "${PRETTY_NAME:-unbekannt}")"
+  py="$("$PYTHON" -c 'import sys; print(f"Python {sys.version_info.major}.{sys.version_info.minor}")')"
+  docker_v="$(docker --version 2>/dev/null | sed -n 's/^Docker version \([0-9]*\.[0-9]*\).*/Docker \1/p')"
+  ok "$os, $py${docker_v:+, $docker_v}"
+  grep -qi ubuntu /etc/os-release || hinweis "getestet für Ubuntu – hier: $os"
+  dev="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
+  ip="$(eigene_ip)"; netz="$(lan_netz)"
+  ok "Netz: ${ip:-unbekannt}${dev:+ ($dev)}${netz:+, lokales Netz $netz}"
+  if [ -f "$RUNNER_VERZ/.runner" ]; then
+    local unit; unit="$(runner_unit || true)"
+    ok "GitHub-Runner gefunden: $(runner_name) in $RUNNER_VERZ, Dienst $( [ -n "$unit" ] && systemctl is-active --quiet "$unit" && echo aktiv || echo 'nicht aktiv')"
+    hin "→ Der Runner bleibt unverändert, es wird nur der Monitor eingerichtet."
+  else
+    hinweis "Kein GitHub-Runner gefunden."
+    printf '    %s\n' "Runner jetzt mit einrichten? Dafür brauchen Sie ein Registrierungs-Token:"
+    hin 'GitHub › Organisation › Settings › Actions › Runners › „New runner“'
+    if frage "Runner einrichten?"; then runner_einrichten; else
+      hin "Später: sudo $BASIS/aktuell/einrichten.sh runner – bis dahin zeigt der Monitor nur die VM."; fi
+  fi
 
-  echo "1/6 Benutzer und Ordner"
+  abschnitt "Monitor einrichten"
   id "$NUTZER" >/dev/null 2>&1 || useradd --system --no-create-home --home-dir "$DATEN" --shell /usr/sbin/nologin "$NUTZER"
+  ok "Benutzer $NUTZER angelegt (kein root, keine Anmeldung)"
   usermod -aG systemd-journal "$NUTZER"
   install -d -o "$NUTZER" -g "$NUTZER" -m 750 "$DATEN" "$DATEN/auftraege"
   install -d -o root -g "$NUTZER" -m 750 "$ETC"
   [ -f "$ETC/konfig.env" ] || install -o root -g "$NUTZER" -m 640 "$QUELLE/deploy/konfig.env.example" "$ETC/konfig.env"
   sed -i 's/^MONITOR_ORG=beispiel-org$/MONITOR_ORG=/' "$ETC/konfig.env"
-  ok "Benutzer $NUTZER (ohne Anmeldung), Daten in $DATEN, Einstellungen in $ETC/konfig.env"
-
-  echo "2/6 Programm"
+  ok "Leserechte: Systemprotokoll, Docker-Status, Runner-Logs"
   alte_ansicht_entfernen
   installiere_dateien
-
-  echo "3/6 Runner"
-  if [ -f "$RUNNER_VERZ/.runner" ]; then
-    ok "Runner $(runner_name) gefunden ($(runner_unit || true))"
-  else
-    hinweis "kein GitHub-Runner in $RUNNER_VERZ gefunden"
-    if frage "Runner jetzt einrichten? (braucht einen Registrierungs-Token von GitHub)"; then runner_einrichten; else
-      echo "    Später: sudo $0 runner – bis dahin zeigt der Monitor nur die VM."; fi
-  fi
-
-  echo "4/6 Firewall"
-  if command -v ufw >/dev/null; then
-    local netz; netz="$(lan_netz)"
-    ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null
-    if [ -n "$netz" ]; then
-      ufw allow from "$netz" to any port "$PORT" proto tcp comment 'runner-monitor' >/dev/null
-      ok "Port $PORT nur aus $netz erlaubt, SSH bleibt offen"
-    else
-      hinweis "lokales Netz nicht erkannt – Port $PORT bitte von Hand freigeben: sudo ufw allow from <netz> to any port $PORT proto tcp"
-    fi
-    if ! ufw status | grep -q "Status: active"; then
-      if frage "Firewall (ufw) ist aus. Jetzt einschalten? SSH bleibt erreichbar."; then ufw --force enable >/dev/null; ok "ufw eingeschaltet"; else hinweis "ufw bleibt aus – Port $PORT ist für alle erreichbar, die die VM erreichen"; fi
-    fi
-  else
-    hinweis "ufw nicht installiert (sudo apt install ufw) – Port $PORT ist offen"
-  fi
-
-  echo "5/6 Dienste"
   install -m 644 "$QUELLE"/deploy/systemd/runner-monitor*.service "$QUELLE"/deploy/systemd/runner-monitor-update.path "$SYSTEMD/"
   systemctl daemon-reload
   systemctl enable runner-monitor-sammler.service runner-monitor.service runner-monitor-update.path >/dev/null
   systemctl restart runner-monitor-sammler.service runner-monitor.service runner-monitor-update.path
   local _; for _ in $(seq 1 20); do curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1 && break; sleep 0.5; done
-  if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then ok "Dienste laufen"; else fehler "Monitor antwortet nicht: journalctl -u runner-monitor -n 30"; fi
+  if curl -fsS "http://127.0.0.1:$PORT/api/health" >/dev/null 2>&1; then ok "Dienst runner-monitor gestartet, Port $PORT"; else fehler "Monitor antwortet nicht: journalctl -u runner-monitor -n 30"; fi
+
+  abschnitt "Firewall (ufw)"
+  if command -v ufw >/dev/null; then
+    ufw allow OpenSSH >/dev/null 2>&1 || ufw allow 22/tcp >/dev/null
+    ok "SSH (22) bleibt erlaubt"
+    if [ -n "$netz" ]; then
+      ufw allow from "$netz" to any port "$PORT" proto tcp comment 'runner-monitor' >/dev/null
+      ok "Port $PORT nur aus dem lokalen Netz $netz"
+    else
+      hinweis "lokales Netz nicht erkannt – Port $PORT bitte von Hand freigeben: sudo ufw allow from <netz> to any port $PORT proto tcp"
+    fi
+    if ufw status | grep -q "Status: active"; then ok "ufw aktiv"
+    elif frage "Firewall (ufw) ist aus. Jetzt einschalten? SSH bleibt erreichbar."; then ufw --force enable >/dev/null; ok "ufw aktiviert"
+    else hinweis "ufw bleibt aus – Port $PORT ist für alle erreichbar, die die VM erreichen"; fi
+  else
+    hinweis "ufw nicht installiert (sudo apt install ufw) – Port $PORT ist offen"
+  fi
   systempruefung
 
-  echo "6/6 Einrichtung im Browser"
   if [ -s "$DATEN/zugang.json" ]; then
-    ok "Zugang besteht schon – Aktualisierung fertig: http://$(eigene_ip):$PORT"
+    regel
+    fett "Fertig. Der Zugang besteht schon, der Monitor ist auf $VERSION:"
+    echo
+    printf '    \033[1;4;94m%s\033[0m\n\n' "http://${ip:-$(eigene_ip)}:$PORT"
   else
     neuer_code
   fi
