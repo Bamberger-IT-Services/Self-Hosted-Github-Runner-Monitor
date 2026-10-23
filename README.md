@@ -1,6 +1,6 @@
 # Runner-Monitor
 
-**Stand: 23.10.2026 · Version 0.3.0** (Design v0.3.0, Abnahme auf der VM läuft)
+**Stand: 23.10.2026 · Version 0.3.1** (Design v0.3.0, Abnahme auf der VM läuft)
 
 Live-Dashboard für einen **selbst gehosteten GitHub-Actions-Runner** auf einer Linux-VM.
 Ein Blick zeigt, ob der Runner bereit ist, welcher Job gerade läuft, wie ausgelastet die VM
@@ -31,8 +31,8 @@ schon laufen – oder das Skript richtet ihn mit ein.
 
 ```bash
 # 1. Neueste Version holen und entpacken (Release-Seite: Assets › runner-monitor-X.Y.Z.tar.gz)
-curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/latest/download/runner-monitor-0.3.0.tar.gz
-tar xzf runner-monitor-0.3.0.tar.gz && cd runner-monitor-0.3.0
+curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/latest/download/runner-monitor-0.3.1.tar.gz
+tar xzf runner-monitor-0.3.1.tar.gz && cd runner-monitor-0.3.1
 
 # 2. Einrichtungsskript: Dienste, Firewall (Port 8090 nur aus dem LAN), Runner-Suche
 sudo ./einrichten.sh
@@ -79,7 +79,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 
 | Version | Datum | Handbuch | Release-Notiz |
 |---|---|---|---|
-| 0.3 | 23.10.2026 (0.3.0) | [v0.3.0/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.3.0/docs/handbuch) | [v0.3.0](docs/releases/v0.3.0.md) |
+| 0.3 | 23.10.2026 (0.3.1) | [v0.3.1/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.3.1/docs/handbuch) | [v0.3.1](docs/releases/v0.3.1.md), [v0.3.0](docs/releases/v0.3.0.md) |
 | 0.1 | 23.10.2026 (0.1.2) | [v0.1.2/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.1.2/docs/handbuch) | [v0.1.2](docs/releases/v0.1.2.md) |
 
 ## Nichtfunktionale Anforderungen

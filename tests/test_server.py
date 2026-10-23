@@ -21,7 +21,8 @@ class ServerTest(unittest.TestCase):
             "MONITOR_LAUF_VERZ": str(d / "lauf"), "MONITOR_WEB_VERZ": str(WEB),
         })
         self.k.auftraege_verz.mkdir(parents=True)
-        self.srv = server.ThreadingHTTPServer(("127.0.0.1", 0), type("H", (server.Handler,), {"app": server.App(self.k)}))
+        self.app = server.App(self.k)
+        self.srv = server.ThreadingHTTPServer(("127.0.0.1", 0), type("H", (server.Handler,), {"app": self.app}))
         self.port = self.srv.server_address[1]
         threading.Thread(target=self.srv.serve_forever, daemon=True).start()
         self.cookies: dict[str, str] = {}
@@ -104,6 +105,9 @@ class ServerTest(unittest.TestCase):
         r, b = self.anfrage("GET", "/")
         self.assertEqual(r.status, 200)
         self.assertIn(b"dashboard.js", b)
+        r, _ = self.anfrage("GET", "/api/sitzung")
+        self.assertEqual(r.status, 200)
+        self.live_strom_endet_bei_ueberlauf()
         # Update nur, wenn ein neueres Release bekannt ist
         r, _ = self.anfrage("POST", "/api/update/starten")
         self.assertEqual(r.status, 409)
@@ -118,6 +122,26 @@ class ServerTest(unittest.TestCase):
         r, _ = self.anfrage("POST", "/api/abmelden")
         r, _ = self.anfrage("GET", "/api/sitzung")
         self.assertEqual(r.status, 401)
+
+    def live_strom_endet_bei_ueberlauf(self):
+        """Kommt ein Browser nicht hinterher, endet der Strom (er verbindet neu), statt stumm offen zu bleiben."""
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c.request("GET", "/events", headers={"Host": f"127.0.0.1:{self.port}", "Cookie": f"rm_sitzung={self.cookies['rm_sitzung']}"})
+        r = c.getresponse()
+        self.assertEqual(r.status, 200)
+        self.assertIn("text/event-stream", r.headers["Content-Type"])
+        v = self.app.zustand.verteiler
+        for _ in range(200):  # warten, bis der Strom angemeldet ist
+            if v.anzahl:
+                break
+            threading.Event().wait(0.01)
+        self.assertEqual(v.anzahl, 1)
+        for i in range(2100):
+            v.sende("system", {"i": i})
+        rest = r.read()  # endet nur, wenn der Server den Strom schließt (sonst Zeitüberschreitung)
+        self.assertLessEqual(rest.count(b"event: system"), 2000)
+        c.close()
+        self.assertEqual(v.anzahl, 0)
 
 
 if __name__ == "__main__":

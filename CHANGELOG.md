@@ -4,6 +4,21 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.3.1] – 23.10.2026
+
+### Behoben
+- **Dashboard blieb auf „Getrennt“ stehen**, bis der Dienst neu gestartet wurde. Ursache: Jede Zeile des
+  Job-Logs war eine eigene Nachricht. Ein Build mit viel Ausgabe füllte die Warteschlange eines
+  Browserfensters (2000 Nachrichten). Der Server warf sie raus, ließ die Verbindung aber offen und schickte
+  nur noch Lebenszeichen. Jetzt:
+  - Log-Zeilen gehen gebündelt raus (eine Nachricht je gelesenem Stück).
+  - Läuft eine Schlange trotzdem über, beendet der Server den Strom, und der Browser verbindet sich neu.
+  - Der Browser baut die Verbindung selbst neu auf, wenn 10 s keine Daten kommen, auch nach einer
+    Fehlantwort (mit wachsender Wartezeit bis 30 s).
+  - Schreibversuche an einen hängenden Browser brechen nach 60 s ab, statt den Thread festzuhalten.
+- `GET /api/sitzung` antwortet angemeldet mit 200 statt 404 (kein „Fehler … 404“ mehr im Journal).
+- Angehaltenes oder hochgescrolltes Live-Log puffert höchstens 1500 Zeilen.
+
 ## [0.3.0] – 23.10.2026
 
 Umsetzung von **Design v0.3.0** (`docs/design/v0.3.0/`, Abgleich in `docs/design/README.md`).

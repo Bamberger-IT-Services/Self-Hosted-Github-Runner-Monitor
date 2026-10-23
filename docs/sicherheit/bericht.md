@@ -16,7 +16,7 @@ eigene Netz zu.
 | S-HOST-01 | Jobs laufen als `github-runner` mit `sudo` ohne Passwort und in der Gruppe `docker` – faktisch root. Ein bösartiger Workflow kann das GitHub-Token des Monitors lesen und den Monitor verändern | hoch (Eigenschaft der Runner-VM, nicht des Monitors) | akzeptiert: Token nur lesend und kurzlebig; Runner nur für eigene, private Repositories, nie für Pull Requests aus Forks | 23.10.2026 |
 | S-CSP-01 | CSP ohne Nonce/`strict-dynamic` (Anweisung 04 verlangt sie); stattdessen streng `script-src 'self'` ohne Inline-Skripte | niedrig | akzeptiert – gleich streng, da keine Inline-Skripte und keine fremden Quellen | 23.10.2026 |
 | S-UPD-01 | Updates werden nur per SHA-256 aus demselben Release geprüft, nicht signiert. Wer das Repository oder den Release-Prozess übernimmt, kann ein Update ausliefern | mittel | offen (A-10: Signatur mit Sigstore/minisign) | 23.10.2026 |
-| S-DOS-01 | Ein angemeldeter Browser kann beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | offen (A-11: Obergrenze je Sitzung) | 23.10.2026 |
+| S-DOS-01 | Ein angemeldeter Browser kann beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | offen (A-11: Obergrenze je Sitzung). Seit 0.3.1 enden hängende Verbindungen: `write()` bricht nach 60 s ab, übergelaufene Warteschlangen beenden den Strom | 23.10.2026 |
 
 ## V1 Architektur
 

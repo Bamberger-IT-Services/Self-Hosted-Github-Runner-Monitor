@@ -24,10 +24,11 @@ from urllib.parse import urlsplit
 
 from . import VERSION, github, zugang
 from .konfig import Konfig
-from .zustand import Zustand, lies_json
+from .zustand import ENDE, Zustand, lies_json
 
 LOG = logging.getLogger("runner_monitor")
 COOKIE = "rm_sitzung"
+SSE_SCHREIB_FRIST = 60  # Sekunden, die ein write() an einen hängenden Browser höchstens blockiert
 COOKIE_EINRICHTUNG = "rm_einrichtung"
 MAX_KOERPER = 16 * 1024
 
@@ -221,6 +222,9 @@ class Handler(BaseHTTPRequestHandler):
             self._seite("dashboard.html")
         elif pfad == "/events":
             self._ereignisse()
+        elif pfad == "/api/sitzung":
+            # Das Dashboard fragt hiermit nach einem Verbindungsfehler, ob es noch angemeldet ist (sonst 401).
+            self._json(HTTPStatus.OK, {"ok": True})
         else:
             self._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")
 
@@ -236,6 +240,8 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
         self._kopf(HTTPStatus.OK, "text/event-stream; charset=utf-8", None, {"X-Accel-Buffering": "no", "Connection": "close"})
         z = self.app.zustand
+        # Hängt der Browser (Rechner schläft, WLAN weg), blockiert write() sonst ewig und der Thread bleibt liegen.
+        self.connection.settimeout(SSE_SCHREIB_FRIST)
         q = z.verteiler.anmelden()
         try:
             for bereich, daten in z.momentaufnahme():
@@ -247,6 +253,10 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.write(b": lebt\n\n")
                     self.wfile.flush()
                     continue
+                if (bereich, text) == ENDE:
+                    # Schlange lief über (siehe Verteiler): Strom beenden, der Browser verbindet neu.
+                    LOG.info("Live-Verbindung beendet: Browser kam nicht hinterher, er verbindet sich neu")
+                    return
                 self._sse(bereich, text)
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass

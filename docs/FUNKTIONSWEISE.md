@@ -97,11 +97,21 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | `workflows` | `org`, `abfrage: ok\|kein-token\|token-ungueltig\|keine-rechte\|nicht-erreichbar\|kontingent\|fehler`, `abgefragt`, `naechste`, `tokenAblauf`, `kontingent{}`, `repos[{name, privat, laeuft, wartet}]` |
 | `update` | `installiert`, `neueste{version, veroeffentlicht, notizen[], …}`, `status{zustand: laeuft\|fehler\|erfolg, schritt, meldung}`, `auto` |
 | `container` | `[{name, image, zustand, seit}]` |
-| `log` | `neu` (Ansicht leeren), `ereignisse[{art, zeit, repo, workflow, name, ergebnis, dauer}]`, `zeilen[{art: zeile\|schritt, zeit, text \| nr, name}]` |
+| `log` | `neu` (Ansicht leeren), `ereignisse[{art, zeit, repo, workflow, name, ergebnis, dauer}]`, `zeilen[{art: zeile\|schritt, zeit, text \| nr, name}]` (gebündelt, bis 1500 je Nachricht) |
 
 Zeiten sind Unix-Sekunden. Alle 15 s kommt ein Kommentar `: lebt`, damit Proxys die Verbindung
-offen lassen. Reißt sie ab, verbindet sich der Browser selbst neu; nach 5 s ohne Daten zeigt er
-„Getrennt“ und den letzten Stand. Ist die Sitzung abgelaufen, geht es zur Anmeldung.
+offen lassen. Nach 5 s ohne Daten zeigt der Browser „Getrennt“ und den letzten Stand; nach 10 s
+ohne Daten baut er die Verbindung selbst neu auf (Wartezeit wächst bis 30 s). Ist die Sitzung
+abgelaufen (`GET /api/sitzung` → 401), geht es zur Anmeldung.
+
+**Warteschlange je Browserfenster (seit 0.3.1):** Der Verteiler hält je Fenster eine Schlange mit
+höchstens 2000 Nachrichten. Log-Zeilen gehen gebündelt raus: Der Log-Leser meldet je gelesenem Stück
+(alle 0,3 s, bis 512 KB) **eine** Nachricht mit höchstens 1500 Zeilen. Läuft eine Schlange trotzdem
+über, weil der Browser nicht hinterherkommt, wird sie geleert und der Server beendet den Strom
+(Journal: „Live-Verbindung beendet …“). Der Browser verbindet sich dann neu und bekommt den
+kompletten Stand. Ein `write()` an einen hängenden Browser bricht nach 60 s ab.
+Bis 0.3.0 blieb ein übergelaufener Strom stumm offen, und das Dashboard stand bis zum Neustart des
+Dienstes auf „Getrennt“.
 
 Die Oberfläche (`web/`) ist statisches HTML, CSS und JavaScript ohne Framework. Federnde
 Balken, ANSI-Farben im Log und alle Texte entstehen im Browser. Mit `?demo` erzeugt `demo.js`
