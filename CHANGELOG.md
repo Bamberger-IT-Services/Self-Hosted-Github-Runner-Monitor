@@ -4,6 +4,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Behoben
+- Ein hängendes Netzlaufwerk (NFS, CIFS) hält die Messung nicht mehr an; es fehlt in der Plattenliste,
+  bis es wieder antwortet (#26).
+
 ## [0.4.0] – 23.10.2026
 
 Umsetzung von **Design v0.4.0** (`docs/design/v0.4.0/`, Epic #42).

@@ -102,3 +102,48 @@ class PlattenTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NetzlaufwerkTest(unittest.TestCase):
+    """Issue #26: ein hängendes NFS/CIFS-Laufwerk darf die Messung nicht anhalten."""
+
+    MOUNTS = "/dev/sda1 / ext4 rw 0 0\nnas:/daten /mnt/nas nfs4 rw 0 0\n"
+
+    def setUp(self):
+        import threading
+        self.frei = threading.Event()
+        self.echt = system.os.statvfs
+        system._haengend.clear()
+
+    def tearDown(self):
+        self.frei.set()
+        system.os.statvfs = self.echt
+        system._haengend.clear()
+
+    def test_haengendes_netzlaufwerk_wird_uebersprungen(self):
+        import time
+        echt = self.echt
+
+        def statvfs(punkt):
+            if punkt == "/mnt/nas":
+                self.frei.wait(10)  # hängt, bis der Test es freigibt
+            return echt("/")
+
+        system.os.statvfs = statvfs
+        alt = system.NETZ_FRIST
+        system.NETZ_FRIST = 0.2
+        try:
+            beginn = time.monotonic()
+            liste = system.platten(self.MOUNTS, 25)
+            self.assertLess(time.monotonic() - beginn, 2)
+            self.assertEqual([p["pfad"] for p in liste], ["/"])
+            # Solange es hängt, wird es nicht erneut gefragt (kein neuer Thread, keine Wartezeit)
+            beginn = time.monotonic()
+            system.platten(self.MOUNTS, 25)
+            self.assertLess(time.monotonic() - beginn, 0.15)
+            # Antwortet es wieder, erscheint es wieder
+            self.frei.set()
+            system._haengend["/mnt/nas"].join(2)
+            self.assertEqual([p["pfad"] for p in system.platten(self.MOUNTS, 25)], ["/", "/mnt/nas"])
+        finally:
+            system.NETZ_FRIST = alt

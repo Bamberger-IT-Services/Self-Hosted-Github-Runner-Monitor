@@ -6,12 +6,16 @@ Text entgegen, damit sie sich mit Beispieldaten testen lassen (``tests/fixtures`
 
 from __future__ import annotations
 
+import logging
 import os
 import pwd
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
+LOG = logging.getLogger("runner_monitor")
 
 PROC = Path("/proc")
 KIB = 1024
@@ -191,7 +195,12 @@ class ProzessMesser:
 
 # ---------------------------------------------------------------- Platten
 
-ECHTE_DATEISYSTEME = {"ext4", "ext3", "xfs", "btrfs", "zfs", "f2fs", "vfat", "exfat", "nfs", "nfs4", "cifs"}
+ECHTE_DATEISYSTEME = {"ext4", "ext3", "xfs", "btrfs", "zfs", "f2fs", "vfat", "exfat", "nfs", "nfs4", "cifs", "smb3"}
+# Netzlaufwerke: statvfs() kann bei einem nicht erreichbaren Server minutenlang hängen. Es läuft
+# deshalb in einem eigenen Thread mit Frist; hängt ein Laufwerk noch, wird es übersprungen.
+NETZ_DATEISYSTEME = {"nfs", "nfs4", "cifs", "smb3"}
+NETZ_FRIST = 2.0  # Sekunden
+_haengend: dict[str, threading.Thread] = {}
 
 
 MIN_GROESSE = 1024 ** 3  # Laufwerke unter 1 GiB werden nicht angezeigt
@@ -199,6 +208,10 @@ MIN_GROESSE = 1024 ** 3  # Laufwerke unter 1 GiB werden nicht angezeigt
 
 def einhaengepunkte(mounts_text: str) -> list[str]:
     """Echte Laufwerke aus /proc/mounts – ohne Snap-, Docker-Overlay- und Pseudo-Dateisysteme."""
+    return [p for p, _ in einhaengepunkte_mit_art(mounts_text)]
+
+
+def einhaengepunkte_mit_art(mounts_text: str) -> list[tuple[str, str]]:
     gesehen: set[str] = set()
     punkte = []
     for zeile in mounts_text.splitlines():
@@ -213,18 +226,53 @@ def einhaengepunkte(mounts_text: str) -> list[str]:
         if geraet in gesehen:  # Bind-Mounts desselben Geräts nur einmal
             continue
         gesehen.add(geraet)
-        punkte.append(punkt)
-    punkte.sort(key=lambda p: (p != "/", p))
+        punkte.append((punkt, art))
+    punkte.sort(key=lambda p: (p[0] != "/", p[0]))
     return punkte
+
+
+def statvfs_mit_frist(punkt: str, frist: float | None = None) -> os.statvfs_result | None:
+    """statvfs() für Netzlaufwerke: Ergebnis oder None, wenn es nicht rechtzeitig antwortet.
+
+    Ein hängender Aufruf lässt sich nicht abbrechen; sein Thread läuft weiter, und solange er
+    hängt, wird das Laufwerk nicht noch einmal gefragt (sonst sammeln sich Threads an).
+    """
+    alt = _haengend.get(punkt)
+    if alt is not None and alt.is_alive():
+        return None
+    ergebnis: list = []
+
+    def frage() -> None:
+        try:
+            ergebnis.append(os.statvfs(punkt))
+        except OSError:
+            pass
+
+    t = threading.Thread(target=frage, name=f"statvfs {punkt}", daemon=True)
+    t.start()
+    t.join(NETZ_FRIST if frist is None else frist)
+    if t.is_alive():
+        if punkt not in _haengend:
+            LOG.warning("Netzlaufwerk %s antwortet nicht – wird übersprungen, bis es wieder antwortet", punkt)
+        _haengend[punkt] = t
+        return None
+    if _haengend.pop(punkt, None) is not None:
+        LOG.info("Netzlaufwerk %s antwortet wieder", punkt)
+    return ergebnis[0] if ergebnis else None
 
 
 def platten(mounts_text: str, schwelle_frei_gb: int) -> list[dict]:
     ergebnis = []
-    for punkt in einhaengepunkte(mounts_text):
-        try:
-            s = os.statvfs(punkt)
-        except OSError:
-            continue
+    for punkt, art in einhaengepunkte_mit_art(mounts_text):
+        if art in NETZ_DATEISYSTEME:
+            s = statvfs_mit_frist(punkt)
+            if s is None:
+                continue
+        else:
+            try:
+                s = os.statvfs(punkt)
+            except OSError:
+                continue
         gesamt = s.f_blocks * s.f_frsize
         frei = s.f_bavail * s.f_frsize
         if gesamt < MIN_GROESSE and punkt != "/":  # Kleinst-Images (z. B. squashfs, Werkzeug-Mounts) zählen nicht

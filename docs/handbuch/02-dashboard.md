@@ -68,7 +68,8 @@ während eines Jobs ist normal – der Runner lädt dann Docker-Images und Paket
 ## Prozesse und Platten
 
 Die sechs Prozesse mit der meisten CPU (PID, Benutzer, CPU %, RAM %, Befehl in Kurzform; die
-volle Befehlszeile steht im Tooltip). Darunter jedes Laufwerk mit freiem Platz. Für „/“ zeigt
+volle Befehlszeile steht im Tooltip). Darunter jedes Laufwerk mit freiem Platz (ein Netzlaufwerk, das
+nicht antwortet, fehlt, bis es wieder erreichbar ist). Für „/“ zeigt
 eine Marke die **Aufräumschwelle** (25 GB frei): Darunter räumt der Runner vor jedem Job auf, der
 Teil über der Schwelle wird orange.
 
