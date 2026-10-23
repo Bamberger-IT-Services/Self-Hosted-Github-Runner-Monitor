@@ -91,7 +91,7 @@
       case 'workflows': S.workflows = d; renderWorkflows(); renderKopf(); break;
       case 'update':
         S.update = d;
-        if (S.pruefung && S.pruefung.zustand === 'laeuft' && d.neueste && ms(d.neueste.geprueft) >= S.pruefung.start - 1000) S.pruefung = { zustand: 'fertig', bis: Date.now() + 8000 };
+        if (S.pruefung && S.pruefung.zustand === 'laeuft' && d.neueste && d.neueste.geprueft && d.neueste.geprueft !== S.pruefung.vorher) S.pruefung = { zustand: 'fertig', bis: Date.now() + 8000 };
         renderKopf(); if (S.info) renderInfo(); break;
       case 'log':
         if (d.neu) { S.ereignisse = []; $('term-innen').replaceChildren(); S.zeilenN = 0; S.puffer = []; }
@@ -222,13 +222,17 @@
       const wf = [j.workflow, j.name].filter(Boolean).map(esc).join(' · ');
       return `<div class="jobzeile"><span class="erg ${e[0]}">${e[1]}${e[2]}</span><span class="jz-name">${esc(j.repo || '')}${j.repo ? ' ' : ''}<span class="jz-wf">${j.repo ? '· ' : ''}${wf}</span></span><span class="r">${j.dauer != null ? dauer(j.dauer) : '–'}</span><span class="jz-ende">${hm(j.ende)}</span></div>`;
     }).join('');
-    $('status').innerHTML = `
+    const html = `
       <div class="karte-kopf"><span class="karte-titel">Runner-Status</span><div class="pillen">${pillD}${pillG}</div></div>
       <div class="zustand ${kopf[0]}">${kopf[1]}<span class="zustand-titel">${kopf[2]}</span></div>
       ${mitte}
       <div class="letzte"><div class="letzte-titel">Letzte Jobs</div>${letzte || '<div class="leer">Seit dem Start des Monitors noch keine Jobs.</div>'}</div>`;
+    // nur bei Änderung neu schreiben – sonst gehen Klicks und Fokus auf Knöpfen der Karte verloren
+    const karte = $('status');
+    if (karte.dataset.html === html) return;
+    karte.innerHTML = html; karte.dataset.html = html;
     // Spaltenzahl der Schritt-Segmente per CSSOM (CSP erlaubt keine style-Attribute)
-    const segs = $('status').querySelector('.segmente');
+    const segs = karte.querySelector('.segmente');
     if (segs) segs.style.gridTemplateColumns = `repeat(${segs.dataset.spalten}, minmax(0, 1fr))`;
   }
 
@@ -238,7 +242,7 @@
     if (el.contains(document.activeElement) && el.dataset.letzte && Date.now() - Number(el.dataset.letzte) < 5000) return;
     el.dataset.letzte = String(Date.now());
     const jetzt = Date.now();
-    let inhalt = '', fuss = '';
+    let inhalt = '', fuss = '', zeitText = '';
     if (w.abfrage === 'kein-token') {
       inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">Kein GitHub-Token eingerichtet</div><div class="leer-text">Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.</div><div class="leer-pfad">/etc/runner-monitor/github-token</div><button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">Anleitung: Token einrichten ›</button></div>`;
       fuss = '<div class="wf-zeit">Abfrage aus</div>';
@@ -265,10 +269,14 @@
         if (tage <= 14) fuss += `<div class="hinweis warn">${IC.schluessel()}<div>${tage > 0 ? `Token läuft in ${tage} ${mehrzahl(tage, 'Tag', 'Tagen')} ab` : 'Token ist abgelaufen'} <span>(${datum(w.tokenAblauf)}). Danach bleibt dieser Bereich leer.</span></div></div>`;
       }
       const nx = w.naechste ? Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000)) : null;
-      fuss += `<div class="wf-zeit">${alt ? `Letzte erfolgreiche Abfrage ${w.abgefragt ? zeit(w.abgefragt) : '–'}` : `Abgefragt ${zeit(w.abgefragt)}${S.verbindung === 'verbunden' && nx != null ? ` · nächste in ${nx} s` : ''}`}</div>`;
+      zeitText = alt ? `Letzte erfolgreiche Abfrage ${w.abgefragt ? zeit(w.abgefragt) : '–'}` : `Abgefragt ${zeit(w.abgefragt)}${S.verbindung === 'verbunden' && nx != null ? ` · nächste in ${nx} s` : ''}`;
+      fuss += '<div class="wf-zeit"></div>';
     }
     const meta = w.abfrage === 'kein-token' ? esc(w.org) : `${esc(w.org)} · ${w.repos.length} Repositories`;
-    el.innerHTML = `<div class="karte-kopf"><span class="karte-titel">Workflows</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
+    const html = `<div class="karte-kopf"><span class="karte-titel">Workflows</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
+    // nur bei Änderung neu schreiben; die sekündlich wechselnde Zeitzeile per textContent
+    if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    const zt = el.querySelector('.wf-zeit'); if (zt && zeitText && zt.textContent !== zeitText) zt.textContent = zeitText;
   }
 
   /* ------------------------------------------------------------ Auslastung */
@@ -459,6 +467,11 @@
         ['Startet er nicht, das Protokoll prüfen:', "journalctl -u 'actions.runner.*' -n 50"],
         ['Wartende Jobs laufen danach von selbst an.'],
         ['Woran es lag, steht in den Logs – siehe „Runner-Logs abrufen“.'],
+      ] },
+      { id: 'runner', titel: 'Kein Runner eingerichtet', aktiv: st.dienst.zustand === 'fehlt', cls: 'warn', wann: 'Wenn auf dieser VM kein GitHub-Runner gefunden wird.', schritte: [
+        ['Registrierungs-Token holen: GitHub › Organisation › Settings › Actions › Runners › „New self-hosted runner“ (1 Stunde gültig).'],
+        ['Runner auf der VM einrichten – das Skript fragt Organisation, Token und Labels ab:', `${SKRIPT} runner`],
+        ['Der Monitor erkennt den Runner danach von selbst.'],
       ] },
       { id: 'offline', titel: 'Runner offline bei GitHub', aktiv: st.github.zustand === 'offline', cls: 'fehler', wann: 'Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.', schritte: [
         ['Netz der VM prüfen:', 'curl -sI https://github.com | head -1'],
@@ -681,13 +694,13 @@
     else if (a === 'info-zu') schliesseInfo();
     else if (a === 'anleitung') { S.info = S.info === b.dataset.anleitung ? 'alle' : b.dataset.anleitung; renderInfo(); }
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
-    else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; renderWorkflows(); }
+    else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; renderWorkflows(); }
     else if (a === 'abmelden') { if (!DEMO) await RM.sende('/api/abmelden'); location.href = '/anmelden'; }
     else if (a === 'kopieren') kopiere(b);
     else if (a === 'update-pruefen') {
       const g = S.update && S.update.neueste && S.update.neueste.geprueft;
       if (g && Date.now() - ms(g) < 60000) { S.pruefung = { zustand: 'frisch', bis: Date.now() + 5000 }; renderInfo(); return; }
-      S.pruefung = { zustand: 'laeuft', start: Date.now() }; renderInfo();
+      S.pruefung = { zustand: 'laeuft', start: Date.now(), vorher: g || null }; renderInfo();
       if (DEMO) { window.RM_DEMO.pruefen(); return; }
       const r = await RM.sende('/api/update/pruefen');
       if (!r.ok) { S.pruefung = { zustand: 'keine-antwort', bis: Date.now() + 30000 }; renderInfo(); }

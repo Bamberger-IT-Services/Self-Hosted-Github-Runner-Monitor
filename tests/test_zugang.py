@@ -13,8 +13,8 @@ class PasswortTest(unittest.TestCase):
         self.assertIsNotNone(zugang.pruefe_passwort_regeln("kurz", "admin"))
         self.assertIsNotNone(zugang.pruefe_passwort_regeln("x" * 129, "admin"))
         self.assertIsNotNone(zugang.pruefe_passwort_regeln("adminadminadmin", "admin"))
-        self.assertIsNotNone(zugang.pruefe_passwort_regeln("passwort1234", "tobias"))
-        self.assertIsNotNone(zugang.pruefe_passwort_regeln("aaaaaaaaaaaaaa", "tobias"))
+        self.assertIsNotNone(zugang.pruefe_passwort_regeln("passwort1234", "verwaltung"))
+        self.assertIsNotNone(zugang.pruefe_passwort_regeln("aaaaaaaaaaaaaa", "verwaltung"))
         # Keine Zusammensetzungsregeln: nur Kleinbuchstaben und Leerzeichen sind erlaubt
         self.assertIsNone(zugang.pruefe_passwort_regeln("blauer himmel über hohenlohe", "admin"))
 

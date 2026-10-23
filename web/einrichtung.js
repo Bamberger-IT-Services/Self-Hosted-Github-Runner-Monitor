@@ -212,7 +212,8 @@
         const erst = (E.ergebnisse || [])[0] || {};
         E.github = d.org; E.ablauf = erst.ablauf || null; E.schritt = 4; zeichne();
       };
-      $('ueberspringen').addEventListener('click', () => { E.github = null; E.ablauf = null; E.schritt = 4; zeichne(); });
+      // Ein schon gespeichertes Token (Weiter, dann Zurück) bleibt gültig – Schritt 4 zeigt es weiter an.
+      $('ueberspringen').addEventListener('click', () => { E.schritt = 4; zeichne(); });
     } else {
       // Erst hier ist die Einrichtung abgeschlossen; bis dahin geht „Zurück“ noch.
       f.onsubmit = async (e) => {

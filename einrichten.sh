@@ -42,14 +42,14 @@ hin() { printf '\033[90m    %s\033[0m\n' "$*"; }
 
 port() { grep -E '^MONITOR_PORT=' "$ETC/konfig.env" 2>/dev/null | cut -d= -f2 | tr -dc 0-9 || true; }
 PORT="$(port)"; PORT="${PORT:-8090}"
-eigene_ip() { ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}'; }
+eigene_ip() { ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' || true; }
 lan_netz() {
-  local dev; dev="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
+  local dev; dev="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')" || true
   ip -4 -o addr show dev "$dev" 2>/dev/null | awk '{print $4; exit}' | "$PYTHON" -c 'import ipaddress,sys; print(ipaddress.ip_interface(sys.stdin.read().strip()).network)' 2>/dev/null || true
 }
 
 runner_name() { "$PYTHON" -c 'import json,sys; print(json.loads(open(sys.argv[1],encoding="utf-8-sig").read()).get("agentName",""))' "$RUNNER_VERZ/.runner" 2>/dev/null || true; }
-runner_unit() { systemctl list-units --all --type=service --no-legend --plain 'actions.runner.*' 2>/dev/null | awk '{print $1; exit}'; }
+runner_unit() { systemctl list-units --all --type=service --no-legend --plain 'actions.runner.*' 2>/dev/null | awk '{print $1; exit}' || true; }
 
 neuer_code() {
   [ -s "$DATEN/zugang.json" ] && { hinweis "Zugang ist schon angelegt – kein Code nötig. Passwort vergessen? sudo $0 passwort"; return; }
@@ -124,10 +124,10 @@ installieren() {
   "$PYTHON" -c 'import sys; sys.exit(sys.version_info < (3, 10))' || fehler "Python 3.10 oder neuer nötig (Ubuntu 22.04+)."
   os="$(. /etc/os-release && echo "${PRETTY_NAME:-unbekannt}")"
   py="$("$PYTHON" -c 'import sys; print(f"Python {sys.version_info.major}.{sys.version_info.minor}")')"
-  docker_v="$(docker --version 2>/dev/null | sed -n 's/^Docker version \([0-9]*\.[0-9]*\).*/Docker \1/p')"
+  docker_v="$(docker --version 2>/dev/null | sed -n 's/^Docker version \([0-9]*\.[0-9]*\).*/Docker \1/p')" || true
   ok "$os, $py${docker_v:+, $docker_v}"
   grep -qi ubuntu /etc/os-release || hinweis "getestet für Ubuntu – hier: $os"
-  dev="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
+  dev="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')" || true
   ip="$(eigene_ip)"; netz="$(lan_netz)"
   ok "Netz: ${ip:-unbekannt}${dev:+ ($dev)}${netz:+, lokales Netz $netz}"
   if [ -f "$RUNNER_VERZ/.runner" ]; then
@@ -230,7 +230,7 @@ os.replace(pfad + ".neu", pfad)' "$DATEN/einstellungen.json" "$neu"
 runner_einrichten() {
   local ziel tok labels umziehen=()
   [ "${1:-}" = "--umziehen" ] && umziehen=(--umziehen)
-  echo "  Registrierungs-Token: GitHub › Organisation › Settings › Actions › Runners › "New self-hosted runner" (1 Stunde gültig)."
+  echo '  Registrierungs-Token: GitHub › Organisation › Settings › Actions › Runners › „New self-hosted runner“ (1 Stunde gültig).'
   read -r -p "  Organisation (z. B. beispiel-org): " ziel </dev/tty
   [[ "$ziel" =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,38}$ ]] || fehler "Ungültiger Name."
   labels="${RUNNER_LABELS:-}"

@@ -27,6 +27,13 @@ Umsetzung von **Design v0.3.0** (`docs/design/v0.3.0/`, Abgleich in `docs/design
 - Entwickler-Dashboard nach dem Aufbau des Helios-Dashboards.
 - Design v1 aus dem Repository entfernt (liegt im Tag v0.1.2).
 
+### Behoben
+- `einrichten.sh` bricht nicht mehr still ab, wenn Docker fehlt oder die VM keine Standardroute hat.
+- Knöpfe in den Karten Runner-Status und Workflows verlieren Klicks und Fokus nicht mehr durch die
+  sekündliche Aktualisierung.
+- „Jetzt prüfen“ meldet bei abweichender Uhr von Browser und VM nicht mehr „Keine Antwort vom Sammler“.
+- Meldung „Kein Runner eingerichtet“ hat eine eigene Anleitung unter „Was tun, wenn …“.
+
 ## [0.1.2] – 23.10.2026
 
 ### Neu
