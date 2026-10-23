@@ -1,6 +1,6 @@
 # Runbooks
 
-**Stand: 23.10.2026 · Version 0.1.0**
+**Stand: 23.10.2026 · Version 0.1.1**
 
 Schritt-für-Schritt-Anleitungen für Störungen (Anweisung 07). Kurzfassungen stehen auch im
 Monitor unter Info › „Was tun, wenn …“.

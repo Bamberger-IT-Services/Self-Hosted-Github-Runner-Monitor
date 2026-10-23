@@ -1,6 +1,6 @@
 # Handbuch
 
-**Stand: 23.10.2026 · Version 0.1.0**
+**Stand: 23.10.2026 · Version 0.1.1**
 
 | Kapitel | Inhalt |
 |---|---|

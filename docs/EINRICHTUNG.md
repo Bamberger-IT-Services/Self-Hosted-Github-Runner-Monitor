@@ -1,6 +1,6 @@
 # Erstinstallation auf der VM
 
-**Stand: 23.10.2026 · Version 0.1.0**
+**Stand: 23.10.2026 · Version 0.1.1**
 
 Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 `beispiel-org` durch die eigenen Werte ersetzen.
@@ -15,7 +15,7 @@ Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 ## 1. Herunterladen und entpacken
 
 ```bash
-V=0.1.0
+V=0.1.1
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz.sha256
 sha256sum -c runner-monitor-$V.tar.gz.sha256     # muss „OK“ melden
@@ -33,7 +33,7 @@ Das Skript erledigt in sechs Schritten:
 | Schritt | Was passiert |
 |---|---|
 | 1 Benutzer und Ordner | Systembenutzer `runner-monitor` (ohne Anmeldung, darf das Journal lesen), `/var/lib/runner-monitor`, `/etc/runner-monitor/konfig.env` |
-| 2 Programm | Kopie nach `/opt/runner-monitor/versionen/0.1.0`, Verweis `aktuell`. Eine alte Terminalansicht (ttyd, `monitor-einrichten.sh`) wird erkannt und ersetzt; ihr Token wird übernommen. |
+| 2 Programm | Kopie nach `/opt/runner-monitor/versionen/0.1.1`, Verweis `aktuell`. Eine alte Terminalansicht (ttyd, `monitor-einrichten.sh`) wird erkannt und ersetzt; ihr Token wird übernommen. |
 | 3 Runner | Sucht `/opt/actions-runner/.runner`. Fehlt der Runner, fragt das Skript, ob es ihn einrichten soll (siehe unten). |
 | 4 Firewall | `ufw`: SSH bleibt offen, Port 8090 nur aus dem eigenen Netz (z. B. `192.0.2.0/24`). Ist ufw aus, fragt das Skript, ob es ihn einschalten soll. |
 | 5 Dienste | `runner-monitor`, `runner-monitor-sammler`, `runner-monitor-update.path` – starten und beim Booten aktiv |
@@ -103,7 +103,7 @@ Organisation › Settings › Personal access tokens › **Pending requests**.
 ```bash
 sudo ./einrichten.sh status                       # Dienste und Version
 journalctl -u runner-monitor -u runner-monitor-sammler -n 30
-curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.1.0"}
+curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.1.1"}
 ```
 
 ## Einstellungen
