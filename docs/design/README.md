@@ -39,3 +39,4 @@ Farben und Maße: [TOKENS.md](TOKENS.md).
 - Ansprache: Anmeldung und Einrichtung durchgehend „Sie“, Dashboard neutral (v1 hatte stellenweise „du“).
 - Kopfzeile bei 1440 px: Mit Meldung wird „aktualisiert hh:mm:ss“ ausgeblendet, damit der Meldungstext Platz hat.
 - Bei vielen Laufwerken scrollt die Plattenliste innerhalb der Karte.
+- **Netz** (ab 0.1.1, Wunsch Tobias): Zeile „Netz“ in der Auslastung zwischen Swap und Last – ↓ empfangen, ↑ gesendet, Spitze 10 Min. Nicht in Design v1, im Stil der Zeile „Last“ ergänzt. Der RAM-Verlauf wird dadurch etwas flacher.

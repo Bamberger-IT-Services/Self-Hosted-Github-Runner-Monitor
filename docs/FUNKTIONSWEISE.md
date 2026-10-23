@@ -59,6 +59,7 @@ Aufträge an (ein Token zum Ablegen, eine Versionsnummer zum Aktualisieren) und 
 | CPU gesamt, je Kern | `/proc/stat` (Differenz zweier Messungen, iowait zählt als frei) | 1 s |
 | RAM, Swap | `/proc/meminfo` (belegt = gesamt − verfügbar) | 1 s |
 | Last | `/proc/loadavg` | 1 s |
+| Netz | `/proc/net/dev`, Bytes je Sekunde summiert über alle echten Schnittstellen (ohne `lo`, Docker-Brücken, `veth`, VPN-Tunnel – deren Verkehr läuft ohnehin über die echte Schnittstelle) | 1 s |
 | Laufzeit der VM | `/proc/uptime` | 1 s |
 | Verlauf 10 Minuten | die letzten 600 Sekundenwerte im Speicher des Dienstes | 1 s |
 | Prozesse (Top 6) | `/proc/<pid>/stat`, `status`, `cmdline` | 2 s |
@@ -89,7 +90,7 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | Ereignis | Inhalt (Auszug) |
 |---|---|
 | `status` | `vm`, `runner`, `labels`, `version`, `dienst{zustand: aktiv\|gestoppt\|fehlt, seit}`, `github{zustand: online\|offline\|unbekannt, seit}`, `job{repo, workflow, name, ref, start, schritt, schritte[]}`, `letzteJobs[]` |
-| `system` | `kerne[]` (%), `cpu`, `last[3]`, `ram{belegt, gesamt}`, `swap{…}`, `start`; beim ersten Mal zusätzlich `verlauf{cpu[], ram[]}` |
+| `system` | `kerne[]` (%), `cpu`, `last[3]`, `ram{belegt, gesamt}`, `swap{…}`, `netz{empfangen, gesendet, schnittstellen[]}` (B/s), `start`; beim ersten Mal zusätzlich `verlauf{cpu[], ram[], netz[[empfangen, gesendet]]}` |
 | `prozesse` | `[{pid, benutzer, cpu, ram, befehl}]` |
 | `platten` | `[{pfad, gesamt, frei, belegt, schwelleFrei}]` (Bytes; `schwelleFrei` nur für „/“) |
 | `workflows` | `org`, `abfrage: ok\|kein-token\|token-ungueltig\|keine-rechte\|nicht-erreichbar\|kontingent\|fehler`, `abgefragt`, `naechste`, `tokenAblauf`, `kontingent{}`, `repos[{name, privat, laeuft, wartet}]` |

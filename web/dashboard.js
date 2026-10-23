@@ -14,7 +14,7 @@
 
   const S = {
     status: null, system: null, prozesse: [], platten: [], workflows: null, update: null,
-    cpuH: [], ramH: [], ereignisse: [], zeilenN: 0, puffer: [],
+    cpuH: [], ramH: [], netzH: [], ereignisse: [], zeilenN: 0, puffer: [],
     verbindung: 'verbindet', letzteDaten: 0,
     umbruch: true, angehalten: false, hochgescrollt: false, wfOffen: false, info: null, kerneN: 0,
   };
@@ -78,8 +78,13 @@
       case 'status': S.status = d; renderKopf(); renderStatus(); renderLogKopf(); break;
       case 'system':
         S.system = d;
-        if (d.verlauf) { S.cpuH = d.verlauf.cpu.slice(-600); S.ramH = d.verlauf.ram.slice(-600); }
-        else { S.cpuH.push(d.cpu); S.ramH.push(d.ram.gesamt ? d.ram.belegt / d.ram.gesamt * 100 : 0); if (S.cpuH.length > 600) { S.cpuH.shift(); S.ramH.shift(); } }
+        if (d.verlauf) { S.cpuH = d.verlauf.cpu.slice(-600); S.ramH = d.verlauf.ram.slice(-600); S.netzH = (d.verlauf.netz || []).slice(-600); }
+        else {
+          S.cpuH.push(d.cpu); S.ramH.push(d.ram.gesamt ? d.ram.belegt / d.ram.gesamt * 100 : 0);
+          if (d.netz) S.netzH.push([d.netz.empfangen, d.netz.gesendet]);
+          if (S.cpuH.length > 600) { S.cpuH.shift(); S.ramH.shift(); }
+          if (S.netzH.length > 600) S.netzH.shift();
+        }
         renderSystem(); break;
       case 'prozesse': S.prozesse = d; renderProzesse(); break;
       case 'platten': S.platten = d; renderPlatten(); renderKopf(); break;
@@ -278,6 +283,14 @@
     return [linie, `${linie} L${pts[pts.length - 1].split(',')[0]},46 L${pts[0].split(',')[0]},46 Z`];
   }
 
+  /* Bytes je Sekunde, dezimal wie bei Netzwerken üblich (1 MB/s = 1 000 000 B/s). */
+  function rate(b) {
+    if (!b || b < 1000) return [zahl(b || 0, 0), 'B/s'];
+    if (b < 1e6) return [zahl(b / 1e3, b < 1e4 ? 1 : 0), 'KB/s'];
+    if (b < 1e9) return [zahl(b / 1e6, b < 1e8 ? 1 : 0), 'MB/s'];
+    return [zahl(b / 1e9, 2), 'GB/s'];
+  }
+  function setzeRate(id, b) { const [w, e] = rate(b); $(id).innerHTML = `${w}<small>${e}</small>`; }
   function renderSystem() {
     const d = S.system; if (!d) return;
     const n = d.kerne.length;
@@ -298,6 +311,10 @@
     $('ram-pct').textContent = `${zahl(d.ram.gesamt ? d.ram.belegt / d.ram.gesamt * 100 : 0, 0)} %`;
     feder($('swap-fuell'), d.swap.gesamt ? d.swap.belegt / d.swap.gesamt : 0);
     $('swap').textContent = `${zahl(d.swap.belegt / GiB, 1)} / ${zahl(d.swap.gesamt / GiB, 1)} GB`;
+    if (d.netz) {
+      setzeRate('netz-rx', d.netz.empfangen); setzeRate('netz-tx', d.netz.gesendet);
+      setzeRate('netz-spitze', S.netzH.reduce((m, [rx, tx]) => Math.max(m, rx, tx), 0));
+    }
     $('l1').textContent = zahl(d.last[0], 2); $('l5').textContent = zahl(d.last[1], 2); $('l15').textContent = zahl(d.last[2], 2); $('kerne-n').textContent = n;
   }
 

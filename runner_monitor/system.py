@@ -1,4 +1,4 @@
-"""Systemwerte aus ``/proc``: CPU je Kern, RAM, Swap, Last, Prozesse und Platten.
+"""Systemwerte aus ``/proc``: CPU je Kern, RAM, Swap, Last, Netz, Prozesse und Platten.
 
 Alles hier läuft ohne besondere Rechte. Die Funktionen nehmen den Inhalt der Dateien als
 Text entgegen, damit sie sich mit Beispieldaten testen lassen (``tests/fixtures``).
@@ -241,6 +241,45 @@ def platten(mounts_text: str, schwelle_frei_gb: int) -> list[dict]:
     return ergebnis
 
 
+# ---------------------------------------------------------------- Netz
+
+# Virtuelle Schnittstellen zählen nicht: Was ein Container über veth/docker0 schickt, läuft
+# ohnehin über die echte Schnittstelle und würde sonst doppelt gezählt.
+VIRTUELL = ("lo", "docker", "br-", "veth", "virbr", "vnet", "cni", "flannel", "kube", "dummy", "ifb", "tap",
+            "tun", "wg", "tailscale", "zt")  # VPN-Tunnel laufen ebenfalls über die echte Schnittstelle
+
+
+def lies_netz(text: str) -> dict[str, tuple[int, int]]:
+    """``/proc/net/dev`` → {Schnittstelle: (empfangen, gesendet)} in Bytes, ohne virtuelle."""
+    ergebnis: dict[str, tuple[int, int]] = {}
+    for zeile in text.splitlines()[2:]:
+        if ":" not in zeile:
+            continue
+        name, werte = zeile.split(":", 1)
+        name = name.strip()
+        felder = werte.split()
+        if not name or name.startswith(VIRTUELL) or len(felder) < 9:
+            continue
+        try:
+            ergebnis[name] = (int(felder[0]), int(felder[8]))
+        except ValueError:
+            continue
+    return ergebnis
+
+
+def netz_rate(vorher: dict[str, tuple[int, int]], jetzt: dict[str, tuple[int, int]], sekunden: float) -> dict:
+    """Bytes je Sekunde, summiert über alle echten Schnittstellen. Zähler-Neustart zählt als 0."""
+    empfangen = gesendet = 0
+    if sekunden > 0:
+        for name, (rx, tx) in jetzt.items():
+            if name in vorher:
+                empfangen += max(0, rx - vorher[name][0])
+                gesendet += max(0, tx - vorher[name][1])
+        empfangen = round(empfangen / sekunden)
+        gesendet = round(gesendet / sekunden)
+    return {"empfangen": empfangen, "gesendet": gesendet, "schnittstellen": sorted(jetzt)}
+
+
 # ---------------------------------------------------------------- Zusammenfassung
 
 
@@ -249,13 +288,22 @@ class SystemMesser:
         self.proc = proc
         self.schwelle = schwelle_frei_gb
         self._cpu_vorher = lies_cpu_zeiten((proc / "stat").read_text())
+        self._netz_vorher = self._netz()
+        self._netz_zeit = time.monotonic()
         self.prozesse = ProzessMesser(proc)
+
+    def _netz(self) -> dict[str, tuple[int, int]]:
+        text = _lies(self.proc / "net" / "dev")
+        return lies_netz(text) if text else {}
 
     def system(self) -> dict:
         jetzt = lies_cpu_zeiten((self.proc / "stat").read_text())
         kerne = cpu_auslastung(self._cpu_vorher, jetzt)
         self._cpu_vorher = jetzt
         sp = speicher(lies_meminfo((self.proc / "meminfo").read_text()))
+        netz_jetzt, zeit_jetzt = self._netz(), time.monotonic()
+        netz = netz_rate(self._netz_vorher, netz_jetzt, zeit_jetzt - self._netz_zeit)
+        self._netz_vorher, self._netz_zeit = netz_jetzt, zeit_jetzt
         return {
             "zeit": time.time(),
             "kerne": kerne,
@@ -263,6 +311,7 @@ class SystemMesser:
             "last": lies_last((self.proc / "loadavg").read_text()),
             "ram": sp["ram"],
             "swap": sp["swap"],
+            "netz": netz,
             "start": startzeit((self.proc / "uptime").read_text()),
         }
 

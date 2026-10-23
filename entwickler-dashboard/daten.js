@@ -5,7 +5,7 @@ window.DATEN = {
   repo: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor',
   version: '0.1.1',
   versionStatus: '0.1.0 auf main und auf der Runner-VM im Test; 0.1.1 als erstes Release vorbereitet, noch nicht veröffentlicht',
-  stand: '23.10.2026 17:49',
+  stand: '23.10.2026 17:56',
   naechsteSchritte: [
     'Release v0.1.1 veröffentlichen – nur nach OK von Tobias (A-06); dann auf der VM das Update per Knopf testen',
     'Abnahme auf der Runner-VM weiterführen (A-03): Live-Log mit echtem Job, Update und Rückweg',
@@ -33,6 +33,7 @@ window.DATEN = {
     { id: 'A-16', titel: 'Mehrere Runner je VM', status: 'später', prio: 'niedrig', bereich: 'Code' },
     { id: 'A-17', titel: 'Klären: Projektanweisung sagt „Als Docker sollte es dennoch funktionieren“ – widerspricht E-02/ADR-0002 (kein Docker). Optionaler Container (privilegiert, --pid=host, Journal- und Runner-Mounts) zusätzlich zum systemd-Dienst?', status: 'erledigt', prio: 'mittel', bereich: 'Entscheidung', wer: 'Tobias', notiz: 'E-12: kein Docker, auch nicht zusätzlich' },
     { id: 'A-18', titel: 'Info-Blatt baute sich jede Sekunde neu auf; Live-Log ließ sich nicht hochscrollen; einrichten.sh token vergaß die Organisation', status: 'erledigt', prio: 'hoch', bereich: 'Code', notiz: 'Version 0.1.1' },
+    { id: 'A-20', titel: 'Netzwerkauslastung in der Karte Auslastung (empfangen, gesendet, Spitze 10 Min.)', status: 'erledigt', prio: 'mittel', bereich: 'Code', notiz: 'Wunsch Tobias, Version 0.1.1' },
     { id: 'A-19', titel: 'Public-Repo: Anweisung 01 verweist zur Runner-Einrichtung auf dieses Repo, vorlagen/runner-einrichten.sh entfällt (Entscheidung „alles hierher verschieben“)', status: 'offen', prio: 'mittel', bereich: 'Public', wer: 'Claude' },
   ],
 
@@ -60,6 +61,7 @@ window.DATEN = {
   ],
 
   verlauf: [
+    { datum: '23.10.2026 17:56', text: 'Netzwerkauslastung ergänzt (Zeile „Netz“ in der Auslastung, /proc/net/dev ohne virtuelle Schnittstellen). PR #4 und Dependabot #2/#3 gemergt.' },
     { datum: '23.10.2026 17:49', text: '0.1.1: Info-Blatt bleibt ruhig stehen, Live-Log lässt sich hochscrollen, Token-Befehl im Info-Menü, einrichten.sh token fragt die Organisation. Entscheidungen E-11 (keine Lizenz) und E-12 (kein Docker) nachgetragen.' },
     { datum: '23.10.2026 16:29', text: 'Version 0.1.0 programmiert: Server, Sammler, Update-Hilfsdienst, Oberfläche nach Design v1, einrichten.sh (inkl. Runner-Einrichtung und Ablösung der ttyd-Ansicht), Doku (Funktionsweise, Handbuch mit Bildern, Einrichtung, Update, Runner, Runbooks, Sicherheit), CI und Release-Workflow. Tests und Browser-Rauchtest grün.' },
     { datum: '23.10.2026', text: 'Design v1 abgestimmt und eingefroren (21 Bildschirme inkl. Einrichtung, Anmeldung, Updates). Entscheidungen E-01 bis E-08.' },

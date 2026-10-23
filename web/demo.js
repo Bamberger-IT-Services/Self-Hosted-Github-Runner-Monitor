@@ -77,7 +77,10 @@ window.RM_DEMO = (() => {
     const k = Array.from({ length: kerne }, () => Math.max(0, Math.min(100, cpuSchnitt + zufall(-22, 22))));
     const ram = (zustand === 'volllast' ? 29 : job ? 11.4 : 4.1) * GiB + zufall(-0.2, 0.2) * GiB;
     const d = { zeit: jetzt(), kerne: k, cpu: k.reduce((a, b) => a + b, 0) / kerne, last: [cpuSchnitt / 100 * kerne * 0.9, cpuSchnitt / 100 * kerne * 0.8, cpuSchnitt / 100 * kerne * 0.7], ram: { belegt: ram, gesamt: 32 * GiB }, swap: { belegt: 0.2 * GiB, gesamt: 4 * GiB }, start: START };
-    if (erst) d.verlauf = { cpu: Array.from({ length: 600 }, (_, i) => 30 + 25 * Math.sin(i / 40) + zufall(-6, 6)), ram: Array.from({ length: 600 }, (_, i) => 30 + 6 * Math.sin(i / 90)) };
+    // Netz: beim Job lädt der Runner Images und Pakete, im Leerlauf nur ein paar KB/s
+    const rx = zustand === 'volllast' ? zufall(40e6, 95e6) : job ? zufall(2e6, 18e6) : zufall(1e3, 6e3);
+    d.netz = { empfangen: Math.round(rx), gesendet: Math.round(rx * zufall(0.05, 0.15)), schnittstellen: ['eth0'] };
+    if (erst) d.verlauf = { cpu: Array.from({ length: 600 }, (_, i) => 30 + 25 * Math.sin(i / 40) + zufall(-6, 6)), ram: Array.from({ length: 600 }, (_, i) => 30 + 6 * Math.sin(i / 90)), netz: Array.from({ length: 600 }, (_, i) => [Math.round(8e6 + 6e6 * Math.sin(i / 30)), Math.round(9e5)]) };
     return d;
   }
   const prozesse = () => PROZ.slice(0, 6).map(([befehl, benutzer], i) => ({ pid: 2140 + i * 317, benutzer, cpu: Math.max(0.1, cpuSchnitt * (0.9 - i * 0.16) * zufall(0.8, 1.2)), ram: Math.max(0.1, 7 - i + zufall(-0.5, 0.5)), befehl }));

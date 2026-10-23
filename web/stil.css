@@ -228,6 +228,10 @@ body.dashboard { overflow: hidden; }
 .last-werte span { display: flex; flex-direction: column; }
 .last-werte b { font-size: 15px; line-height: 19px; font-weight: 600; }
 .last-werte i { font-style: normal; font-size: 11px; color: var(--ink-muted); }
+.netz .last-werte { gap: 12px; }
+.netz .last-werte span { min-width: 0; }
+.netz .last-werte b, .netz .last-werte i { white-space: nowrap; }
+.netz .last-werte small { font-size: 11px; font-weight: 500; color: var(--ink-muted); margin-left: 2px; }
 
 /* Prozesse und Platten */
 .proz { flex: 1; }
