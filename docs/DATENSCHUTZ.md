@@ -10,7 +10,8 @@ Analyse, keine externen Schriften oder Skripte.
 | Benutzername, Passwort-Hash | `/var/lib/runner-monitor/zugang.json` | bis zum Zurücksetzen |
 | Sitzungen (Hash des Tokens, Zeitpunkte) | `sitzungen.json` | bis Ablauf (höchstens 30 Tage) |
 | Fehlversuche (IP-Adresse, Zeit) | `sperren.json` | 15 Minuten |
-| Systemwerte, Prozesse, Log-Zeilen | nur im Arbeitsspeicher | 10 Minuten bzw. 1500 Zeilen, weg beim Neustart |
+| Verlauf von CPU, RAM und Netz (Prozentwerte, Bytes je Sekunde) | `verlauf.json` (alle 10 s gesichert) | 10 Minuten; nach mehr als 60 s Pause verworfen |
+| Prozesse, Log-Zeilen | nur im Arbeitsspeicher | 1500 Zeilen, weg beim Neustart |
 | GitHub-Daten (Repository-Namen, Workflow- und Jobnamen, Branch/PR-Titel) | `/run/runner-monitor` (Arbeitsspeicher) | bis zur nächsten Abfrage bzw. Neustart |
 | Darstellungswahl hell/dunkel | `localStorage` des Browsers | bis der Browser sie löscht |
 

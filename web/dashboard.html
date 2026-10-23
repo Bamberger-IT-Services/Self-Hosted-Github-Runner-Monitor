@@ -42,7 +42,7 @@
           <div class="gross-zeile"><span class="mess-label">CPU gesamt</span><span class="gross-wert"><span id="cpu">–</span><span class="einheit">%</span></span></div>
           <div class="spark spark-cpu">
             <div class="spark-flaeche-box"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="CPU-Verlauf der letzten 10 Minuten"><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="cpu-flaeche"/><path class="spark-linie" id="cpu-linie"/></svg></div>
-            <div class="spark-achse"><span>vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
+            <div class="spark-achse"><span class="achse-von">vor 10 Min.</span><span>50 %</span><span>jetzt</span></div>
           </div>
           <div class="kerne" id="kerne"></div>
         </div>
@@ -56,7 +56,7 @@
           <div class="netz" role="group" aria-label="Netzwerk" title="Summe aller echten Netzwerkschnittstellen, ohne Docker und VPN">
             <div class="netz-kopf"><span class="mess-label">Netzwerk</span><span class="nw" title="empfangen"><span class="pf-rx" aria-label="empfangen">↓</span><span id="netz-rx">–</span><i id="netz-rx-e"></i></span><span class="nw" title="gesendet"><span class="pf-tx" aria-label="gesendet">↑</span><span id="netz-tx">–</span><i id="netz-tx-e"></i></span></div>
             <div class="netz-verlauf"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="Netzwerk-Verlauf der letzten 10 Minuten, empfangen und gesendet"><line class="spark-raster" x1="0" y1="2" x2="300" y2="2"/><path class="spark-flaeche" id="netz-rx-flaeche"/><path class="spark-linie" id="netz-rx-linie"/><path class="spark-tx" id="netz-tx-linie"/></svg></div>
-            <div class="spark-achse"><span>vor 10 Min.</span><span id="netz-spitze">Spitze –</span><span>jetzt</span></div>
+            <div class="spark-achse"><span class="achse-von">vor 10 Min.</span><span id="netz-spitze">Spitze –</span><span>jetzt</span></div>
           </div>
           <div class="last"><span class="m-l">Last</span><span class="last-werte"><span><b id="l1">–</b><i>1 Min.</i></span><span><b id="l5">–</b><i>5 Min.</i></span><span><b id="l15">–</b><i>15 Min.</i></span><span><b class="mut" id="kerne-n">–</b><i>Kerne</i></span></span></div>
         </div>

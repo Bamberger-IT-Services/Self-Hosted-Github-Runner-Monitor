@@ -6,7 +6,7 @@ window.RM_DEMO = (() => {
   const GiB = 1024 ** 3, GB = 1e9;
   const jetzt = () => Date.now() / 1000;
   const zufall = (a, b) => a + Math.random() * (b - a);
-  let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell';
+  let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600;
   let cpuSchnitt = 40, job = null, schrittNr = 1, zeilenImSchritt = 0, updSchritt = 0;
   const START = jetzt() - 3 * 86400 - 4 * 3600;
   const REPOS = [
@@ -101,7 +101,9 @@ window.RM_DEMO = (() => {
       }
       cpu.push(c); ram.push(r / 32 * 100); netz.push([Math.round(rx), Math.round(rx * (busy && i >= 170 ? zufall(0.02, 0.14) : zufall(0.2, 0.3)))]);
     }
-    return { cpu, ram, netz };
+    // ?verlauf=120: Monitor wurde vor 2 Minuten neu gestartet (Design 0.4.0, Option „Verlauf“)
+    const n = verlaufS;
+    return { cpu: cpu.slice(-n), ram: ram.slice(-n), netz: netz.slice(-n), start: jetzt() - n };
     return d;
   }
   // Ohne Job wie im Design: der Listener wartet, sonst ist es ruhig
@@ -164,6 +166,7 @@ window.RM_DEMO = (() => {
     const p = new URLSearchParams(location.search);
     zustand = p.get('zustand') || zustand; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
+    const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();
     if (['job', 'platte', 'volllast'].includes(zustand)) neuerJob();
     alles(true);

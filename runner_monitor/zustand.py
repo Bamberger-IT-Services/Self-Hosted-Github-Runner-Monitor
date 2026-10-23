@@ -10,8 +10,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import queue
 import socket
+import tempfile
 import threading
 import time
 from collections import deque
@@ -24,6 +26,8 @@ LOG = logging.getLogger("runner_monitor")
 MAX_ZEILEN = 1500
 MAX_EREIGNISSE = 50
 VERLAUF = 600  # 10 Minuten bei 1 Wert je Sekunde
+VERLAUF_SICHERN = 10  # Sekunden zwischen zwei Sicherungen nach verlauf.json
+VERLAUF_LUECKE = 60  # größere Lücke (Monitor länger aus) → gesicherten Verlauf verwerfen
 
 
 def lies_json(pfad: Path, vorgabe=None):
@@ -85,6 +89,8 @@ class Zustand:
         self.cpu_verlauf: deque[float] = deque(maxlen=VERLAUF)
         self.ram_verlauf: deque[float] = deque(maxlen=VERLAUF)
         self.netz_verlauf: deque[list[int]] = deque(maxlen=VERLAUF)  # [empfangen, gesendet] in B/s
+        self.verlauf_start: float | None = None  # Zeit des ältesten Werts im Verlauf (Achse „seit hh:mm“)
+        self._luecke = 0  # Sekunden seit dem letzten gesicherten Wert, beim ersten Messwert aufzufüllen
         self.zeilen: deque[dict] = deque(maxlen=MAX_ZEILEN)
         self.ereignisse: deque[dict] = deque(maxlen=MAX_EREIGNISSE)
         self.letzte_jobs: deque[dict] = deque(maxlen=5)
@@ -112,10 +118,78 @@ class Zustand:
             liste = [(k, v) for k, v in self.bereiche.items() if k != "system" and not k.startswith("_")]
             if "system" in self.bereiche:
                 sys_daten = dict(self.bereiche["system"])  # type: ignore[arg-type]
-                sys_daten["verlauf"] = {"cpu": list(self.cpu_verlauf), "ram": list(self.ram_verlauf), "netz": list(self.netz_verlauf)}
+                sys_daten["verlauf"] = {"cpu": list(self.cpu_verlauf), "ram": list(self.ram_verlauf), "netz": list(self.netz_verlauf),
+                                        "start": self._start_des_verlaufs()}
                 liste.insert(0, ("system", sys_daten))
             liste.append(("log", {"neu": True, "ereignisse": list(self.ereignisse), "zeilen": list(self.zeilen)}))
         return liste
+
+    # ------------------------------------------------------------ Verlauf sichern (Design 0.4.0)
+
+    @property
+    def verlauf_datei(self) -> Path:
+        return self.k.daten_verz / "verlauf.json"
+
+    def _start_des_verlaufs(self) -> float:
+        """Zeit des ältesten Werts: bei vollem Verlauf jetzt − 10 Min., sonst der erste Messwert."""
+        jetzt = time.time()
+        n = len(self.cpu_verlauf)
+        if self.verlauf_start is None or n >= VERLAUF:
+            return jetzt - n
+        return max(self.verlauf_start, jetzt - n)
+
+    def sichere_verlauf(self, jetzt: float | None = None) -> None:
+        """Atomar nach verlauf.json (temp + rename), damit Neustarts und Updates den Verlauf nicht leeren."""
+        jetzt = time.time() if jetzt is None else jetzt
+        with self._sperre:
+            daten = {"zeit": jetzt, "start": self._start_des_verlaufs(), "cpu": [round(w, 1) for w in self.cpu_verlauf],
+                     "ram": [round(w, 1) for w in self.ram_verlauf], "netz": [list(w) for w in self.netz_verlauf]}
+        pfad = self.verlauf_datei
+        try:
+            pfad.parent.mkdir(parents=True, exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=pfad.parent, prefix=".verlauf-")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(daten, f, separators=(",", ":"))
+                os.replace(tmp, pfad)
+            except BaseException:
+                Path(tmp).unlink(missing_ok=True)
+                raise
+        except OSError as fehler:
+            LOG.warning("Verlauf nicht gesichert: %s", fehler)
+
+    def lade_verlauf(self, jetzt: float | None = None) -> None:
+        """Übernimmt einen gesicherten Verlauf, wenn er jünger als 10 Min. ist und die Lücke höchstens 60 s."""
+        jetzt = time.time() if jetzt is None else jetzt
+        d = lies_json(self.verlauf_datei)
+        if not isinstance(d, dict):
+            return
+        try:
+            zeit = float(d["zeit"])
+            cpu, ram, netz = list(d["cpu"]), list(d["ram"]), [list(w)[:2] for w in d["netz"]]
+        except (KeyError, TypeError, ValueError):
+            return
+        luecke = jetzt - zeit
+        if not cpu or luecke < 0 or luecke > VERLAUF_LUECKE or jetzt - zeit > VERLAUF:
+            return
+        with self._sperre:
+            self.cpu_verlauf.extend(float(w) for w in cpu[-VERLAUF:])
+            self.ram_verlauf.extend(float(w) for w in ram[-VERLAUF:])
+            self.netz_verlauf.extend([int(a), int(b)] for a, b in netz[-VERLAUF:])
+            start = d.get("start")
+            self.verlauf_start = float(start) if isinstance(start, (int, float)) else zeit - len(cpu)
+            self._luecke = int(luecke)
+
+    def _haenge_an(self, cpu: float, ram: float, netz: list[int]) -> None:
+        """Neuer Sekundenwert; nach einem Neustart füllt der erste Wert die Lücke seit der Sicherung."""
+        anzahl = 1 + self._luecke
+        self._luecke = 0
+        if self.verlauf_start is None:
+            self.verlauf_start = time.time()
+        for _ in range(min(anzahl, VERLAUF)):
+            self.cpu_verlauf.append(cpu)
+            self.ram_verlauf.append(ram)
+            self.netz_verlauf.append(list(netz))
 
     def _geaendert(self, pfad: Path) -> bool:
         try:
@@ -263,6 +337,7 @@ class Zustand:
 
     def starte(self) -> None:
         if self.messer is not None:
+            self.lade_verlauf()
             runner.JournalFolger(self.bei_journal).start()
             runner.SeitenFolger(self.k.runner_verz / "_diag" / "pages", self.bei_seite).start()
         threading.Thread(target=self._schleife, name="messen", daemon=True).start()
@@ -282,12 +357,14 @@ class Zustand:
     def ein_takt(self, takt: int) -> None:
         if self.messer is not None:
             daten = self.messer.system()
-            self.cpu_verlauf.append(daten["cpu"])
             ram = daten["ram"]
-            self.ram_verlauf.append(round(100.0 * ram["belegt"] / ram["gesamt"], 1) if ram["gesamt"] else 0.0)
             netz = daten.get("netz") or {}
-            self.netz_verlauf.append([netz.get("empfangen", 0), netz.get("gesendet", 0)])
+            with self._sperre:
+                self._haenge_an(daten["cpu"], round(100.0 * ram["belegt"] / ram["gesamt"], 1) if ram["gesamt"] else 0.0,
+                                [netz.get("empfangen", 0), netz.get("gesendet", 0)])
             self._setze("system", daten)
+            if takt % VERLAUF_SICHERN == VERLAUF_SICHERN - 1:
+                self.sichere_verlauf()
             if takt % 2 == 0:
                 self._setze("prozesse", self.messer.prozesse.messen(ram["gesamt"]))
             if takt % 10 == 0:

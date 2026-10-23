@@ -48,6 +48,11 @@ CPU gesamt mit Verlauf der letzten 10 Minuten, jeder Kern als Balken, Arbeitsspe
 Verlauf, RAM und Swap, **Netz** und Last (1, 5, 15 Minuten) im Vergleich zur Zahl der Kerne.
 Bei 16 und mehr Kernen werden die Balken schmaler.
 
+Die Verläufe füllen immer die ganze Breite. Sind noch keine 10 Minuten gemessen – etwa kurz nach
+einem Update –, steht links unter dem Verlauf, seit wann gemessen wird („seit 14:02“), sonst
+„vor 10 Min.“. Der Monitor sichert den Verlauf alle 10 Sekunden; nach einem kurzen Neustart (Update,
+`systemctl restart`) geht es nahtlos weiter.
+
 **Netzwerk** (eigener Block unter RAM und Swap) zeigt, was die VM gerade empfängt (↓) und sendet
 (↑), summiert über alle echten Netzwerkschnittstellen. Darunter der Verlauf der letzten
 10 Minuten: empfangen als blaue Fläche, gesendet als goldene Linie; die Skala richtet sich nach

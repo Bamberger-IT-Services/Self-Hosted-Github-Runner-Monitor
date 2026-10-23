@@ -4,6 +4,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Neu
+- **Verlauf füllt die ganze Breite** (Design 0.4.0, #43): CPU, RAM und Netz strecken die vorhandenen
+  Werte über die volle Fläche; links steht „seit hh:mm“, bis 10 Minuten gemessen sind. Der Monitor
+  sichert den Verlauf alle 10 s nach `verlauf.json` und übernimmt ihn nach einem Neustart (bis 60 s
+  Pause). Demo: `?verlauf=120`.
+
 ## [0.3.1] – 23.10.2026
 
 ### Behoben
