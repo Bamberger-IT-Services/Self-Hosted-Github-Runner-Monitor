@@ -2,7 +2,7 @@
 
 **Wann:** Ein Job läuft (Karte „Job läuft“), aber das Live-Log zeigt keine neuen Zeilen – oder nur
 alte Zeilen eines früheren Jobs.
-**Dauer:** ca. 5 Minuten · **Zuletzt geprüft:** 2026-10-23 (Version 0.4.0)
+**Dauer:** ca. 5 Minuten · **Zuletzt geprüft:** 2026-10-23 (Version 0.5.0)
 
 ## Voraussetzungen
 - SSH auf die Runner-VM mit sudo
@@ -26,7 +26,7 @@ alte Zeilen eines früheren Jobs.
    ```bash
    journalctl -u runner-monitor -n 200 --no-pager | grep -iE "live-log|exception|traceback" | tail -20
    ```
-   Ab der nächsten Version läuft der Leser nach einem Fehler weiter und schreibt ihn hier hinein.
+   Seit 0.5.0 läuft der Leser nach einem Fehler weiter und schreibt ihn hier hinein.
 4. Monitor neu starten (liest dann die jüngste Datei neu ein):
    ```bash
    sudo systemctl restart runner-monitor

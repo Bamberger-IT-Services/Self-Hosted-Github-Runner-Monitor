@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.5.0] – 23.10.2026
+
 ### Neu
 - **Herkunft der Updates** (#18, ADR-0005): Der Release-Workflow bestätigt jedes Paket per
   GitHub-Attestierung (Sigstore); der Update-Hilfsdienst prüft sie mit `gh attestation verify` und
