@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "23.10.2026 22:43",
+  stand: "23.10.2026 22:50",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -201,7 +201,7 @@ window.RUNNER_MONITOR = {
   /* Wo finde ich was: lokal, im Repository, auf der VM, im Monitor. Keine echten Adressen oder Rechnernamen. */
   orte: [
     { gruppe: "Lokal auf dem Mac", titel: "Lokaler Klon", wo: "~/Desktop/git/DEV/proj-self-hosted-github-runner-monitor/Self-Hosted-Github-Runner-Monitor", was: "Arbeitskopie des Repositorys; dieses Dashboard liegt darin unter entwickler-dashboard/." },
-    { gruppe: "Lokal auf dem Mac", titel: "Design 0.3.0 (Entwürfe)", wo: "../Runner-Monitor-Design-v0.3.0/", was: "Entpackte Fassung neben dem Klon; dieselben Dateien liegen im Repository unter docs/design/v0.3.0/.", datei: "../Runner-Monitor-Design-v0.3.0/" },
+    { gruppe: "Lokal auf dem Mac", titel: "Design 0.4.0 (Entwürfe)", wo: "../Runner-Monitor-Design-v0.4.0/", was: "Entpackte Fassung neben dem Klon (mit Bildschirmfotos aus dem Betrieb); die Entwürfe ohne Fotos liegen im Repository unter docs/design/v0.4.0/.", datei: "../Runner-Monitor-Design-v0.4.0/" },
     { gruppe: "Lokal auf dem Mac", titel: "Entwicklungsdaten", wo: "daten/ und lauf/", was: "Entstehen beim lokalen Start (MONITOR_DATEN_VERZ, MONITOR_LAUF_VERZ): Zugang, Sitzungen, Einstellungen bzw. Ergebnisse des Sammlers. Stehen in .gitignore – nie committen.", datei: "daten/" },
     { gruppe: "Lokal auf dem Mac", titel: "Release-Paket", wo: "dist/", was: "runner-monitor-X.Y.Z.tar.gz und .sha256 nach werkzeuge/paket.sh. Steht in .gitignore.", datei: "dist/" },
     { gruppe: "Im Repository", titel: "Programm und Oberfläche", wo: "runner_monitor/ · web/", was: "Server, Sammler, Update-Hilfsdienst (Python) und die Oberfläche (HTML, CSS, Vanilla-JS, demo.js). Übersicht der Dateien in docs/FUNKTIONSWEISE.md.", datei: "docs/FUNKTIONSWEISE.md" },
@@ -248,6 +248,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "23.10.2026 22:50", text: "Design 0.4.0 übernommen (docs/design/v0.4.0, Design 0.3.0 nur noch im Tag v0.3.1). Epic #42 mit #43 Verlauf, #44 Job-Schritte, #45 Version und Doku, Milestone v0.4.0." },
     { datum: "23.10.2026 22:43", text: "Umstellung nach Anweisung 08: Aufgaben als Issues im Project „Self-Hosted-Github-Runner-Monitor Roadmap“ (17 offen im Backlog, 13 erledigt übernommen und geschlossen, Epic #11 „Design v0.3.0 vollständig umsetzen“ mit Sub-Issues #12 und #13). Labels, Milestone v0.4.0, Issue-Vorlagen, AGENTS.md. Aufgabenliste im Dashboard durch den Board-Link ersetzt." },
     { datum: "23.10.2026 22:18", text: "Release v0.3.1 veröffentlicht (Workflow grün, Prüfsumme geprüft)." },
     { datum: "23.10.2026 22:04", text: "0.3.1: Ursache für „Getrennt“ gefunden (Meldung Tobias von der VM): Jede Log-Zeile war eine eigene Nachricht, ein Build füllte die Warteschlange (2000), der Strom blieb danach stumm offen, der Browser verband nicht neu. Zeilen gebündelt, Strom endet bei Überlauf, Browser verbindet nach 10 s ohne Daten selbst neu, write() mit 60-s-Frist. Nachgestellt mit langsam lesendem Client." },

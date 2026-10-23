@@ -22,7 +22,7 @@ die Statusnamen der GitHub-Vorlage (Backlog, Ready, In progress, In review, Done
 - Nur Python-Standardbibliothek und Vanilla-JS. Keine Pakete ohne ADR.
 - Oberfläche: Ansprache „Sie“ in Anmeldung und Einrichtung, neutral im Dashboard, nie „du“.
 - CSP: keine Inline-Skripte, keine `style="…"`-Attribute; Werte per `element.style` setzen.
-- Design-Grundlage: Design v0.3.0 (`docs/design/v0.3.0/`, pixelgenau umsetzen). Bei Widerspruch gelten die Anweisungen; Abgleich
+- Design-Grundlage: Design v0.4.0 (`docs/design/v0.4.0/`, pixelgenau umsetzen). Bei Widerspruch gelten die Anweisungen; Abgleich
   in `docs/design/README.md` pflegen.
 - Produktive Schritte (Release veröffentlichen, VM umstellen, Einstellungen bei GitHub) nur nach OK von Tobias.
 
@@ -35,7 +35,7 @@ die Statusnamen der GitHub-Vorlage (Backlog, Ready, In progress, In review, Done
 | 03 Zwei-Faktor | nur Passwort | ADR-0003, E-01 |
 | 04 CSP mit Nonce | `script-src 'self'` ohne Inline-Skripte | Sicherheitsbericht S-CSP-01 |
 | 04 Rate-Limit in Postgres | dateibasiert (`sperren.json`) | ADR-0001 |
-| 06/08 Design-Übergabe unter `handoff/` | Entwürfe unter `docs/design/vX/` (z. B. `docs/design/v0.3.0/`), Abgleich in `docs/design/README.md` | Projektstand seit Design v1 |
+| 06/08 Design-Übergabe unter `handoff/` | Entwürfe unter `docs/design/vX/` (z. B. `docs/design/v0.4.0/`), Abgleich in `docs/design/README.md` | Projektstand seit Design v1 |
 
 **Kein Docker** für den Monitor, auch nicht als Zusatz (E-02, E-12) – gilt auch dann, wenn eine
 Projektanweisung etwas anderes sagt. **Keine Lizenz** (E-11): keine LICENSE-Datei anlegen.

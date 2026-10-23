@@ -67,10 +67,10 @@ class Component extends DCLogic {
     const Z = (...teile) => ({ teile: teile });
     const P = t('prompt', 'admin@runner-vm:~$ ');
     const zeilen = [
-      Z(P, t('cmd', 'tar xzf runner-monitor-0.3.0.tar.gz && cd runner-monitor')),
+      Z(P, t('cmd', 'tar xzf runner-monitor-0.4.0.tar.gz && cd runner-monitor')),
       Z(t('prompt', 'admin@runner-vm:~/runner-monitor$ '), t('cmd', 'sudo ./einrichten.sh')),
       Z(t('', '')),
-      Z(t('kopf', 'Runner-Monitor 0.3.0 – Einrichtung')),
+      Z(t('kopf', 'Runner-Monitor 0.4.0 – Einrichtung')),
       Z(t('regel', '──────────────────────────────────────────────────────────')),
       Z(t('ab', 'System prüfen')),
       Z(t('ok', '  ✓ '), t('', 'Ubuntu 24.04 LTS, Python 3.12, Docker 27.3')),
