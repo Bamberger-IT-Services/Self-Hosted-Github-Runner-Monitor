@@ -182,7 +182,8 @@ class SeitenFolger(threading.Thread):
     """Verfolgt die jeweils neueste Datei in ``_diag/pages`` wie ``tail -f``.
 
     Jede neue Datei ist ein neuer Schritt. Gemeldet wird ``("schritt", datei)`` und danach
-    ``("zeile", (zeit, text))`` je Zeile.
+    ``("zeilen", [(zeit, text), …])`` je gelesenem Stück – nicht je Zeile, damit eine Flut von
+    Ausgabe (npm, docker build) nicht tausende Einzelnachrichten an jedes Browserfenster erzeugt.
     """
 
     def __init__(self, seiten_verz: Path, melde: Callable[[str, object], None], takt: float = 0.3) -> None:
@@ -228,9 +229,9 @@ class SeitenFolger(threading.Thread):
         text = self.rest + neu_text
         zeilen = text.split("\n")
         self.rest = zeilen.pop()
-        jetzt = time.time()
-        for zeile in zeilen:
-            self.melde("zeile", deute_seitenzeile(zeile.rstrip("\r"), jetzt))
+        if zeilen:
+            jetzt = time.time()
+            self.melde("zeilen", [deute_seitenzeile(z.rstrip("\r"), jetzt) for z in zeilen])
 
     def run(self) -> None:  # pragma: no cover – Endlosschleife
         while True:

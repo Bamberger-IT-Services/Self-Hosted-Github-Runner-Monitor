@@ -1,7 +1,7 @@
 # Runbook: Monitor nicht erreichbar
 
 **Wann:** Seite lädt nicht, oder sie bleibt auf „Getrennt“.
-**Dauer:** ca. 5 Minuten · **Zuletzt geprüft:** 2026-10-23 (Version 0.1.0)
+**Dauer:** ca. 5 Minuten · **Zuletzt geprüft:** 2026-10-23 (Version 0.3.1)
 
 ## Voraussetzungen
 - SSH auf die Runner-VM mit sudo
@@ -21,13 +21,20 @@
    sudo ufw status | grep 8090        # Regel „ALLOW … from <lan>“?
    ```
    Fehlt sie: `sudo ufw allow from 192.0.2.0/24 to any port 8090 proto tcp` (eigenes Netz einsetzen).
-3. Neu starten:
+3. Steht die Seite länger als eine Minute auf „Getrennt“, obwohl `/api/health` antwortet:
+   ```bash
+   journalctl -u runner-monitor -n 50 --no-pager | grep -i "live-verbindung"
+   ss -tn state established '( sport = :8090 )' | wc -l   # offene Verbindungen (Zeile 1 ist die Kopfzeile)
+   ```
+   Ab 0.3.1 verbindet sich der Browser selbst neu. Bis 0.3.0 blieb eine übergelaufene Verbindung
+   stumm offen (viel Log-Ausgabe eines Jobs). Abhilfe dort: Update auf 0.3.1 oder neuer.
+4. Neu starten:
    ```bash
    sudo systemctl restart runner-monitor runner-monitor-sammler
    ```
-4. Startet er nicht („Konfiguration ungültig“): `/etc/runner-monitor/konfig.env` mit der
+5. Startet er nicht („Konfiguration ungültig“): `/etc/runner-monitor/konfig.env` mit der
    [Vorlage](../../deploy/konfig.env.example) vergleichen.
-5. Nach einem Update kaputt: [update-fehlgeschlagen](update-fehlgeschlagen.md).
+6. Nach einem Update kaputt: [update-fehlgeschlagen](update-fehlgeschlagen.md).
 
 ## Prüfen, ob es geklappt hat
 - `/api/health` antwortet, im Browser „Verbunden“.

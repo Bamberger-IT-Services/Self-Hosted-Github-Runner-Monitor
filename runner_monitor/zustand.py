@@ -33,8 +33,17 @@ def lies_json(pfad: Path, vorgabe=None):
         return vorgabe
 
 
+ENDE = ("_ende", "")  # letzte Nachricht einer rausgeworfenen Schlange: der Strom endet, der Browser verbindet neu
+
+
 class Verteiler:
-    """Hält je Browserfenster eine Warteschlange. Volle Schlangen (hängende Fenster) fliegen raus."""
+    """Hält je Browserfenster eine Warteschlange.
+
+    Eine volle Schlange (Fenster liest nicht schnell genug) wird geleert und bekommt nur noch ENDE:
+    Der Server beendet dann den Strom, der Browser verbindet sich neu und bekommt den aktuellen Stand.
+    Bis 0.3.0 blieb der Strom offen und lieferte nur noch Lebenszeichen – das Dashboard stand auf
+    „Getrennt“, bis der Dienst neu gestartet wurde.
+    """
 
     def __init__(self) -> None:
         self._schlangen: set[queue.Queue] = set()
@@ -58,6 +67,9 @@ class Verteiler:
                     q.put_nowait(nachricht)
                 except queue.Full:
                     self._schlangen.discard(q)
+                    with q.mutex:
+                        q.queue.clear()
+                    q.put_nowait(ENDE)
 
     @property
     def anzahl(self) -> int:
@@ -153,11 +165,16 @@ class Zustand:
                     idx = min(int(gh_job.get("schritt", 1)), von) - 1
                     name = gh_job["schritte"][idx]
                 zeile = {"zeit": time.time(), "art": "schritt", "nr": self.schritt_nr, "von": von, "name": name or f"Schritt {self.schritt_nr}"}
+                neu = [zeile]
+            elif art == "zeilen":
+                neu = [{"zeit": zeit, "text": text[:4000]} for zeit, text in list(wert)[-MAX_ZEILEN:]]  # type: ignore[call-overload]
             else:
                 zeit, text = wert  # type: ignore[misc]
-                zeile = {"zeit": zeit, "text": text[:4000]}
-            self.zeilen.append(zeile)
-        self.verteiler.sende("log", {"ereignisse": [], "zeilen": [zeile]})
+                neu = [{"zeit": zeit, "text": text[:4000]}]
+            if not neu:
+                return
+            self.zeilen.extend(neu)
+        self.verteiler.sende("log", {"ereignisse": [], "zeilen": neu})
 
     # ------------------------------------------------------------ Bereiche bauen
 

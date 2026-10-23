@@ -72,7 +72,7 @@
   }
 
   function empfange(bereich, d) {
-    S.letzteDaten = Date.now();
+    S.letzteDaten = Date.now(); wartezeit = 2000;
     if (S.verbindung !== 'verbunden') setzeVerbindung('verbunden');
     switch (bereich) {
       case 'status': S.status = d; renderKopf(); renderStatus(); renderLogKopf(); break;
@@ -96,7 +96,7 @@
       case 'log':
         if (d.neu) { S.ereignisse = []; $('term-innen').replaceChildren(); S.zeilenN = 0; S.puffer = []; }
         if (d.ereignisse && d.ereignisse.length) { S.ereignisse.push(...d.ereignisse); S.ereignisse = S.ereignisse.slice(-20); renderEreignisse(); }
-        if (d.zeilen && d.zeilen.length) { if (S.angehalten || S.hoch) { S.puffer.push(...d.zeilen); renderPause(); } else haengeAn(d.zeilen); }
+        if (d.zeilen && d.zeilen.length) { if (S.angehalten || S.hoch) { S.puffer.push(...d.zeilen); if (S.puffer.length > MAX_ZEILEN) S.puffer.splice(0, S.puffer.length - MAX_ZEILEN); renderPause(); } else haengeAn(d.zeilen); }
         renderLeer(); break;
       default: break;
     }
@@ -742,22 +742,34 @@
   /* Sekundentakt: Uhr, Laufzeiten, „vor …“, Wachhund für die Verbindung */
   setInterval(() => {
     if (S.verbindung === 'verbunden' && S.letzteDaten && Date.now() - S.letzteDaten > 5000) setzeVerbindung('getrennt');
+    // Der Server schickt jede Sekunde Daten. Bleiben sie aus, obwohl die Verbindung offen scheint
+    // (Server hat den Strom verworfen, Netz hängt), selbst neu verbinden – mit wachsender Wartezeit.
+    if (quelle && Date.now() - (S.letzteDaten || seitStart) > STILLE_MAX && Date.now() - letzterVersuch > wartezeit) {
+      wartezeit = Math.min(wartezeit * 2, 30000); verbinde();
+    }
     renderKopf(); renderStatus(); renderWorkflows(); if (S.info) renderInfo();
   }, 1000);
 
   /* ------------------------------------------------------------ Verbindung */
   const DEMO = new URLSearchParams(location.search).has('demo');
+  const STILLE_MAX = 10000, seitStart = Date.now();
+  let quelle = null, letzterVersuch = 0, wartezeit = 2000, neuTimer = 0;
   function verbinde() {
-    const quelle = new EventSource('/events');
+    clearTimeout(neuTimer);
+    if (quelle) quelle.close();
+    letzterVersuch = Date.now();
+    quelle = new EventSource('/events');
     for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log']) {
       quelle.addEventListener(b, (e) => { try { empfange(b, JSON.parse(e.data)); } catch (f) { console.error(b, f); } });
     }
     quelle.onopen = () => setzeVerbindung('verbunden');
     quelle.onerror = () => {
       setzeVerbindung('getrennt');
-      // Abgemeldet (z. B. Sitzung abgelaufen)? Dann zur Anmeldung.
-      // Jede /api/-Adresse antwortet ohne Sitzung mit 401, mit Sitzung hier mit 404.
+      // Abgemeldet (z. B. Sitzung abgelaufen)? Dann zur Anmeldung. /api/sitzung: 200 angemeldet, 401 nicht.
       fetch('/api/sitzung', { credentials: 'same-origin' }).then(r => { if (r.status === 401) location.href = '/anmelden'; }).catch(() => {});
+      // Bei Netzfehlern verbindet EventSource sich selbst neu; nach einer Fehlantwort (z. B. während
+      // eines Updates) gibt es auf – dann selbst neu versuchen.
+      if (quelle.readyState === EventSource.CLOSED) { neuTimer = setTimeout(verbinde, wartezeit); wartezeit = Math.min(wartezeit * 2, 30000); }
     };
   }
   if (DEMO) {

@@ -42,11 +42,23 @@ class SeitenTest(unittest.TestCase):
             (pfad / "1.log").write_text("2026-10-23T12:00:00Z eins\nzwei\nhalb")
             folger.schritt()
             self.assertEqual(gemeldet[0][0], "schritt")
-            self.assertEqual([w[1] for a, w in gemeldet if a == "zeile"], ["eins", "zwei"])
+            self.assertEqual([[t for _, t in w] for a, w in gemeldet if a == "zeilen"], [["eins", "zwei"]])
             with (pfad / "1.log").open("a") as f:
                 f.write("e Zeile\n")
             folger.schritt()
-            self.assertEqual(gemeldet[-1][1][1], "halbe Zeile")
+            self.assertEqual(gemeldet[-1], ("zeilen", [gemeldet[-1][1][0]]))
+            self.assertEqual(gemeldet[-1][1][0][1], "halbe Zeile")
+
+    def test_flut_ist_eine_meldung(self):
+        # Ein Build mit viel Ausgabe darf nicht tausende Einzelmeldungen erzeugen (Ursache für „Getrennt“ bis 0.3.0).
+        with tempfile.TemporaryDirectory() as verz:
+            pfad = Path(verz)
+            gemeldet = []
+            folger = runner.SeitenFolger(pfad, lambda art, wert: gemeldet.append((art, wert)))
+            (pfad / "1.log").write_text("".join(f"Zeile {i}\n" for i in range(5000)))
+            folger.schritt()
+            self.assertEqual([a for a, _ in gemeldet], ["schritt", "zeilen"])
+            self.assertEqual(len(gemeldet[1][1]), 5000)
 
     def test_registrierung_mit_bom(self):
         with tempfile.TemporaryDirectory() as verz:

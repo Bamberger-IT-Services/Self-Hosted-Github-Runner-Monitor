@@ -1,6 +1,6 @@
 # 2 Das Dashboard
 
-**Stand: 23.10.2026 · Version 0.3.0**
+**Stand: 23.10.2026 · Version 0.3.1**
 
 ![Dashboard mit laufendem Job](bilder/dashboard-job.png)
 
@@ -85,4 +85,5 @@ Teil über der Schwelle wird orange.
 ## Getrennt
 
 Bekommt die Seite 5 Sekunden lang keine Daten, steht oben „Getrennt“ mit der Zeit des letzten
-Stands, die Karten werden blasser und die Seite verbindet sich selbst neu.
+Stands, und die Karten werden blasser. Spätestens nach 10 Sekunden ohne Daten verbindet sich die
+Seite selbst neu, danach in wachsenden Abständen bis 30 Sekunden. Ein Neuladen der Seite ist nicht nötig.
