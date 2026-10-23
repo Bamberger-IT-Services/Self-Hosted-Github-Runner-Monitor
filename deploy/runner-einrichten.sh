@@ -74,7 +74,7 @@ echo "4/5 Registrierung"
 if [ "$UMZIEHEN" = 1 ] && [ -f "$VERZ/.runner" ]; then
   [ -n "$TOKEN" ] || { echo "Registrierungs-Token fehlt: sudo bash $0 --umziehen <TOKEN>" >&2; exit 1; }
   echo "    bisherige Registrierung ($(jq -r .gitHubUrl "$VERZ/.runner" 2>/dev/null || echo ?)) wird ersetzt"
-  ( cd "$VERZ" && ./svc.sh stop >/dev/null 2>&1 || true; ./svc.sh uninstall >/dev/null 2>&1 || true )
+  ( cd "$VERZ" || exit 0; ./svc.sh stop >/dev/null 2>&1 || true; ./svc.sh uninstall >/dev/null 2>&1 || true )
   # Nur die lokale Anmeldung entfernen; den alten Eintrag in GitHub (dann „Offline“)
   # unter Settings › Actions › Runners entfernen.
   rm -f "$VERZ/.runner" "$VERZ/.credentials" "$VERZ/.credentials_rsaparams"
@@ -86,7 +86,7 @@ else
   sudo -u "$NUTZER" "$VERZ/config.sh" --unattended --url "$ZIEL_URL" --token "$TOKEN" \
     --name "$NAME" ${LABELS:+--labels "$LABELS"} --work _work --replace
 fi
-( cd "$VERZ" && ./svc.sh install "$NUTZER" >/dev/null 2>&1 || true; ./svc.sh start >/dev/null 2>&1 || true )
+( cd "$VERZ" || exit 0; ./svc.sh install "$NUTZER" >/dev/null 2>&1 || true; ./svc.sh start >/dev/null 2>&1 || true )
 
 echo "5/5 Platz sichern"
 # Die Platte darf nie volllaufen (eine volle Platte legt Runner-VM und Hypervisor lahm).
@@ -127,7 +127,7 @@ if ! grep -q '^ACTIONS_RUNNER_HOOK_JOB_STARTED=' "$VERZ/.env" 2>/dev/null; then
     echo "    Runner arbeitet gerade – Neustart folgt automatisch, sobald der Job fertig ist"
     echo "    (prüfen: systemctl status runner-neustart)"
   else
-    ( cd "$VERZ" && ./svc.sh stop >/dev/null 2>&1; ./svc.sh start >/dev/null 2>&1 ) || true
+    ( cd "$VERZ" || exit 0; ./svc.sh stop >/dev/null 2>&1; ./svc.sh start >/dev/null 2>&1 ) || true
   fi
 fi
 cat > /etc/cron.daily/runner-aufraeumen <<'CRON'

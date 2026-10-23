@@ -66,7 +66,8 @@ print(c)' "$DATEN/einrichtungscode.json")"
 systempruefung() {
   local name unit ver fw=false
   name="$(runner_name)"; unit="$(runner_unit)"
-  ver="$( [ -x "$RUNNER_VERZ/bin/Runner.Listener" ] && "$RUNNER_VERZ/bin/Runner.Listener" --version 2>/dev/null || true)"
+  ver=""
+  if [ -x "$RUNNER_VERZ/bin/Runner.Listener" ]; then ver="$("$RUNNER_VERZ/bin/Runner.Listener" --version 2>/dev/null || true)"; fi
   command -v ufw >/dev/null && ufw status 2>/dev/null | grep -q "Status: active" && fw=true
   "$PYTHON" - "$DATEN/systempruefung.json" "$VERSION" "$PORT" "$name" "$unit" "$ver" "$fw" <<'PY'
 import json, sys, time, socket
@@ -198,7 +199,7 @@ runner_einrichten() {
   read -r -s -p "  Registrierungs-Token: " tok </dev/tty; echo
   RUNNER_ZIEL="https://github.com/$ziel" RUNNER_LABELS="$labels" bash "$QUELLE/deploy/runner-einrichten.sh" "${umziehen[@]}" "$tok"
   grep -q '^MONITOR_ORG=.\+' "$ETC/konfig.env" 2>/dev/null || sed -i "s/^MONITOR_ORG=.*/MONITOR_ORG=$ziel/" "$ETC/konfig.env" 2>/dev/null || true
-  [ -d "$DATEN" ] && systempruefung || true
+  if [ -d "$DATEN" ]; then systempruefung; fi
 }
 
 passwort() {
