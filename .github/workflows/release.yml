@@ -1,0 +1,51 @@
+# Wenn ein GitHub-Release veröffentlicht wird: Version prüfen, testen, Paket bauen und als
+# runner-monitor-X.Y.Z.tar.gz + .sha256 an das Release hängen. Genau diese zwei Dateien lädt
+# der Update-Hilfsdienst auf den VMs (ADR-0004). Nachbauen: Actions › Release › „Run workflow“.
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release-Tag (z. B. v0.1.0)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  paket:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # Dateien an das Release hängen
+    env:
+      TAG: ${{ inputs.tag || github.event.release.tag_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+      - name: Tag passt zur Version und liegt auf main
+        run: |
+          set -euo pipefail
+          case "$TAG" in v[0-9]*.[0-9]*.[0-9]*) ;; *) echo "Tag muss vX.Y.Z sein: $TAG"; exit 1;; esac
+          v="${TAG#v}"
+          [ "$(tr -d '[:space:]' < VERSION)" = "$v" ] || { echo "VERSION passt nicht zu $TAG"; exit 1; }
+          grep -q "^VERSION = \"$v\"" runner_monitor/__init__.py || { echo "runner_monitor/__init__.py passt nicht"; exit 1; }
+          [ -f "docs/releases/$TAG.md" ] || { echo "Release-Notiz docs/releases/$TAG.md fehlt"; exit 1; }
+          git merge-base --is-ancestor HEAD origin/main || { echo "Tag zeigt nicht auf einen Stand von main"; exit 1; }
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m unittest discover -s tests -t .
+      - run: werkzeuge/paket.sh
+      - name: An das Release hängen
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" dist/runner-monitor-*.tar.gz dist/runner-monitor-*.tar.gz.sha256 --clobber

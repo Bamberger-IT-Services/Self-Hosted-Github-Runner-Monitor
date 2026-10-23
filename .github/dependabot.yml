@@ -1,0 +1,9 @@
+# Nur GitHub Actions – das Programm selbst hat keine Abhängigkeiten (Python-Standardbibliothek).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"

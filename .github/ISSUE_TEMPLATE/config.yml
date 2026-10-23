@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Sicherheitslücke melden (nicht öffentlich)
+    url: https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/security/advisories/new
+    about: Lücken bitte vertraulich melden, nicht als Issue.

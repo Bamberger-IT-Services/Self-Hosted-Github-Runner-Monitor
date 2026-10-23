@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Entwickler-Dashboard · Runner-Monitor</title>
+<!-- Lokal öffnen (Doppelklick). Inhalt kommt aus daten.js. -->
+<style>
+  :root { --surface:#fff; --alt:#f6f6f6; --ink:#13212b; --muted:#4f5d67; --border:#d9dee2; --brand:#0e628f; --ok:#1f7a4d; --warn:#9a4d00; --danger:#b3261e; --r:4px; }
+  @media (prefers-color-scheme: dark) { :root { --surface:#0c1a24; --alt:#13283a; --ink:#eef2f5; --muted:#a9b6c0; --border:#2a3f50; --brand:#5aa9d6; --ok:#5cc08a; --warn:#f0a35e; --danger:#f08a80; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--surface); color: var(--ink); font: 14px/20px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0; font-size: 26px; line-height: 32px; letter-spacing: -.02em; }
+  h2 { margin: 32px 0 12px; font-size: 17px; }
+  .kopf { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; }
+  .muted { color: var(--muted); }
+  .kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 20px; }
+  .kachel { background: var(--alt); border-radius: var(--r); padding: 14px 16px; }
+  .kachel b { display: block; font-size: 24px; line-height: 30px; }
+  .karte { background: var(--alt); border-radius: var(--r); padding: 16px 18px; }
+  ol, ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; border-top: 0; }
+  td.id { font-family: ui-monospace, Menlo, monospace; white-space: nowrap; }
+  .pill { display: inline-block; padding: 0 8px; border-radius: 2px; font-size: 12px; font-weight: 600; white-space: nowrap; background: color-mix(in srgb, currentColor 12%, transparent); }
+  .erledigt { color: var(--ok); } .offen { color: var(--warn); } .später { color: var(--muted); } .hoch { color: var(--danger); } .mittel { color: var(--warn); } .niedrig { color: var(--muted); }
+  .filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .filter button { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 2px; border: 1px solid var(--border); background: var(--surface); color: var(--ink); cursor: pointer; }
+  .filter button[aria-pressed="true"] { border-color: var(--brand); color: var(--brand); font-weight: 600; }
+  a { color: var(--brand); }
+  .notiz { display: block; font-size: 12.5px; color: var(--muted); }
+  .verlauf li { padding-left: 4px; }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<script src="daten.js"></script>
+<script>
+  const D = window.DATEN;
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let filter = 'offen';
+  function zeichne() {
+    const A = D.aufgaben, zaehl = st => A.filter(a => a.status === st).length;
+    const sichtbar = A.filter(a => filter === 'alle' || a.status === filter);
+    document.getElementById('app').innerHTML = `
+      <div class="kopf"><h1>${esc(D.projekt)}</h1><span class="muted">Version ${esc(D.version)} · ${esc(D.versionStatus)}</span><span class="muted">Stand ${esc(D.stand)}</span></div>
+      <div class="kacheln">
+        <div class="kachel"><span class="muted">Offene Aufgaben</span><b class="offen">${zaehl('offen')}</b></div>
+        <div class="kachel"><span class="muted">Erledigt</span><b class="erledigt">${zaehl('erledigt')}</b></div>
+        <div class="kachel"><span class="muted">Später</span><b>${zaehl('später')}</b></div>
+        <div class="kachel"><span class="muted">Entscheidungen</span><b>${D.entscheidungen.length}</b></div>
+      </div>
+      <h2>Nächste Schritte</h2>
+      <div class="karte"><ol>${D.naechsteSchritte.map(s => `<li>${esc(s)}</li>`).join('')}</ol></div>
+      <h2>Aufgaben</h2>
+      <div class="filter" role="group" aria-label="Filter">${['offen', 'erledigt', 'später', 'alle'].map(f => `<button type="button" data-f="${f}" aria-pressed="${filter === f}">${f}</button>`).join('')}</div>
+      <div class="karte"><table><thead><tr><th>Nr.</th><th>Aufgabe</th><th>Bereich</th><th>Priorität</th><th>Status</th><th>Wer</th></tr></thead><tbody>
+        ${sichtbar.map(a => `<tr><td class="id">${a.id}</td><td>${esc(a.titel)}${a.notiz ? `<span class="notiz">${esc(a.notiz)}</span>` : ''}</td><td>${esc(a.bereich)}</td><td><span class="pill ${a.prio}">${a.prio}</span></td><td><span class="pill ${a.status}">${a.status}</span></td><td class="muted">${esc(a.wer || 'Claude')}</td></tr>`).join('')}
+      </tbody></table></div>
+      <h2>Entscheidungen</h2>
+      <div class="karte"><table><thead><tr><th>Nr.</th><th>Datum</th><th>Entscheidung</th><th>Von</th></tr></thead><tbody>
+        ${D.entscheidungen.map(e => `<tr><td class="id">${e.id}</td><td>${esc(e.datum)}</td><td>${esc(e.titel)}${e.beleg ? `<span class="notiz"><a href="../${esc(e.beleg)}">${esc(e.beleg)}</a></span>` : ''}</td><td class="muted">${esc(e.von)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <h2>Abweichungen von den Anweisungen</h2>
+      <div class="karte"><table><thead><tr><th>Anweisung</th><th>Abweichung</th><th>Beleg</th></tr></thead><tbody>
+        ${D.abweichungen.map(([a, b, c]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td><td class="muted">${esc(c)}</td></tr>`).join('')}
+      </tbody></table></div>
+      <h2>Verlauf</h2>
+      <div class="karte"><ul class="verlauf">${D.verlauf.map(v => `<li><b>${esc(v.datum)}</b> – ${esc(v.text)}</li>`).join('')}</ul></div>
+      <h2>Links</h2>
+      <div class="karte"><ul>${D.links.map(([n, u]) => `<li><a href="${esc(u)}">${esc(n)}</a></li>`).join('')}</ul></div>`;
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('[data-f]'); if (b) { filter = b.dataset.f; zeichne(); } });
+  zeichne();
+</script>
+</body>
+</html>
