@@ -4,6 +4,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.4.0] – 23.10.2026
+
+Umsetzung von **Design v0.4.0** (`docs/design/v0.4.0/`, Epic #42).
+
 ### Neu
 - **Verlauf füllt die ganze Breite** (Design 0.4.0, #43): CPU, RAM und Netz strecken die vorhandenen
   Werte über die volle Fläche; links steht „seit hh:mm“, bis 10 Minuten gemessen sind. Der Monitor

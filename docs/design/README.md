@@ -71,9 +71,9 @@ Was 0.3.0 gegenüber v1 geändert hat, steht unten und gilt weiter.
 
 | Bildschirm (0.4.0) | Code | Stand | Bemerkung |
 |---|---|---|---|
-| Auslastung: Verlauf über die volle Breite, „seit hh:mm“, Sicherung | `runner_monitor/zustand.py`, `web/dashboard.js` | geplant | #43 |
-| Job: Schritt aus einer Quelle, „3 von –“, gestrichelter Rest, Log „Schritt 3/–“ | `runner_monitor/zustand.py`, `web/dashboard.js` | geplant | #44 |
-| Versionsnummern | Doku, Release | geplant | #45 |
+| Auslastung: Verlauf über die volle Breite, „seit hh:mm“, Sicherung | `runner_monitor/zustand.py`, `web/dashboard.js` | umgesetzt | #43 (PR #47) |
+| Job: Schritt aus einer Quelle, „3 von –“, gestrichelter Rest, Log „Schritt 3/–“ | `runner_monitor/zustand.py`, `web/dashboard.js` | umgesetzt | #44 (PR #48) |
+| Versionsnummern | Doku, Release | umgesetzt | #45 |
 
 Abgleich mit Design 0.3.0 (gilt weiter):
 

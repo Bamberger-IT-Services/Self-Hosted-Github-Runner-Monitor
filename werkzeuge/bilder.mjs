@@ -52,6 +52,8 @@ try {
   p = await seite({ dunkel: true });
   await p.goto(`${D}&zustand=volllast&kerne=16`); await p.waitForTimeout(4000); await bild(p, 'dashboard-volllast-dunkel.png');
   p = await seite();
+  // Design 0.4.0: kurz nach einem Neustart („seit hh:mm“) und ohne Schrittliste von GitHub („3 von –“)
+  await p.goto(`${D}&zustand=job&verlauf=150&schritte=lokal`); await p.waitForTimeout(4000); await bild(p, 'dashboard-neustart.png');
   await p.goto(`${D}&zustand=gestoppt`); await p.waitForTimeout(2500); await bild(p, 'dashboard-gestoppt.png');
   await p.click('.meldung-link'); await p.waitForTimeout(600); await bild(p, 'was-tun-gestoppt.png');
   p = await seite();
