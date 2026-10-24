@@ -4,6 +4,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Behoben
+- Runner-Version wurde nicht angezeigt („–“): Der Monitor liest sie jetzt aus
+  `bin/Runner.Listener.deps.json`, statt das Programm zu starten; ein leeres Ergebnis wird nur 30 s
+  gemerkt (#69).
+
 ### Dokumentation
 - `docs/RUNNER.md`: Wie viel Arbeitsspeicher die Runner-VM braucht (mindestens 8 GB plus 4 GB Swap
   für Builds und Image-Jobs), Fehlerhilfe für `oom-kill`; Runbook „Runner-Dienst gestoppt“ ergänzt (#70).

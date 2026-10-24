@@ -66,7 +66,7 @@ Aufträge an (ein Token zum Ablegen, eine Versionsnummer zum Aktualisieren, `rel
 | Prozesse (Top 6) | `/proc/<pid>/stat`, `status`, `cmdline` | 2 s |
 | Platten | `/proc/mounts` + `statvfs`; nur echte Dateisysteme ab 1 GiB, ohne Snap/Docker-Overlays. Netzlaufwerke (NFS, CIFS) mit 2 s Frist in eigenem Thread; antwortet eines nicht, fehlt es, bis es wieder antwortet (Journal: „Netzlaufwerk … antwortet nicht“) | 10 s |
 | Runner-Dienst aktiv/gestoppt | `systemctl show actions.runner.*` | 2 s |
-| Runner-Name, Version | `/opt/actions-runner/.runner`, `bin/Runner.Listener --version` | beim Start, 10 min |
+| Runner-Name, Version | `/opt/actions-runner/.runner`, `bin/Runner.Listener.deps.json` (Eintrag `Runner.Listener/x.y.z`; Rückfall `bin/Runner.Listener --version`) | gefunden: 10 min, nicht gefunden: nach 30 s erneut |
 | Job gestartet/beendet, Ergebnis | Journal des Runner-Dienstes: „Running job: …“, „Job … completed with result: …“ | sofort |
 | Live-Log | `/opt/actions-runner/_diag/pages/*.log` – der Runner schreibt je Schritt eine neue Datei; der Monitor liest sie wie `tail -f` | sofort |
 | Repository, Workflow, Schritte des Jobs | GitHub-API: Läufe der Repositories, Jobs mit `runner_name` dieses Runners | 30 s |
