@@ -70,7 +70,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 | Update und Rückweg | [docs/UPDATE.md](docs/UPDATE.md) |
 | HTTPS über einen Reverse-Proxy (Zugriff außerhalb des LAN) | [docs/HTTPS.md](docs/HTTPS.md) |
 | Runbooks für Störungen | [docs/runbooks/](docs/runbooks/README.md) |
-| Sicherheit, Datenschutz | [docs/sicherheit/bericht.md](docs/sicherheit/bericht.md), [docs/DATENSCHUTZ.md](docs/DATENSCHUTZ.md) |
+| Sicherheit, Datenschutz | [SECURITY.md](SECURITY.md) (Lücken melden), [docs/sicherheit/bericht.md](docs/sicherheit/bericht.md), [docs/DATENSCHUTZ.md](docs/DATENSCHUTZ.md) |
 | Architekturentscheidungen | [docs/adr/](docs/adr/) · [DECISIONS.md](DECISIONS.md) |
 | Design v0.3.0 und Abgleich mit dem Code | [docs/design/README.md](docs/design/README.md) |
 | Änderungen | [CHANGELOG.md](CHANGELOG.md) · [docs/releases/](docs/releases/) |
