@@ -90,6 +90,51 @@ class SeitenTest(unittest.TestCase):
             self.assertEqual(runner.lies_registrierung(Path(verz) / "fehlt"), {})
 
 
+class RunnerVersionTest(unittest.TestCase):
+    """Version ohne Programmaufruf aus deps.json (#69)."""
+
+    def setUp(self):
+        self.verz = tempfile.TemporaryDirectory()
+        self.d = Path(self.verz.name)
+        runner._version_cache = (0.0, "")
+        self.alt = runner.version_aus_programm
+        runner.version_aus_programm = lambda verz: ""
+
+    def tearDown(self):
+        runner.version_aus_programm = self.alt
+        runner._version_cache = (0.0, "")
+        self.verz.cleanup()
+
+    def deps(self, ordner, version, bom=False):
+        import json
+        (self.d / ordner).mkdir(parents=True, exist_ok=True)
+        inhalt = json.dumps({"libraries": {f"Runner.Listener/{version}": {"type": "project"}, "Runner.Sdk/1.0.0": {"type": "project"}}})
+        (self.d / ordner / "Runner.Listener.deps.json").write_text(("\ufeff" if bom else "") + inhalt, encoding="utf-8")
+
+    def test_aus_deps(self):
+        self.deps("bin", "2.338.1", bom=True)
+        self.assertEqual(runner.version_aus_deps(self.d), "2.338.1")
+
+    def test_nach_selbst_update_ueber_verweis(self):
+        self.deps("bin.2.339.0", "2.339.0")
+        (self.d / "bin").symlink_to(self.d / "bin.2.339.0")
+        self.assertEqual(runner.version_aus_deps(self.d), "2.339.0")
+
+    def test_kaputt_oder_fehlt(self):
+        self.assertEqual(runner.version_aus_deps(self.d), "")
+        (self.d / "bin").mkdir()
+        (self.d / "bin" / "Runner.Listener.deps.json").write_text("{kaputt")
+        self.assertEqual(runner.version_aus_deps(self.d), "")
+
+    def test_leeres_ergebnis_nur_kurz_merken(self):
+        self.assertEqual(runner.runner_version(self.d, jetzt=1000.0), "")
+        self.deps("bin", "2.338.1")
+        self.assertEqual(runner.runner_version(self.d, jetzt=1010.0), "")        # noch gemerkt
+        self.assertEqual(runner.runner_version(self.d, jetzt=1000.0 + runner.VERSION_LEER_TAKT), "2.338.1")
+        self.deps("bin", "2.339.0")
+        self.assertEqual(runner.runner_version(self.d, jetzt=1100.0), "2.338.1")  # gefunden: 10 Min. gemerkt
+
+
 class ReleasePruefenTest(unittest.TestCase):
     def test_auftrag_holt_abfrage_vor_und_bremst(self):
         import tempfile

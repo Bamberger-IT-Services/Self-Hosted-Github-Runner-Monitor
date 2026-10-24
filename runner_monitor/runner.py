@@ -43,22 +43,50 @@ def lies_registrierung(runner_verz: Path) -> dict:
 
 
 _version_cache: tuple[float, str] = (0.0, "")
+VERSION_GEFUNDEN_TAKT = 600   # gefundene Version 10 Minuten merken
+VERSION_LEER_TAKT = 30        # nichts gefunden (Runner aktualisiert sich gerade …): bald erneut versuchen
+DEPS_MAX = 4 * 1024 * 1024
+_VERSION = re.compile(r"\d+\.\d+\.\d+")
 
 
-def runner_version(runner_verz: Path) -> str:
-    global _version_cache
-    if time.monotonic() - _version_cache[0] < 600:
-        return _version_cache[1]
-    version = ""
+def version_aus_deps(runner_verz: Path) -> str:
+    """Version aus ``bin/Runner.Listener.deps.json`` (Eintrag „Runner.Listener/2.338.1“) – ohne
+    das Programm zu starten. Folgt dem Verweis ``bin`` → ``bin.<version>`` nach einem Selbst-Update."""
+    datei = runner_verz / "bin" / "Runner.Listener.deps.json"
+    try:
+        if datei.stat().st_size > DEPS_MAX:
+            return ""
+        daten = json.loads(datei.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return ""
+    bibliotheken = daten.get("libraries") if isinstance(daten, dict) else None
+    for name in bibliotheken if isinstance(bibliotheken, dict) else ():
+        teil = name.partition("/")
+        if teil[0] == "Runner.Listener" and _VERSION.fullmatch(teil[2]):
+            return teil[2]
+    return ""
+
+
+def version_aus_programm(runner_verz: Path) -> str:
+    """Rückfall: ``Runner.Listener --version``. Scheitert unter der systemd-Härtung des Monitors
+    leicht (.NET braucht ein beschreibbares Verzeichnis), deshalb nur, wenn deps.json nichts liefert."""
     programm = runner_verz / "bin" / "Runner.Listener"
     try:
         lauf = subprocess.run([str(programm), "--version"], capture_output=True, text=True, timeout=10, check=False)
-        kandidat = lauf.stdout.strip().splitlines()[-1] if lauf.stdout.strip() else ""
-        if re.fullmatch(r"\d+\.\d+\.\d+", kandidat):
-            version = kandidat
     except (OSError, subprocess.SubprocessError):
-        pass
-    _version_cache = (time.monotonic(), version)
+        return ""
+    kandidat = lauf.stdout.strip().splitlines()[-1] if lauf.stdout.strip() else ""
+    return kandidat if _VERSION.fullmatch(kandidat) else ""
+
+
+def runner_version(runner_verz: Path, jetzt: float | None = None) -> str:
+    global _version_cache
+    jetzt = time.monotonic() if jetzt is None else jetzt
+    alter, gemerkt = _version_cache
+    if jetzt - alter < (VERSION_GEFUNDEN_TAKT if gemerkt else VERSION_LEER_TAKT):
+        return gemerkt
+    version = version_aus_deps(runner_verz) or version_aus_programm(runner_verz)
+    _version_cache = (jetzt, version)
     return version
 
 
