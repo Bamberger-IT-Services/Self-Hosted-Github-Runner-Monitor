@@ -110,3 +110,7 @@ Geprüft mit Bildschirmfotos bei 1440 × 900 (Design und App nebeneinander), hel
 
 - Bei vielen Laufwerken scrollt die Plattenliste innerhalb der Karte.
 - Docker-Container werden gesammelt, aber nicht angezeigt (E-05, Issue #22).
+- **Grund eines gestoppten Dienstes** (#68, ohne Entwurf): Die Status-Karte „Dienst gestoppt“ hat
+  eine zusätzliche Zeile „Grund“ (z. B. „Speicher voll (OOM-Killer)“) im vorhandenen kv-Stil, die
+  Meldung oben nennt die Ursache vor „Jobs bleiben in der Warteschlange“. Im nächsten Design
+  bitte mit aufnehmen. Demo: `?demo&zustand=gestoppt&grund=oom-kill`.

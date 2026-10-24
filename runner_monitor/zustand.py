@@ -346,7 +346,7 @@ class Zustand:
             "version": runner.runner_version(self.k.runner_verz) if reg else "",
             "monitorVersion": VERSION,
             "system": system.beschreibung(),
-            "dienst": {"zustand": dienst["zustand"], "seit": dienst.get("seit")},
+            "dienst": {"zustand": dienst["zustand"], "seit": dienst.get("seit"), "grund": dienst.get("grund")},
             "github": {"zustand": gh_zustand, "seit": self.offline_seit},
             "job": job,
             "letzteJobs": letzte,

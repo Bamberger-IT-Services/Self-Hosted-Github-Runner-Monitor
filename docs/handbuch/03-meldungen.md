@@ -12,7 +12,7 @@ passenden Anleitung; Anleitungen, die gerade zutreffen, tragen dort „jetzt akt
 |---|---|---|---|
 | 1 | Verbindung zum Monitor unterbrochen | rot | Verbindung zum Monitor |
 | 2 | Update läuft / Update fehlgeschlagen | blau / rot | Monitor aktualisieren |
-| 3 | Runner-Dienst gestoppt | rot | Runner-Dienst gestoppt, Runner-Logs abrufen |
+| 3 | Runner-Dienst gestoppt (bei Speichermangel mit „Speicher voll“ im Text) | rot | Runner-Dienst gestoppt – bei „oom-kill“ mit Schritten zu RAM, Swap und Speicher-Einstellung –, Runner-Logs abrufen |
 | 4 | Kein Runner eingerichtet | orange | – (`sudo ./einrichten.sh runner`) |
 | 5 | Runner offline bei GitHub | rot | Runner offline, Runner-Logs abrufen |
 | 6 | GitHub nicht erreichbar / Kontingent erschöpft | orange | GitHub nicht erreichbar |
