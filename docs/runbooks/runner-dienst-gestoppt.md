@@ -18,11 +18,17 @@
    df -h /
    ```
    Unter 5 GB frei → erst [platte-voll](platte-voll.md).
-3. Dienst starten:
+3. Steht im Status `Result: oom-kill`, hat ein Job den Arbeitsspeicher gesprengt. Dann vor dem
+   Start RAM und Swap prüfen und den Dienst gegen Speichermangel einstellen:
+   [RUNNER.md › Wie viel Arbeitsspeicher?](../RUNNER.md#wie-viel-arbeitsspeicher) und die Zeile
+   „oom-kill“ in der Fehlerhilfe dort.
+4. Dienst starten (mit dem vollen Namen der Unit; ein Muster wie `'actions.runner.*'` greift
+   beim Start nur, wenn systemd die Unit gerade geladen hat):
    ```bash
-   sudo systemctl start 'actions.runner.*'
+   U=$(systemctl list-units --all --plain --no-legend 'actions.runner.*' | awk '{print $1}')
+   sudo systemctl start "$U"
    ```
-4. **Offline bei GitHub**, obwohl der Dienst läuft: Netz und Anmeldung prüfen.
+5. **Offline bei GitHub**, obwohl der Dienst läuft: Netz und Anmeldung prüfen.
    ```bash
    curl -sI https://github.com | head -1          # HTTP/2 200
    sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Runner_*.log | head -1)"
@@ -33,7 +39,7 @@
    ```bash
    sudo /opt/runner-monitor/aktuell/einrichten.sh runner --umziehen
    ```
-5. Hängt ein einzelner Job, sein Worker-Protokoll:
+6. Hängt ein einzelner Job, sein Worker-Protokoll:
    ```bash
    sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Worker_*.log | head -1)"
    ```
