@@ -65,9 +65,13 @@ Das Skript
 - lädt die neueste Runner-Version, meldet sie bei der Organisation an und startet den Dienst
   `actions.runner.<organisation>.<name>.service`,
 - richtet das **Aufräumen** ein: vor jedem Job unter 25 GB frei (`runner-aufraeumen 25`),
-  jede Nacht gründlich, dazu `fstrim`.
+  jede Nacht gründlich, dazu `fstrim`,
+- sichert den Dienst gegen **Speichermangel**: Drop-in `speicher.conf` mit `OOMPolicy=continue`
+  (dann scheitert nur der Job, der Dienst läuft weiter) und `Restart=on-failure`. Fehlt Swap,
+  legt das Skript `/swapfile` an (4 GB, ab 16 GB RAM 2 GB, nur bei genug freiem Platz) und
+  setzt `vm.swappiness=10`. Bei weniger als 8 GB RAM gibt es einen Hinweis (seit 0.6.1).
 
-Ein zweiter Aufruf ohne Token bringt Pakete und Aufräumen auf den neuesten Stand und lässt
+Ein zweiter Aufruf ohne Token bringt Pakete, Aufräumen und Speicher-Einstellung auf den neuesten Stand und lässt
 einen registrierten Runner stehen; ein laufender Job wird nie unterbrochen.
 
 Prüfen: `sudo systemctl status 'actions.runner.*'` → `active (running)`; in GitHub steht der Runner auf „Idle“.
@@ -116,7 +120,7 @@ eine alte Repository-Variable für den Runner.
 |---|---|
 | **Job hängt auf „Queued“** | Kein passender Runner frei: Labels im `runs-on` passen nicht (z. B. `bits` fehlt am Runner), Variable `EIGENER_RUNNER` falsch geschrieben, Runner offline oder belegt (Jobs laufen nacheinander). Monitor zeigt „wartet“ je Repository. Labels prüfen: GitHub › Organisation › Settings › Actions › Runners. |
 | **Runner offline** | [Runbook runner-dienst-gestoppt](runbooks/runner-dienst-gestoppt.md) |
-| **Runner-Dienst gestoppt, im Status steht `Result: oom-kill`** (`systemctl status 'actions.runner.*'`) | Ein Job hat den Arbeitsspeicher gesprengt, und systemd hat den ganzen Dienst gestoppt. Abhilfe: mehr RAM (Tabelle oben), Swap anlegen und den Dienst so einstellen, dass nur der Job scheitert und der Dienst nach einem Absturz neu startet. Das Einrichtungsskript übernimmt das künftig selbst (Issue #67), bis dahin von Hand:<br>`U=$(systemctl list-units --all --plain --no-legend 'actions.runner.*' \| awk '{print $1}')`<br>`sudo mkdir -p "/etc/systemd/system/$U.d"`<br>`printf '[Service]\nOOMPolicy=continue\nRestart=on-failure\nRestartSec=15\n' \| sudo tee "/etc/systemd/system/$U.d/speicher.conf"`<br>`sudo systemctl daemon-reload && sudo systemctl restart "$U"` (wenn kein Job läuft)<br>Swap, falls `swapon --show` leer ist: `sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`, dann `/swapfile none swap sw 0 0` in `/etc/fstab` eintragen. |
+| **Runner-Dienst gestoppt, im Status steht `Result: oom-kill`** (`systemctl status 'actions.runner.*'`) | Ein Job hat den Arbeitsspeicher gesprengt, und systemd hat den ganzen Dienst gestoppt. Abhilfe: mehr RAM (Tabelle oben), Swap anlegen und den Dienst so einstellen, dass nur der Job scheitert und der Dienst nach einem Absturz neu startet. Ab 0.6.1 erledigt `sudo /opt/runner-monitor/aktuell/einrichten.sh runner` das (Abschnitt 3). Von Hand:<br>`U=$(systemctl list-units --all --plain --no-legend 'actions.runner.*' \| awk '{print $1}')`<br>`sudo mkdir -p "/etc/systemd/system/$U.d"`<br>`printf '[Service]\nOOMPolicy=continue\nRestart=on-failure\nRestartSec=15\n' \| sudo tee "/etc/systemd/system/$U.d/speicher.conf"`<br>`sudo systemctl daemon-reload && sudo systemctl restart "$U"` (wenn kein Job läuft)<br>Swap, falls `swapon --show` leer ist: `sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`, dann `/swapfile none swap sw 0 0` in `/etc/fstab` eintragen. |
 | **„Instanz ci existiert schon“** (Wegwerf-Datenbank eines abgebrochenen Laufs) | Reste des vorigen Laufs: `docker ps -a`, dann die Container des Projekts stoppen und entfernen (`docker rm -f <name>`); gründlich: `sudo runner-aufraeumen`. Der nächste Lauf legt sie neu an. |
 | **„No space left on device“** | [Runbook platte-voll](runbooks/platte-voll.md) |
 | **Node fehlt** | Auf dem eigenen Runner ist Node nicht vorinstalliert: `actions/setup-node` mit `node-version-file: .nvmrc` |

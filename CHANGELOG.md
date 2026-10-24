@@ -4,6 +4,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Geändert
+- Runner-Einrichtung sichert den Dienst gegen Speichermangel: `OOMPolicy=continue` und
+  `Restart=on-failure` per Drop-in, Swap-Datei, wenn keine da ist, Hinweis unter 8 GB RAM (#67).
+
 ### Dokumentation
 - `docs/RUNNER.md`: Wie viel Arbeitsspeicher die Runner-VM braucht (mindestens 8 GB plus 4 GB Swap
   für Builds und Image-Jobs), Fehlerhilfe für `oom-kill`; Runbook „Runner-Dienst gestoppt“ ergänzt (#70).
