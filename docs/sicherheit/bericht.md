@@ -20,6 +20,9 @@ eigene Netz zu.
 | S-HTTP-01 | Wurde ein POST vor dem Lesen des Körpers abgelehnt (Herkunft, Inhaltstyp, Größe), blieb der Körper in der Verbindung und wurde als nächste Anfrage gelesen; Fehlerseiten der Standardbibliothek (kaputte Anfragezeile, unbekannte Methode) kamen ohne Sicherheits-Kopfzeilen | niedrig | behoben: Verbindung wird dann geschlossen (`Connection: close`), alle Fehler als JSON mit CSP und den übrigen Kopfzeilen (Issue #20) | 23.10.2026 |
 | S-DOS-01 | Ein angemeldeter Browser konnte beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | behoben: höchstens 6 Live-Verbindungen je Sitzung, weitere bekommen 429 (Issue #19); hängende Verbindungen enden nach 60 s, übergelaufene Warteschlangen beenden den Strom (seit 0.3.1) | 23.10.2026 |
 
+Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), siehe
+[SECURITY.md](../../SECURITY.md).
+
 ## V1 Architektur
 
 - Trennung nach Rechten: Webserver unprivilegiert (`runner-monitor`, systemd-Härtung
@@ -85,7 +88,7 @@ eigene Netz zu.
 
 | Wann | Was | Ergebnis |
 |---|---|---|
-| jeder PR | Unit-Tests inkl. Header, CSRF, Weiterleitungen, Einrichtung, Anmeldung, Entpacken; gitleaks | CI |
+| jeder PR | Unit-Tests inkl. Header, CSRF, Weiterleitungen, Einrichtung, Anmeldung, Entpacken; gitleaks | CI; seit 25.10.2026 Pflicht für `main` (Branch-Schutz: nur per PR, Checks `pruefen (3.10)`, `pruefen (3.12)`, `geheimnisse`; Issue #21) |
 | 23.10.2026 | Abnahme auf der Test-VM (Issue #14) | erledigt |
 | 23.10.2026 · 0.6.0 | OWASP ZAP 2.17.0 Baseline (nur passive Regeln) gegen eine lokale Testinstanz, ohne und mit Anmeldung (Issue #20) | S-ZAP-01 und S-HTTP-01 behoben; danach nur noch die zwei unten bewerteten Hinweise |
 

@@ -4,6 +4,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Sicherheit
+- `SECURITY.md`: Lücken vertraulich über GitHub melden („Private vulnerability reporting“);
+  `main` nur noch per PR mit grüner CI (Branch-Schutz) (#21).
+
 ## [0.6.1] – 25.10.2026
 
 ### Geändert
