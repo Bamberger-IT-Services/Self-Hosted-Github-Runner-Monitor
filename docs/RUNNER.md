@@ -11,9 +11,32 @@ ist die projektneutrale Fassung der Vorlage aus dem Public-Repository.
 ## 1. VM anlegen
 
 - Ubuntu Server 24.04 LTS als **eigene VM** (kein LXC – Docker in LXC macht Ärger), z. B.
-  4 vCPU, 12–16 GB RAM, 80 GB Platte. Im Hypervisor die Platte mit **„Discard“** einstellen,
+  4 vCPU, 8–16 GB RAM (siehe unten), 80 GB Platte. Im Hypervisor die Platte mit **„Discard“** einstellen,
   damit `fstrim` Platz zurückgibt.
 - Nur ausgehendes Internet nötig. **Nie** auf einer Produktiv-VM: Jobs laufen faktisch als root.
+
+### Wie viel Arbeitsspeicher?
+
+| Was auf dem Runner läuft | RAM | Swap |
+|---|---|---|
+| nur leichte Jobs: Lint, Typprüfung, Tests ohne Build, Geheimnis-Scan | 4 GB | 2–4 GB |
+| **Builds von Web-Apps und Docker-Images, Datenbank-Tests in Containern** (z. B. `pruefen`, `db-test`, `image-probe`) | **mindestens 8 GB** | 4 GB |
+| mehrere große Projekte, Images mit vielen Schichten, Puffer für Wachstum | 12–16 GB | 4 GB |
+
+- **Messwert:** Ein `image-probe`-Job brauchte allein im Runner-Dienst 3,0 GB. Dazu kommen
+  Docker (`dockerd`, `containerd`, Build- und Datenbank-Container laufen außerhalb des
+  Runner-Dienstes), das System und der Monitor (unter 100 MB). Mit 4 GB RAM ohne Swap hat der
+  Kernel den Job deshalb per OOM-Killer beendet. systemd hat dabei den ganzen Runner-Dienst
+  gestoppt, und er blieb aus, bis er von Hand neu gestartet wurde (Fehlerhilfe unten).
+- **Zum Vergleich:** Die Standard-Linux-Runner von GitHub haben für private Repositories
+  2 CPUs und 8 GB RAM, für öffentliche 4 CPUs und 16 GB
+  ([GitHub-Doku](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)).
+  Was dort durchläuft, braucht auf dem eigenen Runner ähnlich viel.
+- Jobs laufen nacheinander (ein Runner, ein Job). Der Bedarf richtet sich also nach dem
+  **größten einzelnen Job** plus Containern, die ein voriger Job stehen gelassen hat.
+- Swap ist ein Puffer gegen Spitzen und kein Ersatz für RAM: Ein Build im Swap wird sehr langsam.
+- Im Monitor zeigt die Karte „Auslastung“ RAM und Swap. Liegt der RAM bei Builds dauerhaft über
+  90 % oder wird viel Swap genutzt, braucht die VM mehr Speicher.
 
 ## 2. Registrierungs-Token holen
 
@@ -93,6 +116,7 @@ eine alte Repository-Variable für den Runner.
 |---|---|
 | **Job hängt auf „Queued“** | Kein passender Runner frei: Labels im `runs-on` passen nicht (z. B. `bits` fehlt am Runner), Variable `EIGENER_RUNNER` falsch geschrieben, Runner offline oder belegt (Jobs laufen nacheinander). Monitor zeigt „wartet“ je Repository. Labels prüfen: GitHub › Organisation › Settings › Actions › Runners. |
 | **Runner offline** | [Runbook runner-dienst-gestoppt](runbooks/runner-dienst-gestoppt.md) |
+| **Runner-Dienst gestoppt, im Status steht `Result: oom-kill`** (`systemctl status 'actions.runner.*'`) | Ein Job hat den Arbeitsspeicher gesprengt, und systemd hat den ganzen Dienst gestoppt. Abhilfe: mehr RAM (Tabelle oben), Swap anlegen und den Dienst so einstellen, dass nur der Job scheitert und der Dienst nach einem Absturz neu startet. Das Einrichtungsskript übernimmt das künftig selbst (Issue #67), bis dahin von Hand:<br>`U=$(systemctl list-units --all --plain --no-legend 'actions.runner.*' \| awk '{print $1}')`<br>`sudo mkdir -p "/etc/systemd/system/$U.d"`<br>`printf '[Service]\nOOMPolicy=continue\nRestart=on-failure\nRestartSec=15\n' \| sudo tee "/etc/systemd/system/$U.d/speicher.conf"`<br>`sudo systemctl daemon-reload && sudo systemctl restart "$U"` (wenn kein Job läuft)<br>Swap, falls `swapon --show` leer ist: `sudo fallocate -l 4G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile`, dann `/swapfile none swap sw 0 0` in `/etc/fstab` eintragen. |
 | **„Instanz ci existiert schon“** (Wegwerf-Datenbank eines abgebrochenen Laufs) | Reste des vorigen Laufs: `docker ps -a`, dann die Container des Projekts stoppen und entfernen (`docker rm -f <name>`); gründlich: `sudo runner-aufraeumen`. Der nächste Lauf legt sie neu an. |
 | **„No space left on device“** | [Runbook platte-voll](runbooks/platte-voll.md) |
 | **Node fehlt** | Auf dem eigenen Runner ist Node nicht vorinstalliert: `actions/setup-node` mit `node-version-file: .nvmrc` |

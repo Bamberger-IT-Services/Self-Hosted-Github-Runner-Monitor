@@ -4,6 +4,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Dokumentation
+- `docs/RUNNER.md`: Wie viel Arbeitsspeicher die Runner-VM braucht (mindestens 8 GB plus 4 GB Swap
+  für Builds und Image-Jobs), Fehlerhilfe für `oom-kill`; Runbook „Runner-Dienst gestoppt“ ergänzt (#70).
+
 ## [0.6.0] – 24.10.2026
 
 ### Sicherheit
