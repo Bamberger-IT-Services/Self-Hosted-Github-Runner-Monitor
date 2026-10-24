@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.6.1] – 25.10.2026
+
 ### Geändert
 - Gestoppter Runner-Dienst: Status-Karte und Meldung nennen die Ursache aus systemd (z. B. „Speicher
   voll (OOM-Killer)“); „Was tun“ zeigt dann Schritte zu RAM, Swap und Speicher-Einstellung und startet

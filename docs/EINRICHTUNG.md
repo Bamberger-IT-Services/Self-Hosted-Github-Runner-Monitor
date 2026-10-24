@@ -1,6 +1,6 @@
 # Erstinstallation auf der VM
 
-**Stand: 24.10.2026 · Version 0.6.0**
+**Stand: 25.10.2026 · Version 0.6.1**
 
 Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 `beispiel-org` durch die eigenen Werte ersetzen.
@@ -15,7 +15,7 @@ Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 ## 1. Herunterladen und entpacken
 
 ```bash
-V=0.6.0
+V=0.6.1
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz.sha256
 sha256sum -c runner-monitor-$V.tar.gz.sha256     # muss „OK“ melden
@@ -33,7 +33,7 @@ Das Skript arbeitet in drei Abschnitten:
 | Abschnitt | Was passiert |
 |---|---|
 | System prüfen | Betriebssystem, Python, Docker, Netz (Adresse, lokales Netz). Sucht den Runner in `/opt/actions-runner`; ist er da, bleibt er unverändert. Fehlt er, fragt das Skript, ob es ihn einrichten soll (siehe unten). |
-| Monitor einrichten | Systembenutzer `runner-monitor` (kein root, keine Anmeldung, darf das Journal lesen), `/var/lib/runner-monitor`, `/etc/runner-monitor/konfig.env`, Programm nach `/opt/runner-monitor/versionen/0.6.0` mit Verweis `aktuell`, Dienste `runner-monitor`, `runner-monitor-sammler`, `runner-monitor-update.path`. Eine alte Terminalansicht (ttyd, `monitor-einrichten.sh`) wird ersetzt, ihr Token übernommen. |
+| Monitor einrichten | Systembenutzer `runner-monitor` (kein root, keine Anmeldung, darf das Journal lesen), `/var/lib/runner-monitor`, `/etc/runner-monitor/konfig.env`, Programm nach `/opt/runner-monitor/versionen/0.6.1` mit Verweis `aktuell`, Dienste `runner-monitor`, `runner-monitor-sammler`, `runner-monitor-update.path`. Eine alte Terminalansicht (ttyd, `monitor-einrichten.sh`) wird ersetzt, ihr Token übernommen. |
 | Firewall (ufw) | SSH bleibt erlaubt, Port 8090 nur aus dem lokalen Netz (z. B. `192.0.2.0/24`). Ist ufw aus, fragt das Skript, ob es ihn einschalten soll. |
 
 Am Ende stehen Adresse und **Einrichtungscode** (60 Minuten gültig), zum Beispiel:
@@ -93,7 +93,7 @@ Organisation › Settings › Personal access tokens › **Pending requests**.
 ```bash
 sudo ./einrichten.sh status                       # Dienste und Version
 journalctl -u runner-monitor -u runner-monitor-sammler -n 30
-curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.6.0", "vm": "runner-vm"}
+curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.6.1", "vm": "runner-vm"}
 ```
 
 ## Einstellungen

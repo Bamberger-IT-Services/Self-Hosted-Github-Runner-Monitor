@@ -1,6 +1,6 @@
 # Datenschutz
 
-**Stand: 24.10.2026 · Version 0.6.0**
+**Stand: 25.10.2026 · Version 0.6.1**
 
 Der Runner-Monitor läuft vollständig auf der eigenen VM. Es gibt keine Telemetrie, keine
 Analyse, keine externen Schriften oder Skripte.
