@@ -36,7 +36,7 @@ OS_ID="$(. /etc/os-release && echo "${ID:-}")"
 OS_CODENAME="$(. /etc/os-release && echo "${VERSION_CODENAME:-}")"
 [ "$OS_ID" = ubuntu ] || echo "Hinweis: getestet für Ubuntu, gefunden: $(. /etc/os-release && echo "${PRETTY_NAME:-unbekannt}")."
 
-echo "1/5 Pakete"
+echo "1/6 Pakete"
 apt-get update -q
 apt-get install -y -q ca-certificates curl git jq unzip zip python3 python3-venv build-essential \
   postgresql-common gnupg lsb-release
@@ -51,14 +51,14 @@ if ! command -v docker >/dev/null; then
 fi
 systemctl enable --now docker
 
-echo "2/5 Benutzer $NUTZER"
+echo "2/6 Benutzer $NUTZER"
 id "$NUTZER" >/dev/null 2>&1 || useradd --create-home --shell /bin/bash "$NUTZER"
 usermod -aG docker "$NUTZER"
 # Die Workflows installieren Werkzeuge mit sudo apt-get (wie auf den GitHub-Runnern).
 echo "$NUTZER ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/90-$NUTZER"
 chmod 440 "/etc/sudoers.d/90-$NUTZER"
 
-echo "3/5 Runner-Programm"
+echo "3/6 Runner-Programm"
 install -d -o "$NUTZER" -g "$NUTZER" "$VERZ"
 if [ ! -x "$VERZ/config.sh" ]; then
   version="$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest | jq -r .tag_name | sed 's/^v//')"
@@ -70,7 +70,7 @@ if [ ! -x "$VERZ/config.sh" ]; then
   "$VERZ/bin/installdependencies.sh" >/dev/null
 fi
 
-echo "4/5 Registrierung"
+echo "4/6 Registrierung"
 if [ "$UMZIEHEN" = 1 ] && [ -f "$VERZ/.runner" ]; then
   [ -n "$TOKEN" ] || { echo "Registrierungs-Token fehlt: sudo bash $0 --umziehen <TOKEN>" >&2; exit 1; }
   echo "    bisherige Registrierung ($(jq -r .gitHubUrl "$VERZ/.runner" 2>/dev/null || echo ?)) wird ersetzt"
@@ -88,7 +88,7 @@ else
 fi
 ( cd "$VERZ" || exit 0; ./svc.sh install "$NUTZER" >/dev/null 2>&1 || true; ./svc.sh start >/dev/null 2>&1 || true )
 
-echo "5/5 Platz sichern"
+echo "5/6 Platz sichern"
 # Die Platte darf nie volllaufen (eine volle Platte legt Runner-VM und Hypervisor lahm).
 # 1) Vor JEDEM Job: unter 25 GB frei → alte Container, Images, Volumes und Build-Cache weg.
 # 2) Jede Nacht: gründlich aufräumen (Build-Cache auf 20 GB begrenzen) und freien Platz per
@@ -141,3 +141,50 @@ systemctl enable --now fstrim.timer >/dev/null 2>&1 || true
 echo
 echo "Fertig. Runner: $NAME ($ZIEL_URL), Labels: self-hosted, linux, x64${LABELS:+, ${LABELS//,/, }}"
 echo "Workflows wählen ihn mit  runs-on: [self-hosted${LABELS:+, ${LABELS%%,*}}]  – Umschalten je Repository: docs/RUNNER.md."
+
+echo "6/6 Speicher"
+# Sprengt ein Job den Arbeitsspeicher, beendet der Kernel einen Prozess (OOM-Killer). Ohne
+# Vorkehrung stoppt systemd dann den GANZEN Runner-Dienst (OOMPolicy=stop), und runsvc.sh startet
+# ihn nicht neu. So scheitert nur der Job, und ein abgestürzter Dienst startet wieder (Issue #67).
+UNIT="$(cat "$VERZ/.service" 2>/dev/null || true)"
+[ -n "$UNIT" ] || UNIT="$(systemctl list-units --all --plain --no-legend 'actions.runner.*' | awk 'NR==1{print $1}')"
+if [ -n "$UNIT" ]; then
+  dropin="/etc/systemd/system/$UNIT.d/speicher.conf"
+  soll="$(printf '[Service]\nOOMPolicy=continue\nRestart=on-failure\nRestartSec=15\n')"
+  if [ "$(cat "$dropin" 2>/dev/null || true)" != "$soll" ]; then
+    install -d "/etc/systemd/system/$UNIT.d"
+    printf '%s\n' "$soll" > "$dropin"
+    systemctl daemon-reload   # greift ohne Neustart, ein laufender Job bleibt unberührt
+    echo "    $UNIT: OOMPolicy=continue, Restart=on-failure"
+  else
+    echo "    $UNIT: Speicher-Einstellung schon gesetzt"
+  fi
+else
+  echo "    Runner-Dienst nicht gefunden – Speicher-Einstellung übersprungen"
+fi
+# Swap als Puffer für Spitzen (Builds, Images). Nur anlegen, wenn es noch keinen gibt und genug
+# Platz frei ist. Mehr RAM ersetzt er nicht (docs/RUNNER.md › Wie viel Arbeitsspeicher?).
+RAM_MB="$(awk '/^MemTotal:/{print int($2/1024)}' /proc/meminfo)"
+if [ -n "$(swapon --noheadings --show 2>/dev/null)" ]; then
+  echo "    Swap vorhanden: $(swapon --noheadings --show=SIZE 2>/dev/null | paste -sd+ -)"
+elif [ -e /swapfile ]; then
+  echo "    /swapfile liegt da, ist aber nicht aktiv – bitte prüfen: swapon /swapfile"
+else
+  if [ "$RAM_MB" -ge 16000 ]; then SWAP_GB=2; else SWAP_GB=4; fi
+  FREI_GB="$(df --output=avail -BG / | tail -n 1 | tr -dc 0-9)"
+  if [ "$FREI_GB" -ge $((SWAP_GB + 10)) ]; then
+    fallocate -l "${SWAP_GB}G" /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile >/dev/null
+    swapon /swapfile
+    grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+    [ -e /etc/sysctl.d/99-swap.conf ] || [ -e /etc/sysctl.d/99-runner-swap.conf ] \
+      || { echo 'vm.swappiness=10' > /etc/sysctl.d/99-runner-swap.conf; sysctl -q --system >/dev/null 2>&1 || true; }
+    echo "    Swap angelegt: /swapfile, ${SWAP_GB} GB"
+  else
+    echo "    Kein Swap angelegt: nur ${FREI_GB} GB frei (nötig: $((SWAP_GB + 10)) GB)"
+  fi
+fi
+if [ "$RAM_MB" -lt 7500 ]; then
+  echo "    Hinweis: ${RAM_MB} MB RAM. Für Builds und Docker-Images mindestens 8 GB (docs/RUNNER.md)."
+fi

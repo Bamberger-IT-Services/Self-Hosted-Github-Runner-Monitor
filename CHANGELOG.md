@@ -4,6 +4,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Geändert
+- Runner-Einrichtung sichert den Dienst gegen Speichermangel: `OOMPolicy=continue` und
+  `Restart=on-failure` per Drop-in, Swap-Datei, wenn keine da ist, Hinweis unter 8 GB RAM (#67).
+
 ### Behoben
 - Runner-Version wurde nicht angezeigt („–“): Der Monitor liest sie jetzt aus
   `bin/Runner.Listener.deps.json`, statt das Programm zu starten; ein leeres Ergebnis wird nur 30 s
