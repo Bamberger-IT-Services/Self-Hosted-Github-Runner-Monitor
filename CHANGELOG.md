@@ -5,6 +5,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 ## [Unveröffentlicht]
 
 ### Geändert
+- Gestoppter Runner-Dienst: Status-Karte und Meldung nennen die Ursache aus systemd (z. B. „Speicher
+  voll (OOM-Killer)“); „Was tun“ zeigt dann Schritte zu RAM, Swap und Speicher-Einstellung und startet
+  den Dienst mit vollem Unit-Namen (#68).
 - Runner-Einrichtung sichert den Dienst gegen Speichermangel: `OOMPolicy=continue` und
   `Restart=on-failure` per Drop-in, Swap-Datei, wenn keine da ist, Hinweis unter 8 GB RAM (#67).
 

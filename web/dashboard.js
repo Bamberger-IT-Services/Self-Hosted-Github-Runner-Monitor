@@ -10,6 +10,14 @@
   const MAX_ZEILEN = 1500;
   // Volle Pfadangabe: ./einrichten.sh gibt es nur im entpackten Ordner, dieser Pfad gilt immer nach der Installation.
   const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
+  // systemd-„Result“ eines gestoppten Runner-Dienstes → Ursache in Worten (#68)
+  const STOPP_GRUND = {
+    'oom-kill': 'Speicher voll (OOM-Killer)',
+    'exit-code': 'mit Fehlercode beendet', 'signal': 'von einem Signal beendet', 'core-dump': 'abgestürzt',
+    'timeout': 'Zeitüberschreitung beim Starten oder Stoppen', 'start-limit-hit': 'zu viele Startversuche',
+    'watchdog': 'vom Watchdog beendet', 'resources': 'Ressourcen fehlten beim Start',
+  };
+  const stoppGrund = (st) => st && st.dienst && st.dienst.grund ? (STOPP_GRUND[st.dienst.grund] || st.dienst.grund) : '';
   const UPDATE_SCHRITTE = [['Release herunterladen', 'Archiv und Prüfsumme'], ['Prüfsumme prüfen', 'SHA-256 stimmt'], ['Installieren', 'alte Version gesichert'], ['Monitor neu starten', 'kurz nicht erreichbar'], ['Funktion prüfen', 'Daten kommen an']];
 
   const S = {
@@ -109,7 +117,7 @@
     const us = u && u.status;
     if (us && us.zustand === 'laeuft') M.push({ id: 'update', cls: 'laeuft', ic: IC.update(), link: 'Details', titel: `Update auf ${us.version || ''} läuft`, text: `${(UPDATE_SCHRITTE[(us.schritt || 1) - 1] || UPDATE_SCHRITTE[0])[0]} (${us.schritt || 1}/5) · Runner arbeitet weiter` });
     if (us && us.zustand === 'fehler' && jetzt - ms(us.zeit) < 86400000) M.push({ id: 'update', cls: 'fehler', ic: IC.x(18), link: 'Details', titel: 'Update fehlgeschlagen', text: `Version ${u.installiert} wurde wiederhergestellt und läuft` });
-    if (st && st.dienst.zustand === 'gestoppt') M.push({ id: 'gestoppt', cls: 'fehler', ic: IC.x(18), titel: 'Runner-Dienst gestoppt', text: 'Jobs bleiben in der Warteschlange' + (w && w.abfrage === 'ok' ? ` (${w.repos.reduce((a, r) => a + r.wartet, 0)} warten)` : '') });
+    if (st && st.dienst.zustand === 'gestoppt') M.push({ id: 'gestoppt', cls: 'fehler', ic: IC.x(18), titel: 'Runner-Dienst gestoppt', text: (st.dienst.grund === 'oom-kill' ? 'Speicher voll – ein Job hat den Arbeitsspeicher gesprengt. ' : stoppGrund(st) ? `${stoppGrund(st)}. ` : '') + 'Jobs bleiben in der Warteschlange' + (w && w.abfrage === 'ok' ? ` (${w.repos.reduce((a, r) => a + r.wartet, 0)} warten)` : '') });
     if (st && st.dienst.zustand === 'fehlt') M.push({ id: 'runner', cls: 'warn', ic: IC.warn(18), titel: 'Kein Runner eingerichtet', text: 'auf dieser VM wurde kein GitHub-Runner gefunden' });
     if (st && st.github.zustand === 'offline' && st.dienst.zustand === 'aktiv') M.push({ id: 'offline', cls: 'fehler', ic: IC.x(18), titel: 'Runner offline bei GitHub', text: `${st.github.seit ? 'seit ' + zeit(st.github.seit) + ' · ' : ''}Jobs werden nicht zugestellt` });
     if (w && ['nicht-erreichbar', 'kontingent', 'fehler'].includes(w.abfrage)) M.push({ id: 'github', cls: 'warn', ic: IC.warn(18), titel: w.abfrage === 'kontingent' ? 'GitHub-Kontingent erschöpft' : 'GitHub nicht erreichbar', text: `Workflows zeigen den Stand von ${w.abgefragt ? zeit(w.abgefragt) : '–'}` + (w.naechste ? ` · neuer Versuch in ${Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000))} s` : '') });
@@ -208,13 +216,14 @@
     } else {
       const text = {
         bereit: 'Wartet auf den nächsten Job. Neue Jobs starten automatisch.',
-        gestoppt: 'Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.',
+        gestoppt: 'Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.'
+          + (st.dienst.grund === 'oom-kill' ? ' Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.' : ''),
         offline: 'Der Dienst läuft, aber GitHub sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.',
         fehlt: 'Auf dieser VM ist kein GitHub-Runner eingerichtet. Das Einrichtungsskript kann ihn mit einrichten.',
       }[art];
       const wartend = w && w.abfrage === 'ok' ? w.repos.reduce((a, r) => a + r.wartet, 0) : null;
       const dienstSeit = st.dienst.seit ? (art === 'gestoppt' ? `gestoppt seit ${zeit(st.dienst.seit)} (${vor((jetzt - ms(st.dienst.seit)) / 1000)})` : `aktiv seit ${seit((jetzt - ms(st.dienst.seit)) / 1000)}`) : (art === 'gestoppt' ? 'gestoppt' : art === 'fehlt' ? 'nicht vorhanden' : 'aktiv');
-      const kv = art === 'gestoppt' ? [['Dienst', dienstSeit], ['Wartende Jobs', wartend == null ? 'unbekannt' : `${wartend} in der Warteschlange`], ['Letzter Job', letzter]]
+      const kv = art === 'gestoppt' ? [['Dienst', dienstSeit], ...(stoppGrund(st) ? [['Grund', esc(stoppGrund(st))]] : []), ['Wartende Jobs', wartend == null ? 'unbekannt' : `${wartend} in der Warteschlange`], ['Letzter Job', letzter]]
         : art === 'offline' ? [['Dienst', dienstSeit], ['Bei GitHub', st.github.seit ? `offline seit ${zeit(st.github.seit)} (${vor((jetzt - ms(st.github.seit)) / 1000)})` : 'offline'], ['Letzter Job', letzter]]
         : art === 'fehlt' ? [['Runner', 'nicht gefunden in /opt/actions-runner'], ['Einrichten', `${SKRIPT} runner`]]
         : [['Dienst', dienstSeit], ['Letzter Job', letzter], ['Runner-Version', esc(st.version || '–')]];
@@ -493,7 +502,11 @@
       ] },
       { id: 'gestoppt', titel: 'Runner-Dienst gestoppt', aktiv: st.dienst.zustand === 'gestoppt', cls: 'fehler', wann: 'Wenn der systemd-Dienst des Runners nicht läuft. Jobs bleiben dann in der Warteschlange.', schritte: [
         ['Status und letzte Meldungen ansehen:', "systemctl status 'actions.runner.*'"],
-        ['Dienst starten:', "sudo systemctl start 'actions.runner.*'"],
+        ...(st.dienst.grund === 'oom-kill' ? [
+          ['„oom-kill“: Ein Job hat den Arbeitsspeicher gesprengt. RAM und Swap ansehen – für Builds und Docker-Images mindestens 8 GB RAM plus Swap (docs/RUNNER.md):', 'free -h; swapon --show'],
+          ['Dienst gegen Speichermangel einstellen (dann scheitert nur der Job) und fehlenden Swap anlegen:', `${SKRIPT} runner`],
+        ] : []),
+        ['Dienst starten:', 'sudo systemctl start "$(cat /opt/actions-runner/.service)"'],
         ['Startet er nicht, das Protokoll prüfen:', "journalctl -u 'actions.runner.*' -n 50"],
         ['Wartende Jobs laufen danach von selbst an.'],
         ['Woran es lag, steht in den Logs – siehe „Runner-Logs abrufen“.'],

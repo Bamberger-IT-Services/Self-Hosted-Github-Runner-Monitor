@@ -9,6 +9,7 @@ window.RM_DEMO = (() => {
   // Versionen wie im Entwurf: installiert = Version des Servers (/api/health), verfügbar = nächste Minor-Version
   let INST = '0.0.0', NEU = '0.1.0';
   const naechste = (v) => { const t = v.split('.').map(Number); return `${t[0] || 0}.${(t[1] || 0) + 1}.0`; };
+  let grund = '';  // ?grund=oom-kill: Ursache des gestoppten Dienstes (#68)
   let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600, schritteLokal = false;
   let cpuSchnitt = 40, job = null, schrittNr = 1, zeilenImSchritt = 0, updSchritt = 0;
   const START = jetzt() - 3 * 86400 - 4 * 3600;
@@ -34,7 +35,7 @@ window.RM_DEMO = (() => {
   const schritt = (nr) => (schritteLokal ? { nr, von: null, name: '' } : { nr, von: JOB.schritte.length, name: JOB.schritte[nr - 1] });
   const status = () => {
     const t = jetzt();
-    const dienst = zustand === 'gestoppt' ? { zustand: 'gestoppt', seit: t - 760 } : { zustand: 'aktiv', seit: START + 3600 };
+    const dienst = zustand === 'gestoppt' ? { zustand: 'gestoppt', seit: t - 760, grund: grund || null } : { zustand: 'aktiv', seit: START + 3600, grund: null };
     const github = zustand === 'offline' || zustand === 'gestoppt' ? { zustand: 'offline', seit: t - 1240 } : gh === 'kein-token' ? { zustand: 'unbekannt', seit: null } : { zustand: 'online', seit: null };
     return {
       vm: 'runner-vm', runner: 'runner-vm-01', eingerichtet: true, labels: ['self-hosted', 'linux', 'x64', 'docker'], version: '2.329.0', monitorVersion: INST,
@@ -171,7 +172,7 @@ window.RM_DEMO = (() => {
       if (d.version) { INST = d.version; NEU = naechste(INST); api.empfange('status', status()); api.empfange('update', update()); }
     }).catch(() => {});
     const p = new URLSearchParams(location.search);
-    zustand = p.get('zustand') || zustand; gh = p.get('github') || gh; upd = p.get('update') || upd;
+    zustand = p.get('zustand') || zustand; grund = p.get('grund') || ''; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
     schritteLokal = p.get('schritte') === 'lokal';
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;

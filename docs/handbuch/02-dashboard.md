@@ -22,7 +22,7 @@ Das Wichtigste zuerst: groß der Zustand.
 |---|---|
 | **Job läuft** (blau) | Repository, Workflow und Job, Pull Request oder Branch, aktueller Schritt „3 von 8“ mit Fortschritt, Laufzeit, Startzeit. Kennt GitHub die Schrittliste noch nicht (die ersten Sekunden eines Jobs), steht „3 von –“ mit gedämpftem Namen „Schritt 3“ und gestricheltem Rest; Name und Anzahl kommen nach. Die Zahl springt nie zurück. |
 | **Bereit** (grün) | Dienst läuft, GitHub sieht den Runner, kein Job |
-| **Dienst gestoppt** (rot) | der systemd-Dienst des Runners läuft nicht – Jobs warten. Link „Runner-Logs abrufen“ |
+| **Dienst gestoppt** (rot) | der systemd-Dienst des Runners läuft nicht – Jobs warten. Hat systemd ihn wegen eines Fehlers beendet, steht die Ursache unter **Grund**, z. B. „Speicher voll (OOM-Killer)“ oder „mit Fehlercode beendet“. Link „Runner-Logs abrufen“ |
 | **Offline bei GitHub** (orange) | Dienst läuft, GitHub sieht ihn aber nicht |
 | **Kein Runner** | auf der VM ist keiner eingerichtet |
 

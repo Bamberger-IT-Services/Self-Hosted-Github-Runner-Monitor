@@ -114,12 +114,15 @@ def _systemd_zeit(wert: str) -> float | None:
 
 
 def dienst_status(unit: str) -> dict:
-    """``{"zustand": "aktiv"|"gestoppt"|"fehlt", "seit": unix|None}``"""
+    """``{"zustand": "aktiv"|"gestoppt"|"fehlt", "seit": unix|None, "grund": str|None}``
+
+    ``grund`` ist bei gestopptem Dienst das ``Result`` von systemd, wenn es kein normales Ende war
+    (z. B. ``oom-kill``, ``exit-code``, ``signal``) – die Oberfläche nennt dann die Ursache (#68)."""
     if not unit:
         return {"zustand": "fehlt", "seit": None, "unit": ""}
     try:
         lauf = subprocess.run(
-            ["systemctl", "show", unit, "-p", "ActiveState,ActiveEnterTimestamp,InactiveEnterTimestamp", "--timestamp=utc"],
+            ["systemctl", "show", unit, "-p", "ActiveState,ActiveEnterTimestamp,InactiveEnterTimestamp,Result", "--timestamp=utc"],
             capture_output=True, text=True, timeout=5, check=False,
         )
     except (OSError, subprocess.SubprocessError):
@@ -127,7 +130,9 @@ def dienst_status(unit: str) -> dict:
     werte = dict(z.split("=", 1) for z in lauf.stdout.splitlines() if "=" in z)
     aktiv = werte.get("ActiveState") == "active"
     seit = _systemd_zeit(werte.get("ActiveEnterTimestamp" if aktiv else "InactiveEnterTimestamp", ""))
-    return {"zustand": "aktiv" if aktiv else "gestoppt", "seit": seit, "unit": unit}
+    ergebnis = werte.get("Result", "").strip()
+    grund = None if aktiv or ergebnis in ("", "success") or not re.fullmatch(r"[a-z-]{1,32}", ergebnis) else ergebnis
+    return {"zustand": "aktiv" if aktiv else "gestoppt", "seit": seit, "unit": unit, "grund": grund}
 
 
 # ---------------------------------------------------------------- Journal: Job-Ereignisse

@@ -90,6 +90,31 @@ class SeitenTest(unittest.TestCase):
             self.assertEqual(runner.lies_registrierung(Path(verz) / "fehlt"), {})
 
 
+class DienstGrundTest(unittest.TestCase):
+    """Gestoppter Dienst: Ursache aus systemd „Result“ (#68)."""
+
+    def status(self, ausgabe):
+        import subprocess
+        from unittest import mock
+        lauf = subprocess.CompletedProcess([], 0, stdout=ausgabe, stderr="")
+        with mock.patch.object(runner.subprocess, "run", return_value=lauf):
+            return runner.dienst_status("actions.runner.beispiel-org.runner-vm.service")
+
+    def test_oom(self):
+        st = self.status("ActiveState=failed\nInactiveEnterTimestamp=Sat 2026-10-24 16:35:54 UTC\nResult=oom-kill\n")
+        self.assertEqual((st["zustand"], st["grund"]), ("gestoppt", "oom-kill"))
+        self.assertIsNotNone(st["seit"])
+
+    def test_normal_gestoppt_ohne_grund(self):
+        self.assertIsNone(self.status("ActiveState=inactive\nResult=success\n")["grund"])
+
+    def test_aktiv_ohne_grund(self):
+        self.assertIsNone(self.status("ActiveState=active\nActiveEnterTimestamp=Sun 2026-10-25 00:31:13 UTC\nResult=oom-kill\n")["grund"])
+
+    def test_unerwarteter_wert(self):
+        self.assertIsNone(self.status("ActiveState=failed\nResult=<script>\n")["grund"])
+
+
 class RunnerVersionTest(unittest.TestCase):
     """Version ohne Programmaufruf aus deps.json (#69)."""
 
