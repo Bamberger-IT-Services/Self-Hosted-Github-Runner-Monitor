@@ -4,7 +4,8 @@
 'use strict';
 
 (() => {
-  const { $, IC, esc, zahl, zeit, hm, tm, wt, datum, dauer, vor, seit, mehrzahl, ms } = RM;
+  const { $, IC, esc, zahl, zeit, hm, tm, wt, datum, dauer, vor, seit, mehrzahl, ms, t } = RM;
+  I18N.wendeAn();  // statische Texte im HTML (data-t …) und <html lang>
   const GiB = 1024 ** 3, GB = 1e9;
   const REPO = 'Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor';
   const MAX_ZEILEN = 1500;
@@ -12,13 +13,13 @@
   const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
   // systemd-„Result“ eines gestoppten Runner-Dienstes → Ursache in Worten (#68)
   const STOPP_GRUND = {
-    'oom-kill': 'Speicher voll (OOM-Killer)',
-    'exit-code': 'mit Fehlercode beendet', 'signal': 'von einem Signal beendet', 'core-dump': 'abgestürzt',
-    'timeout': 'Zeitüberschreitung beim Starten oder Stoppen', 'start-limit-hit': 'zu viele Startversuche',
-    'watchdog': 'vom Watchdog beendet', 'resources': 'Ressourcen fehlten beim Start',
+    'oom-kill': t('Speicher voll (OOM-Killer)'),
+    'exit-code': t('mit Fehlercode beendet'), 'signal': t('von einem Signal beendet'), 'core-dump': t('abgestürzt'),
+    'timeout': t('Zeitüberschreitung beim Starten oder Stoppen'), 'start-limit-hit': t('zu viele Startversuche'),
+    'watchdog': t('vom Watchdog beendet'), 'resources': t('Ressourcen fehlten beim Start'),
   };
   const stoppGrund = (st) => st && st.dienst && st.dienst.grund ? (STOPP_GRUND[st.dienst.grund] || st.dienst.grund) : '';
-  const UPDATE_SCHRITTE = [['Release herunterladen', 'Archiv und Prüfsumme'], ['Prüfsumme prüfen', 'SHA-256 stimmt'], ['Installieren', 'alte Version gesichert'], ['Monitor neu starten', 'kurz nicht erreichbar'], ['Funktion prüfen', 'Daten kommen an']];
+  const UPDATE_SCHRITTE = [[t('Release herunterladen'), t('Archiv und Prüfsumme')], [t('Prüfsumme prüfen'), t('SHA-256 stimmt')], [t('Installieren'), t('alte Version gesichert')], [t('Monitor neu starten'), t('kurz nicht erreichbar')], [t('Funktion prüfen'), t('Daten kommen an')]];
 
   const S = {
     status: null, system: null, prozesse: [], platten: [], workflows: null, update: null,
@@ -113,25 +114,25 @@
   /* ------------------------------------------------------------ Meldungen (Kopfzeile Mitte) */
   function meldungen() {
     const M = [], st = S.status, w = S.workflows, u = S.update, jetzt = Date.now();
-    if (S.verbindung === 'getrennt' && S.letzteDaten) M.push({ id: 'monitor', cls: 'fehler', ic: IC.getrennt(18), titel: 'Verbindung zum Monitor unterbrochen', text: `Stand ${zeit(S.letzteDaten)} (${vor((jetzt - S.letzteDaten) / 1000)}) · neuer Versuch läuft` });
+    if (S.verbindung === 'getrennt' && S.letzteDaten) M.push({ id: 'monitor', cls: 'fehler', ic: IC.getrennt(18), titel: t('Verbindung zum Monitor unterbrochen'), text: t('Stand {z} ({vor}) · neuer Versuch läuft', { z: zeit(S.letzteDaten), vor: vor((jetzt - S.letzteDaten) / 1000) }) });
     const us = u && u.status;
-    if (us && us.zustand === 'laeuft') M.push({ id: 'update', cls: 'laeuft', ic: IC.update(), link: 'Details', titel: `Update auf ${us.version || ''} läuft`, text: `${(UPDATE_SCHRITTE[(us.schritt || 1) - 1] || UPDATE_SCHRITTE[0])[0]} (${us.schritt || 1}/5) · Runner arbeitet weiter` });
-    if (us && us.zustand === 'fehler' && jetzt - ms(us.zeit) < 86400000) M.push({ id: 'update', cls: 'fehler', ic: IC.x(18), link: 'Details', titel: 'Update fehlgeschlagen', text: `Version ${u.installiert} wurde wiederhergestellt und läuft` });
-    if (st && st.dienst.zustand === 'gestoppt') M.push({ id: 'gestoppt', cls: 'fehler', ic: IC.x(18), titel: 'Runner-Dienst gestoppt', text: (st.dienst.grund === 'oom-kill' ? 'Speicher voll – ein Job hat den Arbeitsspeicher gesprengt. ' : stoppGrund(st) ? `${stoppGrund(st)}. ` : '') + 'Jobs bleiben in der Warteschlange' + (w && w.abfrage === 'ok' ? ` (${w.repos.reduce((a, r) => a + r.wartet, 0)} warten)` : '') });
-    if (st && st.dienst.zustand === 'fehlt') M.push({ id: 'runner', cls: 'warn', ic: IC.warn(18), titel: 'Kein Runner eingerichtet', text: 'auf dieser VM wurde kein GitHub-Runner gefunden' });
-    if (st && st.github.zustand === 'offline' && st.dienst.zustand === 'aktiv') M.push({ id: 'offline', cls: 'fehler', ic: IC.x(18), titel: 'Runner offline bei GitHub', text: `${st.github.seit ? 'seit ' + zeit(st.github.seit) + ' · ' : ''}Jobs werden nicht zugestellt` });
-    if (w && ['nicht-erreichbar', 'kontingent', 'fehler'].includes(w.abfrage)) M.push({ id: 'github', cls: 'warn', ic: IC.warn(18), titel: w.abfrage === 'kontingent' ? 'GitHub-Kontingent erschöpft' : 'GitHub nicht erreichbar', text: `Workflows zeigen den Stand von ${w.abgefragt ? zeit(w.abgefragt) : '–'}` + (w.naechste ? ` · neuer Versuch in ${Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000))} s` : '') });
-    if (w && ['token-ungueltig', 'keine-rechte'].includes(w.abfrage)) M.push({ id: 'token', cls: 'fehler', ic: IC.schluessel(18), titel: w.abfrage === 'token-ungueltig' ? 'GitHub-Token ungültig oder abgelaufen' : 'GitHub-Token ohne Zugriff', text: 'Workflows werden nicht mehr abgefragt' });
-    if (w && w.abfrage === 'kein-token') M.push({ id: 'token', cls: 'neutral', ic: IC.schluessel(18), titel: 'Kein GitHub-Token', text: 'Workflows und GitHub-Status sind aus' });
+    if (us && us.zustand === 'laeuft') M.push({ id: 'update', cls: 'laeuft', ic: IC.update(), link: t('Details'), titel: t('Update auf {v} läuft', { v: us.version || '' }), text: t('{schritt} ({nr}/5) · Runner arbeitet weiter', { schritt: (UPDATE_SCHRITTE[(us.schritt || 1) - 1] || UPDATE_SCHRITTE[0])[0], nr: us.schritt || 1 }) });
+    if (us && us.zustand === 'fehler' && jetzt - ms(us.zeit) < 86400000) M.push({ id: 'update', cls: 'fehler', ic: IC.x(18), link: t('Details'), titel: t('Update fehlgeschlagen'), text: t('Version {v} wurde wiederhergestellt und läuft', { v: u.installiert }) });
+    if (st && st.dienst.zustand === 'gestoppt') M.push({ id: 'gestoppt', cls: 'fehler', ic: IC.x(18), titel: t('Runner-Dienst gestoppt'), text: (st.dienst.grund === 'oom-kill' ? t('Speicher voll – ein Job hat den Arbeitsspeicher gesprengt.') + ' ' : stoppGrund(st) ? `${stoppGrund(st)}. ` : '') + t('Jobs bleiben in der Warteschlange') + (w && w.abfrage === 'ok' ? ' ' + t('({n} warten)', { n: w.repos.reduce((a, r) => a + r.wartet, 0) }) : '') });
+    if (st && st.dienst.zustand === 'fehlt') M.push({ id: 'runner', cls: 'warn', ic: IC.warn(18), titel: t('Kein Runner eingerichtet'), text: t('auf dieser VM wurde kein GitHub-Runner gefunden') });
+    if (st && st.github.zustand === 'offline' && st.dienst.zustand === 'aktiv') M.push({ id: 'offline', cls: 'fehler', ic: IC.x(18), titel: t('Runner offline bei GitHub'), text: `${st.github.seit ? t('seit {z}', { z: zeit(st.github.seit) }) + ' · ' : ''}${t('Jobs werden nicht zugestellt')}` });
+    if (w && ['nicht-erreichbar', 'kontingent', 'fehler'].includes(w.abfrage)) M.push({ id: 'github', cls: 'warn', ic: IC.warn(18), titel: w.abfrage === 'kontingent' ? t('GitHub-Kontingent erschöpft') : t('GitHub nicht erreichbar'), text: t('Workflows zeigen den Stand von {z}', { z: w.abgefragt ? zeit(w.abgefragt) : '–' }) + (w.naechste ? ' · ' + t('neuer Versuch in {n} s', { n: Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000)) }) : '') });
+    if (w && ['token-ungueltig', 'keine-rechte'].includes(w.abfrage)) M.push({ id: 'token', cls: 'fehler', ic: IC.schluessel(18), titel: w.abfrage === 'token-ungueltig' ? t('GitHub-Token ungültig oder abgelaufen') : t('GitHub-Token ohne Zugriff'), text: t('Workflows werden nicht mehr abgefragt') });
+    if (w && w.abfrage === 'kein-token') M.push({ id: 'token', cls: 'neutral', ic: IC.schluessel(18), titel: t('Kein GitHub-Token'), text: t('Workflows und GitHub-Status sind aus') });
     for (const p of S.platten || []) {
-      if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', cls: 'warn', ic: IC.warn(18), titel: `Platte knapp: ${zahl(p.frei / GB, 1)} GB frei`, text: `unter ${zahl(p.schwelleFrei / GB, 0)} GB räumt der Runner vor jedem Job auf` });
+      if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', cls: 'warn', ic: IC.warn(18), titel: t('Platte knapp: {n} GB frei', { n: zahl(p.frei / GB, 1) }), text: t('unter {n} GB räumt der Runner vor jedem Job auf', { n: zahl(p.schwelleFrei / GB, 0) }) });
     }
     if (w && w.tokenAblauf) {
       const tage = Math.ceil((ms(w.tokenAblauf) - jetzt) / 86400000);
-      if (tage <= 14 && tage > 0) M.push({ id: 'token', cls: 'warn', ic: IC.schluessel(18), titel: `GitHub-Token läuft in ${tage} ${mehrzahl(tage, 'Tag', 'Tagen')} ab`, text: `am ${datum(w.tokenAblauf)} – danach bleiben die Workflows leer` });
+      if (tage <= 14 && tage > 0) M.push({ id: 'token', cls: 'warn', ic: IC.schluessel(18), titel: t('GitHub-Token läuft in {n} {tage} ab', { n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }), text: t('am {d} – danach bleiben die Workflows leer', { d: datum(w.tokenAblauf) }) });
     }
-    if (u && u.neueste && u.neueste.version && vergleiche(u.neueste.version, u.installiert) > 0 && !(us && us.zustand === 'laeuft')) M.push({ id: 'update', cls: 'laeuft', ic: IC.update(), link: 'Was ist neu?', titel: `Version ${u.neueste.version} verfügbar`, text: `installiert ist ${u.installiert}` });
-    if (us && us.zustand === 'erfolg' && jetzt - ms(us.zeit) < 3600000) M.push({ id: 'update', cls: 'ok', ic: IC.ok(18), link: 'Was ist neu?', titel: `Aktualisiert auf ${u.installiert}`, text: `um ${hm(us.zeit)} · alles läuft` });
+    if (u && u.neueste && u.neueste.version && vergleiche(u.neueste.version, u.installiert) > 0 && !(us && us.zustand === 'laeuft')) M.push({ id: 'update', cls: 'laeuft', ic: IC.update(), link: t('Was ist neu?'), titel: t('Version {v} verfügbar', { v: u.neueste.version }), text: t('installiert ist {v}', { v: u.installiert }) });
+    if (us && us.zustand === 'erfolg' && jetzt - ms(us.zeit) < 3600000) M.push({ id: 'update', cls: 'ok', ic: IC.ok(18), link: t('Was ist neu?'), titel: t('Aktualisiert auf {v}', { v: u.installiert }), text: t('um {z} · alles läuft', { z: hm(us.zeit) }) });
     return M;
   }
 
@@ -148,31 +149,31 @@
   function renderKopf() {
     const st = S.status, jetzt = Date.now();
     if (st) {
-      $('vm-name').textContent = st.vm || '–'; $('runner-name').textContent = st.runner || 'kein Runner';
+      $('vm-name').textContent = st.vm || '–'; $('runner-name').textContent = st.runner || t('kein Runner');
       const lb = (st.labels || []).map(l => `<span class="label">${esc(l)}</span>`).join('');
       if ($('labels').innerHTML !== lb) $('labels').innerHTML = lb;
       document.title = `Runner-Monitor · ${st.vm}`;
     }
     const live = $('live');
-    if (S.verbindung === 'verbunden') { live.className = 'live ok'; live.innerHTML = `<span class="punkt"></span><span>Verbunden</span><span class="live-zeit">aktualisiert ${zeit(S.letzteDaten)}</span>`; }
-    else if (S.verbindung === 'getrennt') { live.className = 'live weg'; live.innerHTML = `${IC.getrennt()}<span>Getrennt</span><span class="live-zeit">${S.letzteDaten ? 'Stand ' + zeit(S.letzteDaten) : 'noch keine Daten'}</span>`; }
-    else { live.className = 'live neutral'; live.innerHTML = '<span class="punkt"></span><span>Verbinde …</span>'; }
+    if (S.verbindung === 'verbunden') { live.className = 'live ok'; live.innerHTML = `<span class="punkt"></span><span>${t('Verbunden')}</span><span class="live-zeit">${t('aktualisiert {z}', { z: zeit(S.letzteDaten) })}</span>`; }
+    else if (S.verbindung === 'getrennt') { live.className = 'live weg'; live.innerHTML = `${IC.getrennt()}<span>${t('Getrennt')}</span><span class="live-zeit">${S.letzteDaten ? t('Stand {z}', { z: zeit(S.letzteDaten) }) : t('noch keine Daten')}</span>`; }
+    else { live.className = 'live neutral'; live.innerHTML = `<span class="punkt"></span><span>${t('Verbinde …')}</span>`; }
     $('uhr-datum').textContent = `${wt(jetzt)} ${tm(jetzt)}`; $('uhr-zeit').textContent = zeit(jetzt);
     $('raster').classList.toggle('veraltet', S.verbindung === 'getrennt' && !!S.letzteDaten);
 
     const M = meldungen(), box = $('meldungen');
     if (!M.length) { box.replaceChildren(); return; }
     const m = M[0];
-    const html = `<div class="meldung ${m.cls}">${m.ic}<b>${esc(m.titel)}</b><span class="meldung-text">${esc(m.text)}</span>${M.length > 1 ? `<span class="meldung-mehr">+${M.length - 1} weitere</span>` : ''}<button type="button" class="meldung-link" data-aktion="info" data-anleitung="${m.id}">${esc(m.link || 'Was tun?')}</button></div>`;
+    const html = `<div class="meldung ${m.cls}">${m.ic}<b>${esc(m.titel)}</b><span class="meldung-text">${esc(m.text)}</span>${M.length > 1 ? `<span class="meldung-mehr">${t('+{n} weitere', { n: M.length - 1 })}</span>` : ''}<button type="button" class="meldung-link" data-aktion="info" data-anleitung="${m.id}">${esc(m.link || t('Was tun?'))}</button></div>`;
     if (box.dataset.html !== html) { box.innerHTML = html; box.dataset.html = html; }
   }
 
   function renderModus() {
-    const t = RM.thema();
-    const name = { system: 'Auto', hell: 'Hell', dunkel: 'Dunkel' }[t];
-    const ic = { system: IC.auto(), hell: IC.sonne(), dunkel: IC.mond() }[t];
-    const folgt = { system: 'Hell', hell: 'Dunkel', dunkel: 'Automatisch' }[t];
-    const k = $('k-modus'); k.innerHTML = `${ic}${name}`; k.setAttribute('aria-label', `Darstellung ${name}, umschalten auf ${folgt}`);
+    const th = RM.thema();
+    const name = { system: t('Auto'), hell: t('Hell'), dunkel: t('Dunkel') }[th];
+    const ic = { system: IC.auto(), hell: IC.sonne(), dunkel: IC.mond() }[th];
+    const folgt = { system: t('Hell'), hell: t('Dunkel'), dunkel: t('Automatisch') }[th];
+    const k = $('k-modus'); k.innerHTML = `${ic}${name}`; k.setAttribute('aria-label', t('Darstellung {a}, umschalten auf {b}', { a: name, b: folgt }));
   }
 
   /* ------------------------------------------------------------ Runner-Status */
@@ -180,12 +181,12 @@
     const st = S.status; if (!st) return;
     const jetzt = Date.now(), ref = bezug(), w = S.workflows;
     const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : 'bereit';
-    const pillD = st.dienst.zustand === 'aktiv' ? `<span class="pill ok">${IC.ok(13, 1.7)}Dienst aktiv</span>` : st.dienst.zustand === 'fehlt' ? `<span class="pill neutral">${IC.unklar()}Kein Dienst</span>` : `<span class="pill fehler">${IC.x(13, 1.7)}Dienst gestoppt</span>`;
+    const pillD = st.dienst.zustand === 'aktiv' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Dienst aktiv')}</span>` : st.dienst.zustand === 'fehlt' ? `<span class="pill neutral">${IC.unklar()}${t('Kein Dienst')}</span>` : `<span class="pill fehler">${IC.x(13, 1.7)}${t('Dienst gestoppt')}</span>`;
     const g = st.github.zustand;
-    const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}Online bei GitHub</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}Offline bei GitHub</span>` : `<span class="pill neutral">${IC.unklar()}GitHub: unbekannt</span>`;
+    const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei GitHub')}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei GitHub')}</span>` : `<span class="pill neutral">${IC.unklar()}${t('GitHub: unbekannt')}</span>`;
     const kopf = {
-      job: ['laeuft', IC.play(28, 1.3), 'Job läuft'], bereit: ['ok', IC.ok(28, 1.3), 'Bereit'], fehlt: ['warn', IC.warn(28, 1.3), 'Kein Runner'],
-      gestoppt: ['fehler', IC.stop(28), 'Dienst gestoppt'], offline: ['warn', IC.warn(28, 1.3), 'Offline bei GitHub'],
+      job: ['laeuft', IC.play(28, 1.3), t('Job läuft')], bereit: ['ok', IC.ok(28, 1.3), t('Bereit')], fehlt: ['warn', IC.warn(28, 1.3), t('Kein Runner')],
+      gestoppt: ['fehler', IC.stop(28), t('Dienst gestoppt')], offline: ['warn', IC.warn(28, 1.3), t('Offline bei GitHub')],
     }[art];
     const l0 = (st.letzteJobs || [])[0];
     const letzter = l0 ? `${l0.repo ? esc(l0.repo) + ' · ' : ''}${l0.workflow ? esc(l0.workflow) + ' · ' : ''}${esc(l0.name)} · ${vor((jetzt - ms(l0.ende)) / 1000)}` : '–';
@@ -201,46 +202,46 @@
       mitte = `
         <div>
           <div class="job-repo">${esc(j.repo || j.name)}${j.privat ? IC.schloss() : ''}</div>
-          ${j.workflow ? `<div class="job-pfad">Workflow <b>${esc(j.workflow)}</b><span class="sep">›</span>Job <b>${esc(j.name)}</b></div>` : `<div class="job-pfad">Job <b>${esc(j.name)}</b></div>`}
+          ${j.workflow ? `<div class="job-pfad">${t('Workflow')} <b>${esc(j.workflow)}</b><span class="sep">›</span>${t('Job')} <b>${esc(j.name)}</b></div>` : `<div class="job-pfad">${t('Job')} <b>${esc(j.name)}</b></div>`}
           ${j.ref ? `<div class="job-ref"><span>${esc(j.ref.art)}</span><span class="ref">${esc(j.ref.name)}</span><span class="ref-titel">${esc(j.ref.titel || '')}</span></div>` : ''}
         </div>
         <div class="schritt">
-          <div class="zeile-k"><span>Aktueller Schritt</span><span class="schritt-zahl"></span></div>
+          <div class="zeile-k"><span>${t('Aktueller Schritt')}</span><span class="schritt-zahl"></span></div>
           <div class="schritt-name"></div>
           <div class="segmente" data-spalten="${segN}">${segs}</div>
         </div>
         <div class="zahlen">
-          <div><div class="zeile-k">Laufzeit</div><div class="zahl-gross laufzeit"></div></div>
-          <div><div class="zeile-k">Gestartet</div><div class="zahl-mittel">${j.start ? zeit(j.start) : '–'}</div><div class="zahl-sub">${j.start ? `${wt(j.start)}, ${tm(j.start)}` : ''}</div></div>
+          <div><div class="zeile-k">${t('Laufzeit')}</div><div class="zahl-gross laufzeit"></div></div>
+          <div><div class="zeile-k">${t('Gestartet')}</div><div class="zahl-mittel">${j.start ? zeit(j.start) : '–'}</div><div class="zahl-sub">${j.start ? `${wt(j.start)}, ${tm(j.start)}` : ''}</div></div>
         </div>`;
     } else {
       const text = {
-        bereit: 'Wartet auf den nächsten Job. Neue Jobs starten automatisch.',
-        gestoppt: 'Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.'
-          + (st.dienst.grund === 'oom-kill' ? ' Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.' : ''),
-        offline: 'Der Dienst läuft, aber GitHub sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.',
-        fehlt: 'Auf dieser VM ist kein GitHub-Runner eingerichtet. Das Einrichtungsskript kann ihn mit einrichten.',
+        bereit: t('Wartet auf den nächsten Job. Neue Jobs starten automatisch.'),
+        gestoppt: t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.')
+          + (st.dienst.grund === 'oom-kill' ? ' ' + t('Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.') : ''),
+        offline: t('Der Dienst läuft, aber GitHub sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.'),
+        fehlt: t('Auf dieser VM ist kein GitHub-Runner eingerichtet. Das Einrichtungsskript kann ihn mit einrichten.'),
       }[art];
       const wartend = w && w.abfrage === 'ok' ? w.repos.reduce((a, r) => a + r.wartet, 0) : null;
-      const dienstSeit = st.dienst.seit ? (art === 'gestoppt' ? `gestoppt seit ${zeit(st.dienst.seit)} (${vor((jetzt - ms(st.dienst.seit)) / 1000)})` : `aktiv seit ${seit((jetzt - ms(st.dienst.seit)) / 1000)}`) : (art === 'gestoppt' ? 'gestoppt' : art === 'fehlt' ? 'nicht vorhanden' : 'aktiv');
-      const kv = art === 'gestoppt' ? [['Dienst', dienstSeit], ...(stoppGrund(st) ? [['Grund', esc(stoppGrund(st))]] : []), ['Wartende Jobs', wartend == null ? 'unbekannt' : `${wartend} in der Warteschlange`], ['Letzter Job', letzter]]
-        : art === 'offline' ? [['Dienst', dienstSeit], ['Bei GitHub', st.github.seit ? `offline seit ${zeit(st.github.seit)} (${vor((jetzt - ms(st.github.seit)) / 1000)})` : 'offline'], ['Letzter Job', letzter]]
-        : art === 'fehlt' ? [['Runner', 'nicht gefunden in /opt/actions-runner'], ['Einrichten', `${SKRIPT} runner`]]
-        : [['Dienst', dienstSeit], ['Letzter Job', letzter], ['Runner-Version', esc(st.version || '–')]];
+      const dienstSeit = st.dienst.seit ? (art === 'gestoppt' ? t('gestoppt seit {z} ({vor})', { z: zeit(st.dienst.seit), vor: vor((jetzt - ms(st.dienst.seit)) / 1000) }) : t('aktiv seit {d}', { d: seit((jetzt - ms(st.dienst.seit)) / 1000) })) : (art === 'gestoppt' ? t('gestoppt') : art === 'fehlt' ? t('nicht vorhanden') : t('aktiv'));
+      const kv = art === 'gestoppt' ? [[t('Dienst'), dienstSeit], ...(stoppGrund(st) ? [[t('Grund'), esc(stoppGrund(st))]] : []), [t('Wartende Jobs'), wartend == null ? t('unbekannt') : t('{n} in der Warteschlange', { n: wartend })], [t('Letzter Job'), letzter]]
+        : art === 'offline' ? [[t('Dienst'), dienstSeit], [t('Bei GitHub'), st.github.seit ? t('offline seit {z} ({vor})', { z: zeit(st.github.seit), vor: vor((jetzt - ms(st.github.seit)) / 1000) }) : t('offline')], [t('Letzter Job'), letzter]]
+        : art === 'fehlt' ? [['Runner', t('nicht gefunden in /opt/actions-runner')], [t('Einrichten'), `${SKRIPT} runner`]]
+        : [[t('Dienst'), dienstSeit], [t('Letzter Job'), letzter], [t('Runner-Version'), esc(st.version || '–')]];
       mitte = `<p class="zustand-text">${text}</p><dl class="kv">${kv.map(([k, v]) => `<div class="kv-z"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
-        + (art === 'gestoppt' || art === 'offline' ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="logs">${IC.datei()}Runner-Logs abrufen ›</button>` : '');
+        + (art === 'gestoppt' || art === 'offline' ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="logs">${IC.datei()}${t('Runner-Logs abrufen ›')}</button>` : '');
     }
-    const ERG = { erfolg: ['ok', IC.ok(), 'Erfolg'], fehler: ['fehler', IC.x(), 'Fehler'], abgebrochen: ['neutral', IC.abbr(), 'Abgebrochen'] };
+    const ERG = { erfolg: ['ok', IC.ok(), t('Erfolg')], fehler: ['fehler', IC.x(), t('Fehler')], abgebrochen: ['neutral', IC.abbr(), t('Abgebrochen')] };
     const letzte = (st.letzteJobs || []).slice(0, 5).map(j => {
       const e = ERG[j.ergebnis] || ERG.abgebrochen;
       const wf = [j.workflow, j.name].filter(Boolean).map(esc).join(' · ');
       return `<div class="jobzeile"><span class="erg ${e[0]}">${e[1]}${e[2]}</span><span class="jz-name">${esc(j.repo || '')}${j.repo ? ' ' : ''}<span class="jz-wf">${j.repo ? '· ' : ''}${wf}</span></span><span class="r">${j.dauer != null ? dauer(j.dauer) : '–'}</span><span class="jz-ende">${hm(j.ende)}</span></div>`;
     }).join('');
     const html = `
-      <div class="karte-kopf"><span class="karte-titel">Runner-Status</span><div class="pillen">${pillD}${pillG}</div></div>
+      <div class="karte-kopf"><span class="karte-titel">${t('Runner-Status')}</span><div class="pillen">${pillD}${pillG}</div></div>
       <div class="zustand ${kopf[0]}">${kopf[1]}<span class="zustand-titel">${kopf[2]}</span></div>
       ${mitte}
-      <div class="letzte"><div class="letzte-titel">Letzte Jobs</div>${letzte || '<div class="leer">Seit dem Start des Monitors noch keine Jobs.</div>'}</div>`;
+      <div class="letzte"><div class="letzte-titel">${t('Letzte Jobs')}</div>${letzte || `<div class="leer">${t('Seit dem Start des Monitors noch keine Jobs.')}</div>`}</div>`;
     // nur bei Änderung neu schreiben – sonst gehen Klicks und Fokus auf Knöpfen der Karte verloren
     const karte = $('status');
     if (karte.dataset.html !== html) {
@@ -250,10 +251,10 @@
       if (segs) segs.style.gridTemplateColumns = `repeat(${segs.dataset.spalten}, minmax(0, 1fr))`;
     }
     if (dyn) {
-      const setze = (el, t) => { if (el && el.textContent !== t) el.textContent = t; };
-      setze(karte.querySelector('.schritt-zahl'), `${dyn.nr} von ${dyn.von || '–'}`);
+      const setze = (el, x) => { if (el && el.textContent !== x) el.textContent = x; };
+      setze(karte.querySelector('.schritt-zahl'), t('{nr} von {von}', { nr: dyn.nr, von: dyn.von || '–' }));
       const nm = karte.querySelector('.schritt-name');
-      setze(nm, dyn.name || `Schritt ${dyn.nr}`); if (nm) nm.classList.toggle('mut', !dyn.name);
+      setze(nm, dyn.name || t('Schritt {nr}', { nr: dyn.nr })); if (nm) nm.classList.toggle('mut', !dyn.name);
       karte.querySelectorAll('.segmente .seg').forEach((sg, i) => {
         sg.className = `seg${i < dyn.nr - 1 ? ' fertig' : i === dyn.nr - 1 ? ' aktiv' : dyn.von ? '' : ' unbekannt'}`;
       });
@@ -269,36 +270,36 @@
     const jetzt = Date.now();
     let inhalt = '', fuss = '', zeitText = '';
     if (w.abfrage === 'kein-token') {
-      inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">Kein GitHub-Token eingerichtet</div><div class="leer-text">Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.</div><div class="leer-pfad">/etc/runner-monitor/github-token</div><button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">Anleitung: Token einrichten ›</button></div>`;
-      fuss = '<div class="wf-zeit">Abfrage aus</div>';
+      inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">${t('Kein GitHub-Token eingerichtet')}</div><div class="leer-text">${t('Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.')}</div><div class="leer-pfad">/etc/runner-monitor/github-token</div><button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">${t('Anleitung: Token einrichten ›')}</button></div>`;
+      fuss = `<div class="wf-zeit">${t('Abfrage aus')}</div>`;
     } else {
       const aktiv = w.repos.filter(r => r.laeuft || r.wartet), ruhig = w.repos.filter(r => !r.laeuft && !r.wartet);
       const L = aktiv.reduce((a, r) => a + r.laeuft, 0), W = aktiv.reduce((a, r) => a + r.wartet, 0);
       const alt = !['ok'].includes(w.abfrage);
       inhalt = `<div class="wf-inhalt${alt ? ' alt' : ''}">
         <div class="summen">
-          <div class="summe laeuft">${IC.play(16)}<span class="summe-zahl">${L}</span><span class="summe-text">${mehrzahl(L, 'läuft', 'laufen')}</span></div>
-          <div class="summe wartet">${IC.uhr()}<span class="summe-zahl">${W}</span><span class="summe-text">${mehrzahl(W, 'wartet', 'warten')}</span></div>
+          <div class="summe laeuft">${IC.play(16)}<span class="summe-zahl">${L}</span><span class="summe-text">${mehrzahl(L, t('läuft'), t('laufen'))}</span></div>
+          <div class="summe wartet">${IC.uhr()}<span class="summe-zahl">${W}</span><span class="summe-text">${mehrzahl(W, t('wartet'), t('warten'))}</span></div>
         </div>
-        ${aktiv.map(r => `<div class="repo"><span class="repo-name">${esc(r.name)}${r.privat ? IC.schloss(12) : ''}</span><span class="repo-pillen">${r.laeuft ? `<span class="pill laeuft">${IC.dreieck()}${r.laeuft} ${mehrzahl(r.laeuft, 'läuft', 'laufen')}</span>` : ''}${r.wartet ? `<span class="pill wartet">${IC.uhr(12, 1.7)}${r.wartet} ${mehrzahl(r.wartet, 'wartet', 'warten')}</span>` : ''}</span></div>`).join('')}
-        ${aktiv.length ? '' : `<div class="alle-ruhig">${IC.ok()}Nichts läuft, nichts wartet</div>`}
-        ${ruhig.length ? `<button type="button" class="ruhig-knopf" data-aktion="wf-offen" aria-expanded="${S.wfOffen}">${IC.chev(S.wfOffen)}${aktiv.length ? `${ruhig.length} weitere ruhig` : `Alle ${ruhig.length} Repositories ruhig`}</button>` : ''}
+        ${aktiv.map(r => `<div class="repo"><span class="repo-name">${esc(r.name)}${r.privat ? IC.schloss(12) : ''}</span><span class="repo-pillen">${r.laeuft ? `<span class="pill laeuft">${IC.dreieck()}${r.laeuft} ${mehrzahl(r.laeuft, t('läuft'), t('laufen'))}</span>` : ''}${r.wartet ? `<span class="pill wartet">${IC.uhr(12, 1.7)}${r.wartet} ${mehrzahl(r.wartet, t('wartet'), t('warten'))}</span>` : ''}</span></div>`).join('')}
+        ${aktiv.length ? '' : `<div class="alle-ruhig">${IC.ok()}${t('Nichts läuft, nichts wartet')}</div>`}
+        ${ruhig.length ? `<button type="button" class="ruhig-knopf" data-aktion="wf-offen" aria-expanded="${S.wfOffen}">${IC.chev(S.wfOffen)}${aktiv.length ? t('{n} weitere ruhig', { n: ruhig.length }) : t('Alle {n} Repositories ruhig', { n: ruhig.length })}</button>` : ''}
         ${S.wfOffen ? `<div class="ruhig-liste">${ruhig.map(r => `<span class="ruhig-repo">${esc(r.name)}</span>`).join('')}</div>` : ''}
       </div>`;
       if (alt) {
-        const texte = { 'nicht-erreichbar': 'GitHub nicht erreichbar', kontingent: 'API-Kontingent erschöpft', 'token-ungueltig': 'Token ungültig oder abgelaufen', 'keine-rechte': 'Token ohne Zugriff auf die Organisation', fehler: 'Abfrage fehlgeschlagen' };
-        fuss += `<div class="hinweis warn">${IC.warn()}<div>${texte[w.abfrage] || 'Abfrage fehlgeschlagen'} <span>– angezeigt wird der Stand von ${w.abgefragt ? zeit(w.abgefragt) : '–'}.${w.naechste ? ` Neuer Versuch in ${Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000))} s.` : ''}</span></div></div>`;
+        const texte = { 'nicht-erreichbar': t('GitHub nicht erreichbar'), kontingent: t('API-Kontingent erschöpft'), 'token-ungueltig': t('Token ungültig oder abgelaufen'), 'keine-rechte': t('Token ohne Zugriff auf die Organisation'), fehler: t('Abfrage fehlgeschlagen') };
+        fuss += `<div class="hinweis warn">${IC.warn()}<div>${texte[w.abfrage] || t('Abfrage fehlgeschlagen')} <span>${t('– angezeigt wird der Stand von {z}.', { z: w.abgefragt ? zeit(w.abgefragt) : '–' })}${w.naechste ? ' ' + t('Neuer Versuch in {n} s.', { n: Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000)) }) : ''}</span></div></div>`;
       }
       if (w.tokenAblauf) {
         const tage = Math.ceil((ms(w.tokenAblauf) - jetzt) / 86400000);
-        if (tage <= 14) fuss += `<div class="hinweis warn">${IC.schluessel()}<div>${tage > 0 ? `Token läuft in ${tage} ${mehrzahl(tage, 'Tag', 'Tagen')} ab` : 'Token ist abgelaufen'} <span>(${datum(w.tokenAblauf)}). Danach bleibt dieser Bereich leer.</span></div></div>`;
+        if (tage <= 14) fuss += `<div class="hinweis warn">${IC.schluessel()}<div>${tage > 0 ? t('Token läuft in {n} {tage} ab', { n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }) : t('Token ist abgelaufen')} <span>${t('({d}). Danach bleibt dieser Bereich leer.', { d: datum(w.tokenAblauf) })}</span></div></div>`;
       }
       const nx = w.naechste ? Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000)) : null;
-      zeitText = alt ? `Letzte erfolgreiche Abfrage ${w.abgefragt ? zeit(w.abgefragt) : '–'}` : `Abgefragt ${zeit(w.abgefragt)}${S.verbindung === 'verbunden' && nx != null ? ` · nächste in ${nx} s` : ''}`;
+      zeitText = alt ? t('Letzte erfolgreiche Abfrage {z}', { z: w.abgefragt ? zeit(w.abgefragt) : '–' }) : t('Abgefragt {z}', { z: zeit(w.abgefragt) }) + (S.verbindung === 'verbunden' && nx != null ? ' · ' + t('nächste in {n} s', { n: nx }) : '');
       fuss += '<div class="wf-zeit"></div>';
     }
-    const meta = w.abfrage === 'kein-token' ? esc(w.org) : `${esc(w.org)} · ${w.repos.length} Repositories`;
-    const html = `<div class="karte-kopf"><span class="karte-titel">Workflows</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
+    const meta = w.abfrage === 'kein-token' ? esc(w.org) : `${esc(w.org)} · ${t('{n} Repositories', { n: w.repos.length })}`;
+    const html = `<div class="karte-kopf"><span class="karte-titel">${t('Workflows')}</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
     // nur bei Änderung neu schreiben; die sekündlich wechselnde Zeitzeile per textContent
     if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
     const zt = el.querySelector('.wf-zeit'); if (zt && zeitText && zt.textContent !== zeitText) zt.textContent = zeitText;
@@ -324,8 +325,8 @@
   }
   /* Achse links: „vor 10 Min.“ bei vollem Verlauf, sonst ab wann gemessen wird („seit 14:02“). */
   function achseVon() {
-    if (S.cpuH.length >= 600 || !S.verlaufStart) return 'vor 10 Min.';
-    return `seit ${hm(S.verlaufStart)}`;
+    if (S.cpuH.length >= 600 || !S.verlaufStart) return t('vor 10 Min.');
+    return t('seit {z}', { z: hm(S.verlaufStart) });
   }
 
   /* Bytes je Sekunde, dezimal wie bei Netzwerken üblich (1 MB/s = 1 000 000 B/s). */
@@ -339,7 +340,7 @@
   function renderSystem() {
     const d = S.system; if (!d) return;
     const n = d.kerne.length;
-    $('sys-meta').textContent = `${n} Kerne · ${zahl(d.ram.gesamt / GiB, 0)} GB RAM · läuft seit ${seit((Date.now() - ms(d.start)) / 1000)}`;
+    $('sys-meta').textContent = t('{n} Kerne · {ram} GB RAM · läuft seit {d}', { n, ram: zahl(d.ram.gesamt / GiB, 0), d: seit((Date.now() - ms(d.start)) / 1000) });
     $('cpu').textContent = zahl(d.cpu, 0);
     const k = $('kerne');
     if (S.kerneN !== n) {
@@ -362,7 +363,7 @@
       const spitze = S.netzH.reduce((m, [rx, tx]) => Math.max(m, rx, tx), 0), skala = Math.max(spitze, 64e3);
       const [rl2, rf2] = spark(S.netzH.map(w => w[0]), skala, 'max'), [tl] = spark(S.netzH.map(w => w[1]), skala, 'max');
       $('netz-rx-linie').setAttribute('d', rl2); $('netz-rx-flaeche').setAttribute('d', rf2); $('netz-tx-linie').setAttribute('d', tl);
-      const [w, e] = rate(spitze); $('netz-spitze').textContent = `Spitze ${w} ${e}`;
+      const [w, e] = rate(spitze); $('netz-spitze').textContent = t('Spitze {w} {e}', { w, e });
     }
     const von = achseVon();
     document.querySelectorAll('.achse-von').forEach((el) => { if (el.textContent !== von) el.textContent = von; });
@@ -377,7 +378,7 @@
 
   function renderPlatten() {
     const liste = S.platten || [];
-    $('pl-anzahl').textContent = `${liste.length} ${mehrzahl(liste.length, 'Laufwerk', 'Laufwerke')}`;
+    $('pl-anzahl').textContent = `${liste.length} ${mehrzahl(liste.length, t('Laufwerk'), t('Laufwerke'))}`;
     const box = $('platten');
     if (box.children.length !== liste.length || box.dataset.pfade !== liste.map(p => p.pfad).join('|')) {
       box.dataset.pfade = liste.map(p => p.pfad).join('|');
@@ -388,18 +389,18 @@
       const hs = p.schwelleFrei > 0, sb = p.gesamt - p.schwelleFrei, knapp = hs && p.frei < p.schwelleFrei;
       const sPct = hs ? sb / p.gesamt * 100 : 100;
       el.querySelector('.pl-pfad').textContent = p.pfad;
-      const frei = el.querySelector('.pl-frei-k'); frei.textContent = `${zahl(p.frei / GB, 1)} GB frei`; frei.classList.toggle('warn', knapp);
-      el.querySelector('.karte-meta').textContent = `${zahl(p.belegt / GB, 1)} von ${zahl(p.gesamt / GB, 0)} GB`;
+      const frei = el.querySelector('.pl-frei-k'); frei.textContent = t('{n} GB frei', { n: zahl(p.frei / GB, 1) }); frei.classList.toggle('warn', knapp);
+      el.querySelector('.karte-meta').textContent = t('{a} von {b} GB', { a: zahl(p.belegt / GB, 1), b: zahl(p.gesamt / GB, 0) });
       const balken = el.querySelector('.pl-balken');
-      balken.setAttribute('aria-label', `${p.pfad}: ${zahl(p.belegt / GB, 1)} von ${zahl(p.gesamt / GB, 0)} GB belegt, ${zahl(p.frei / GB, 1)} GB frei`);
+      balken.setAttribute('aria-label', t('{pfad}: {a} von {b} GB belegt, {c} GB frei', { pfad: p.pfad, a: zahl(p.belegt / GB, 1), b: zahl(p.gesamt / GB, 0), c: zahl(p.frei / GB, 1) }));
       const [a, b] = balken.querySelectorAll('.pl-teil');
       a.style.width = `${Math.min(p.belegt, hs ? sb : p.gesamt) / p.gesamt * 100}%`;
       b.style.left = `${sPct}%`; b.style.width = `${hs ? Math.max(0, p.belegt - sb) / p.gesamt * 100 : 0}%`;
       const marke = balken.querySelector('.pl-marke'); marke.hidden = !hs; marke.style.left = `${sPct}%`;
       const unten = el.querySelector('.pl-unten');
       const html = !hs ? '' : knapp
-        ? `<div class="hinweis warn pl-warn">${IC.warn(14)}<div>Unter ${zahl(p.schwelleFrei / GB, 0)} GB frei <span>– der Runner räumt vor jedem Job auf.</span></div></div>`
-        : `<div class="pl-legende"><span>Aufräumen unter ${zahl(p.schwelleFrei / GB, 0)} GB frei</span></div>`;
+        ? `<div class="hinweis warn pl-warn">${IC.warn(14)}<div>${t('Unter {n} GB frei', { n: zahl(p.schwelleFrei / GB, 0) })} <span>${t('– der Runner räumt vor jedem Job auf.')}</span></div></div>`
+        : `<div class="pl-legende"><span>${t('Aufräumen unter {n} GB frei', { n: zahl(p.schwelleFrei / GB, 0) })}</span></div>`;
       if (unten.dataset.html !== html) { unten.innerHTML = html; unten.dataset.html = html; }
       const leg = unten.querySelector('.pl-legende span'); if (leg) leg.style.right = `${100 - sPct}%`;
     });
@@ -416,7 +417,7 @@
     const j = S.status && S.status.job, chip = $('schritt-chip');
     if (j && S.status.dienst.zustand === 'aktiv') {
       const { nr, von, name } = schrittVon(j);
-      chip.hidden = false; chip.textContent = `Schritt ${nr}/${von || '–'}${name ? ' · ' + name : ''}`;
+      chip.hidden = false; chip.textContent = t('Schritt {nr}/{von}', { nr, von: von || '–' }) + (name ? ' · ' + name : '');
     } else chip.hidden = true;
     renderLeer();
   }
@@ -424,20 +425,20 @@
   function renderEreignisse() {
     const E = S.ereignisse.slice(-3).map(e => {
       const was = [e.repo, e.workflow].filter(Boolean).map(esc).join(' · ') + (e.repo || e.workflow ? ' / ' : '') + esc(e.name || '');
-      if (e.art === 'start') return [e.zeit, 'laeuft', IC.play(), 'Job gestartet', was, ''];
-      if (e.art === 'ende') { const ok = e.ergebnis === 'erfolg'; const cls = ok ? 'ok' : e.ergebnis === 'fehler' ? 'fehler' : 'neutral'; return [e.zeit, cls, ok ? IC.ok() : e.ergebnis === 'fehler' ? IC.x() : IC.abbr(), 'Job beendet', was, `${ok ? 'Erfolg' : e.ergebnis === 'fehler' ? 'Fehler' : 'Abgebrochen'}${e.dauer != null ? ' · ' + dauer(e.dauer) : ''}`]; }
-      if (e.art === 'dienst-gestoppt') return [e.zeit, 'fehler', IC.x(), 'Dienst gestoppt', 'Runner-Dienst: inactive (dead)', ''];
-      if (e.art === 'dienst-gestartet') return [e.zeit, 'ok', IC.ok(), 'Dienst gestartet', 'Runner-Dienst: active (running)', ''];
-      return [e.zeit, 'warn', IC.warn(14), 'Hinweis', esc(e.name || ''), ''];
+      if (e.art === 'start') return [e.zeit, 'laeuft', IC.play(), t('Job gestartet'), was, ''];
+      if (e.art === 'ende') { const ok = e.ergebnis === 'erfolg'; const cls = ok ? 'ok' : e.ergebnis === 'fehler' ? 'fehler' : 'neutral'; return [e.zeit, cls, ok ? IC.ok() : e.ergebnis === 'fehler' ? IC.x() : IC.abbr(), t('Job beendet'), was, `${ok ? t('Erfolg') : e.ergebnis === 'fehler' ? t('Fehler') : t('Abgebrochen')}${e.dauer != null ? ' · ' + dauer(e.dauer) : ''}`]; }
+      if (e.art === 'dienst-gestoppt') return [e.zeit, 'fehler', IC.x(), t('Dienst gestoppt'), t('Runner-Dienst: inactive (dead)'), ''];
+      if (e.art === 'dienst-gestartet') return [e.zeit, 'ok', IC.ok(), t('Dienst gestartet'), t('Runner-Dienst: active (running)'), ''];
+      return [e.zeit, 'warn', IC.warn(14), t('Hinweis'), esc(e.name || ''), ''];
     });
-    $('ereignisse').innerHTML = E.map(([t, cls, ic, titel, text, rechts]) => `<div class="ev"><span class="ev-zeit">${zeit(t)}</span><span class="${cls}">${ic}</span><span class="ev-text"><b>${titel}</b> · ${text}</span><span class="ev-rechts ${cls}">${rechts}</span></div>`).join('');
+    $('ereignisse').innerHTML = E.map(([z, cls, ic, titel, text, rechts]) => `<div class="ev"><span class="ev-zeit">${zeit(z)}</span><span class="${cls}">${ic}</span><span class="ev-text"><b>${titel}</b> · ${text}</span><span class="ev-rechts ${cls}">${rechts}</span></div>`).join('');
   }
 
   function zeileEl(z) {
     const div = document.createElement('div');
     if (z.art === 'schritt') {
       div.className = 'trenner';
-      div.innerHTML = `<span class="tr-nr">Schritt ${Number(z.nr) || 1}/${Number(z.von) || '–'}</span><span class="tr-name">${esc(z.name || '')}</span><span class="tr-linie"></span><span class="tr-zeit">${zeit(z.zeit)}</span>`;
+      div.innerHTML = `<span class="tr-nr">${t('Schritt {nr}/{von}', { nr: Number(z.nr) || 1, von: Number(z.von) || '–' })}</span><span class="tr-name">${esc(z.name || '')}</span><span class="tr-linie"></span><span class="tr-zeit">${zeit(z.zeit)}</span>`;
     } else {
       div.className = 'z' + (istFehler(z.text) ? ' fehler' : '');
       div.innerHTML = `<span class="zt">${zeit(z.zeit)}</span><span class="zx">${ansi(z.text).map(s => (s.c ? `<span class="${s.c}">${esc(s.t)}</span>` : esc(s.t))).join('')}</span>`;
@@ -453,21 +454,21 @@
   function renderLeer() {
     const leer = $('term-leer'), st = S.status;
     leer.hidden = S.zeilenN > 0 || S.puffer.length > 0;
-    leer.textContent = st && st.dienst.zustand === 'gestoppt' ? 'Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.'
-      : st && st.github.zustand === 'offline' ? 'Kein Schritt läuft. GitHub stellt dem Runner gerade keine Jobs zu.'
-      : 'Kein Schritt läuft. Die Ausgabe erscheint hier, sobald ein Job startet.';
+    leer.textContent = st && st.dienst.zustand === 'gestoppt' ? t('Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.')
+      : st && st.github.zustand === 'offline' ? t('Kein Schritt läuft. GitHub stellt dem Runner gerade keine Jobs zu.')
+      : t('Kein Schritt läuft. Die Ausgabe erscheint hier, sobald ein Job startet.');
   }
   function renderPause() {
     const k = $('k-pause');
-    k.innerHTML = S.angehalten ? `${IC.dreieck(12)}Weiter` : `${IC.pause()}Anhalten`;
+    k.innerHTML = S.angehalten ? `${IC.dreieck(12)}${t('Weiter')}` : `${IC.pause()}${t('Anhalten')}`;
     k.setAttribute('aria-pressed', String(S.angehalten));
     $('term').classList.toggle('pausiert', S.angehalten);
-    const neu = `${S.puffer.length} ${mehrzahl(S.puffer.length, 'neue Zeile', 'neue Zeilen')}`;
+    const neu = `${S.puffer.length} ${mehrzahl(S.puffer.length, t('neue Zeile'), t('neue Zeilen'))}`;
     $('pause-hinweis').hidden = !S.angehalten;
-    $('pause-text').textContent = `Angehalten · ${neu}`;
+    $('pause-text').textContent = `${t('Angehalten')} · ${neu}`;
     // Hochgescrollt ist ein eigener Zustand mit eigener Pille (Design 0.3.0), „Anhalten“ hat Vorrang.
     $('scroll-hinweis').hidden = !(S.hoch && !S.angehalten);
-    $('scroll-text').textContent = `Mitlaufen angehalten · ${neu}`;
+    $('scroll-text').textContent = `${t('Mitlaufen angehalten')} · ${neu}`;
   }
   function leerePuffer() { const p = S.puffer; S.puffer = []; if (p.length) haengeAn(p); }
   function umschaltenPause() {
@@ -486,67 +487,67 @@
     const knapp = (S.platten || []).some(p => p.schwelleFrei && p.frei < p.schwelleFrei);
     const tokenAblauf = w.tokenAblauf && (ms(w.tokenAblauf) - Date.now()) < 14 * 86400000;
     return [
-      { id: 'token', titel: 'GitHub-Token einrichten oder erneuern', aktiv: ['kein-token', 'token-ungueltig', 'keine-rechte'].includes(w.abfrage) || tokenAblauf, wann: 'Wenn „Kein GitHub-Token“, „ohne Zugriff“ oder „Token läuft ab“ gemeldet wird. Schritt 1 bis 4 auf github.com, Schritt 5 und 6 auf der VM.', schritte: [
-        ['Auf github.com: Profilbild › Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.'],
-        ['Resource owner: die Organisation, nicht das eigene Konto. Repository access: All repositories. Ablauf zum Beispiel 1 Jahr.'],
-        ['Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status zusätzlich Organization › Self-hosted runners „Read-only“.'],
-        ['Verlangt die Organisation eine Freigabe: Organisation › Settings › Personal access tokens › Pending requests. Vorher meldet der Monitor „ohne Zugriff“.'],
-        ['Auf der VM eintragen, die Eingabe bleibt unsichtbar. Das Skript fragt auch nach der Organisation, Enter behält die bisherige:', `${SKRIPT} token`],
-        ['Prüfen, ob GitHub das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):', `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "Authorization: Bearer $(sudo cat /etc/runner-monitor/github-token)" \\\n  "https://api.github.com/orgs/${w.org || 'beispiel-org'}/repos?per_page=1"`],
+      { id: 'token', titel: t('GitHub-Token einrichten oder erneuern'), aktiv: ['kein-token', 'token-ungueltig', 'keine-rechte'].includes(w.abfrage) || tokenAblauf, wann: t('Wenn „Kein GitHub-Token“, „ohne Zugriff“ oder „Token läuft ab“ gemeldet wird. Schritt 1 bis 4 auf github.com, Schritt 5 und 6 auf der VM.'), schritte: [
+        [t('Auf github.com: Profilbild › Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.')],
+        [t('Resource owner: die Organisation, nicht das eigene Konto. Repository access: All repositories. Ablauf zum Beispiel 1 Jahr.')],
+        [t('Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status zusätzlich Organization › Self-hosted runners „Read-only“.')],
+        [t('Verlangt die Organisation eine Freigabe: Organisation › Settings › Personal access tokens › Pending requests. Vorher meldet der Monitor „ohne Zugriff“.')],
+        [t('Auf der VM eintragen, die Eingabe bleibt unsichtbar. Das Skript fragt auch nach der Organisation, Enter behält die bisherige:'), `${SKRIPT} token`],
+        [t('Prüfen, ob GitHub das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):'), `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "Authorization: Bearer $(sudo cat /etc/runner-monitor/github-token)" \\\n  "https://api.github.com/orgs/${w.org || 'beispiel-org'}/repos?per_page=1"`],
       ] },
-      { id: 'github', titel: 'GitHub nicht erreichbar', aktiv: ['nicht-erreichbar', 'kontingent', 'fehler'].includes(w.abfrage), wann: 'Wenn die Abfrage der Workflows fehlschlägt. Die Karte zeigt dann den letzten Stand.', schritte: [
-        ['Zuerst den Status von GitHub prüfen: githubstatus.com.'],
-        ['Von der VM aus testen, ob die API antwortet:', 'curl -sI https://api.github.com | head -1'],
-        ['Antwort 401: Token ungültig oder abgelaufen, siehe „GitHub-Token einrichten oder erneuern“. Antwort 403: API-Kontingent erschöpft, die Abfrage setzt bis zum Reset aus.'],
-        ['Keine Antwort: DNS, Firewall oder Proxy der VM prüfen. Letzte Meldungen des Sammlers:', 'journalctl -u runner-monitor-sammler -n 30'],
+      { id: 'github', titel: t('GitHub nicht erreichbar'), aktiv: ['nicht-erreichbar', 'kontingent', 'fehler'].includes(w.abfrage), wann: t('Wenn die Abfrage der Workflows fehlschlägt. Die Karte zeigt dann den letzten Stand.'), schritte: [
+        [t('Zuerst den Status von GitHub prüfen: githubstatus.com.')],
+        [t('Von der VM aus testen, ob die API antwortet:'), 'curl -sI https://api.github.com | head -1'],
+        [t('Antwort 401: Token ungültig oder abgelaufen, siehe „GitHub-Token einrichten oder erneuern“. Antwort 403: API-Kontingent erschöpft, die Abfrage setzt bis zum Reset aus.')],
+        [t('Keine Antwort: DNS, Firewall oder Proxy der VM prüfen. Letzte Meldungen des Sammlers:'), 'journalctl -u runner-monitor-sammler -n 30'],
       ] },
-      { id: 'gestoppt', titel: 'Runner-Dienst gestoppt', aktiv: st.dienst.zustand === 'gestoppt', cls: 'fehler', wann: 'Wenn der systemd-Dienst des Runners nicht läuft. Jobs bleiben dann in der Warteschlange.', schritte: [
-        ['Status und letzte Meldungen ansehen:', "systemctl status 'actions.runner.*'"],
+      { id: 'gestoppt', titel: t('Runner-Dienst gestoppt'), aktiv: st.dienst.zustand === 'gestoppt', cls: 'fehler', wann: t('Wenn der systemd-Dienst des Runners nicht läuft. Jobs bleiben dann in der Warteschlange.'), schritte: [
+        [t('Status und letzte Meldungen ansehen:'), "systemctl status 'actions.runner.*'"],
         ...(st.dienst.grund === 'oom-kill' ? [
-          ['„oom-kill“: Ein Job hat den Arbeitsspeicher gesprengt. RAM und Swap ansehen – für Builds und Docker-Images mindestens 8 GB RAM plus Swap (docs/RUNNER.md):', 'free -h; swapon --show'],
-          ['Dienst gegen Speichermangel einstellen (dann scheitert nur der Job) und fehlenden Swap anlegen:', `${SKRIPT} runner`],
+          [t('„oom-kill“: Ein Job hat den Arbeitsspeicher gesprengt. RAM und Swap ansehen – für Builds und Docker-Images mindestens 8 GB RAM plus Swap (docs/RUNNER.md):'), 'free -h; swapon --show'],
+          [t('Dienst gegen Speichermangel einstellen (dann scheitert nur der Job) und fehlenden Swap anlegen:'), `${SKRIPT} runner`],
         ] : []),
-        ['Dienst starten:', 'sudo systemctl start "$(cat /opt/actions-runner/.service)"'],
-        ['Startet er nicht, das Protokoll prüfen:', "journalctl -u 'actions.runner.*' -n 50"],
-        ['Wartende Jobs laufen danach von selbst an.'],
-        ['Woran es lag, steht in den Logs – siehe „Runner-Logs abrufen“.'],
+        [t('Dienst starten:'), 'sudo systemctl start "$(cat /opt/actions-runner/.service)"'],
+        [t('Startet er nicht, das Protokoll prüfen:'), "journalctl -u 'actions.runner.*' -n 50"],
+        [t('Wartende Jobs laufen danach von selbst an.')],
+        [t('Woran es lag, steht in den Logs – siehe „Runner-Logs abrufen“.')],
       ] },
-      { id: 'runner', titel: 'Kein Runner eingerichtet', aktiv: st.dienst.zustand === 'fehlt', cls: 'warn', wann: 'Wenn auf dieser VM kein GitHub-Runner gefunden wird.', schritte: [
-        ['Registrierungs-Token holen: GitHub › Organisation › Settings › Actions › Runners › „New self-hosted runner“ (1 Stunde gültig).'],
-        ['Runner auf der VM einrichten – das Skript fragt Organisation, Token und Labels ab:', `${SKRIPT} runner`],
-        ['Der Monitor erkennt den Runner danach von selbst.'],
+      { id: 'runner', titel: t('Kein Runner eingerichtet'), aktiv: st.dienst.zustand === 'fehlt', cls: 'warn', wann: t('Wenn auf dieser VM kein GitHub-Runner gefunden wird.'), schritte: [
+        [t('Registrierungs-Token holen: GitHub › Organisation › Settings › Actions › Runners › „New self-hosted runner“ (1 Stunde gültig).')],
+        [t('Runner auf der VM einrichten – das Skript fragt Organisation, Token und Labels ab:'), `${SKRIPT} runner`],
+        [t('Der Monitor erkennt den Runner danach von selbst.')],
       ] },
-      { id: 'offline', titel: 'Runner offline bei GitHub', aktiv: st.github.zustand === 'offline', cls: 'fehler', wann: 'Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.', schritte: [
-        ['Netz der VM prüfen:', 'curl -sI https://github.com | head -1'],
-        ['Dienst neu starten, damit er sich neu anmeldet:', "sudo systemctl restart 'actions.runner.*'"],
-        ['Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:', `${SKRIPT} runner --umziehen`],
-        ['Warum die Verbindung fehlt, steht im Diagnoseprotokoll des Runners – siehe „Runner-Logs abrufen“.'],
+      { id: 'offline', titel: t('Runner offline bei GitHub'), aktiv: st.github.zustand === 'offline', cls: 'fehler', wann: t('Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.'), schritte: [
+        [t('Netz der VM prüfen:'), 'curl -sI https://github.com | head -1'],
+        [t('Dienst neu starten, damit er sich neu anmeldet:'), "sudo systemctl restart 'actions.runner.*'"],
+        [t('Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:'), `${SKRIPT} runner --umziehen`],
+        [t('Warum die Verbindung fehlt, steht im Diagnoseprotokoll des Runners – siehe „Runner-Logs abrufen“.')],
       ] },
-      { id: 'logs', titel: 'Runner-Logs abrufen (Diagnose)', aktiv: st.dienst.zustand === 'gestoppt' || st.github.zustand === 'offline', cls: st.dienst.zustand === 'gestoppt' ? 'fehler' : 'warn', wann: 'Wenn der Runner-Dienst stoppt, abstürzt, offline ist oder Jobs nicht annimmt. Alle Befehle auf der VM ausführen.', schritte: [
-        ['Dienst-Protokoll: Start, Stopp, Abstürze, Job-Start und -Ende. Die letzten 100 Zeilen:', "journalctl -u 'actions.runner.*' -n 100 --no-pager"],
-        ['Dasselbe live mitlesen (Strg+C beendet):', "journalctl -u 'actions.runner.*' -f"],
-        ['Diagnoseprotokoll des Runners: Anmeldung bei GitHub, Verbindungsfehler, Updates. Neueste Datei:', 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Runner_*.log | head -1)"'],
-        ['Protokoll des letzten Jobs (Worker), wenn ein Job abbricht oder hängt:', 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Worker_*.log | head -1)"'],
-        ['Ausgabe der einzelnen Schritte, eine Datei je Schritt:', 'ls -lt /opt/actions-runner/_diag/pages/ | head'],
-        ['Logs abgeschlossener Jobs liegen bei GitHub: Repository › Actions › Lauf öffnen › Job › „Download log archive“.'],
-        ['Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:', "sudo tar czf ~/runner-diag.tgz -C /opt/actions-runner _diag\njournalctl -u 'actions.runner.*' --since today > ~/runner-journal.txt"],
+      { id: 'logs', titel: t('Runner-Logs abrufen (Diagnose)'), aktiv: st.dienst.zustand === 'gestoppt' || st.github.zustand === 'offline', cls: st.dienst.zustand === 'gestoppt' ? 'fehler' : 'warn', wann: t('Wenn der Runner-Dienst stoppt, abstürzt, offline ist oder Jobs nicht annimmt. Alle Befehle auf der VM ausführen.'), schritte: [
+        [t('Dienst-Protokoll: Start, Stopp, Abstürze, Job-Start und -Ende. Die letzten 100 Zeilen:'), "journalctl -u 'actions.runner.*' -n 100 --no-pager"],
+        [t('Dasselbe live mitlesen (Strg+C beendet):'), "journalctl -u 'actions.runner.*' -f"],
+        [t('Diagnoseprotokoll des Runners: Anmeldung bei GitHub, Verbindungsfehler, Updates. Neueste Datei:'), 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Runner_*.log | head -1)"'],
+        [t('Protokoll des letzten Jobs (Worker), wenn ein Job abbricht oder hängt:'), 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Worker_*.log | head -1)"'],
+        [t('Ausgabe der einzelnen Schritte, eine Datei je Schritt:'), 'ls -lt /opt/actions-runner/_diag/pages/ | head'],
+        [t('Logs abgeschlossener Jobs liegen bei GitHub: Repository › Actions › Lauf öffnen › Job › „Download log archive“.')],
+        [t('Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:'), "sudo tar czf ~/runner-diag.tgz -C /opt/actions-runner _diag\njournalctl -u 'actions.runner.*' --since today > ~/runner-journal.txt"],
       ] },
-      { id: 'platte', titel: 'Platte knapp', aktiv: knapp, wann: 'Wenn auf „/“ weniger als 25 GB frei sind.', schritte: [
-        ['Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:', 'sudo runner-aufraeumen'],
-        ['Wer belegt den Platz?', 'docker system df'],
-        ['Freien Platz an Proxmox zurückgeben:', 'sudo fstrim -av'],
-        ['Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.'],
+      { id: 'platte', titel: t('Platte knapp'), aktiv: knapp, wann: t('Wenn auf „/“ weniger als 25 GB frei sind.'), schritte: [
+        [t('Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:'), 'sudo runner-aufraeumen'],
+        [t('Wer belegt den Platz?'), 'docker system df'],
+        [t('Freien Platz an Proxmox zurückgeben:'), 'sudo fstrim -av'],
+        [t('Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.')],
       ] },
-      { id: 'monitor', titel: 'Verbindung zum Monitor unterbrochen', aktiv: S.verbindung === 'getrennt', cls: 'fehler', wann: 'Wenn diese Seite keine Daten mehr von der VM bekommt. Sie zeigt dann den letzten Stand.', schritte: [
-        ['Die Seite versucht es selbst weiter. Ist die VM im Netz erreichbar?', `ping ${st.vm || 'runner-vm'}`],
-        ['Monitor-Dienst auf der VM neu starten:', 'sudo systemctl restart runner-monitor'],
-        ['Letzte Meldungen des Monitors:', 'journalctl -u runner-monitor -n 30'],
+      { id: 'monitor', titel: t('Verbindung zum Monitor unterbrochen'), aktiv: S.verbindung === 'getrennt', cls: 'fehler', wann: t('Wenn diese Seite keine Daten mehr von der VM bekommt. Sie zeigt dann den letzten Stand.'), schritte: [
+        [t('Die Seite versucht es selbst weiter. Ist die VM im Netz erreichbar?'), `ping ${st.vm || 'runner-vm'}`],
+        [t('Monitor-Dienst auf der VM neu starten:'), 'sudo systemctl restart runner-monitor'],
+        [t('Letzte Meldungen des Monitors:'), 'journalctl -u runner-monitor -n 30'],
       ] },
-      { id: 'update', titel: 'Monitor aktualisieren', aktiv: us.zustand === 'fehler' || (u.neueste && vergleiche(u.neueste.version, u.installiert) > 0), cls: us.zustand === 'fehler' ? 'fehler' : 'warn', wann: 'Wenn eine neue Version gemeldet wird oder ein Update fehlgeschlagen ist.', schritte: [
-        ['Am einfachsten oben in „Updates“ auf „Jetzt aktualisieren“ klicken. Ein Hilfsdienst auf der VM lädt das offizielle Release, prüft die Prüfsumme, installiert es und startet den Monitor neu. Antwortet die neue Version nicht, stellt er die alte wieder her.'],
-        ['Oder per SSH auf der VM:', `${SKRIPT} aktualisieren`],
-        ['Protokoll des letzten Updates:', 'journalctl -u runner-monitor-update -n 50'],
-        ['Zur vorherigen Version zurück:', `${SKRIPT} zurueck`],
+      { id: 'update', titel: t('Monitor aktualisieren'), aktiv: us.zustand === 'fehler' || (u.neueste && vergleiche(u.neueste.version, u.installiert) > 0), cls: us.zustand === 'fehler' ? 'fehler' : 'warn', wann: t('Wenn eine neue Version gemeldet wird oder ein Update fehlgeschlagen ist.'), schritte: [
+        [t('Am einfachsten oben in „Updates“ auf „Jetzt aktualisieren“ klicken. Ein Hilfsdienst auf der VM lädt das offizielle Release, prüft die Prüfsumme, installiert es und startet den Monitor neu. Antwortet die neue Version nicht, stellt er die alte wieder her.')],
+        [t('Oder per SSH auf der VM:'), `${SKRIPT} aktualisieren`],
+        [t('Protokoll des letzten Updates:'), 'journalctl -u runner-monitor-update -n 50'],
+        [t('Zur vorherigen Version zurück:'), `${SKRIPT} zurueck`],
       ] },
     ];
   }
@@ -567,35 +568,35 @@
       x: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>',
     };
     let text = '';
-    if (zst === 'laeuft') text = '<span class="pruef-text mut">Frage GitHub nach neuen Versionen …</span>';
-    else if (zst === 'frisch') text = '<span class="pruef-text mut">Gerade erst geprüft – Stand siehe oben.</span>';
-    else if (zst === 'fertig' && !fehlerGh) text = neu ? `<span class="pruef-text laeuft">${ICO.neu}Version ${esc(u.neueste.version)} ist verfügbar.</span>` : `<span class="pruef-text ok">${ICO.ok}Auf dem neuesten Stand.</span>`;
-    else if (updLaeuft) text = '<span class="pruef-text mut">Gesperrt, solange das Update läuft.</span>';
+    if (zst === 'laeuft') text = `<span class="pruef-text mut">${t('Frage GitHub nach neuen Versionen …')}</span>`;
+    else if (zst === 'frisch') text = `<span class="pruef-text mut">${t('Gerade erst geprüft – Stand siehe oben.')}</span>`;
+    else if (zst === 'fertig' && !fehlerGh) text = neu ? `<span class="pruef-text laeuft">${ICO.neu}${t('Version {v} ist verfügbar.', { v: esc(u.neueste.version) })}</span>` : `<span class="pruef-text ok">${ICO.ok}${t('Auf dem neuesten Stand.')}</span>`;
+    else if (updLaeuft) text = `<span class="pruef-text mut">${t('Gesperrt, solange das Update läuft.')}</span>`;
     const aus = zst === 'laeuft' || updLaeuft;
-    let html = `<div class="pruef"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''} title="GitHub sofort nach einer neuen Version fragen (sonst alle 6 Std.)">${zst === 'laeuft' ? ICO.dreh : ICO.ruhe}Jetzt prüfen</button><span aria-live="polite" class="pruef-live">${text}</span></div>`;
-    if (fehlerGh) html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div>GitHub nicht erreichbar: <span>${esc(u.neueste.fehler)}. Der nächste automatische Versuch folgt in 6 Std.</span></div></div>`;
-    if (zst === 'keine-antwort') html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div class="hinweis-voll">Keine Antwort vom Sammler. <span>Auf der VM prüfen:</span>${codeBox('journalctl -u runner-monitor-sammler -n 30')}</div></div>`;
+    let html = `<div class="pruef"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''} title="${t('GitHub sofort nach einer neuen Version fragen (sonst alle 6 Std.)')}">${zst === 'laeuft' ? ICO.dreh : ICO.ruhe}${t('Jetzt prüfen')}</button><span aria-live="polite" class="pruef-live">${text}</span></div>`;
+    if (fehlerGh) html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div>${t('GitHub nicht erreichbar:')} <span>${t('{f}. Der nächste automatische Versuch folgt in 6 Std.', { f: esc(u.neueste.fehler) })}</span></div></div>`;
+    if (zst === 'keine-antwort') html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div class="hinweis-voll">${t('Keine Antwort vom Sammler.')} <span>${t('Auf der VM prüfen:')}</span>${codeBox('journalctl -u runner-monitor-sammler -n 30')}</div></div>`;
     return html;
   }
 
   /* Befehlsblock mit Knopf „Kopieren“. Über http im LAN gibt es navigator.clipboard nicht (nur in
      sicheren Kontexten), deshalb Rückfall auf execCommand('copy') mit unsichtbarem Textfeld. */
   function codeBox(code) {
-    return `<div class="code-box"><pre class="code">${esc(code)}</pre><button type="button" class="kopier" data-aktion="kopieren" data-code="${esc(code)}">Kopieren</button></div>`;
+    return `<div class="code-box"><pre class="code">${esc(code)}</pre><button type="button" class="kopier" data-aktion="kopieren" data-code="${esc(code)}">${t('Kopieren')}</button></div>`;
   }
   async function kopiere(knopf) {
     const text = knopf.dataset.code || '';
     let ok = false;
     try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } } catch (f) { ok = false; }
     if (!ok) {
-      const t = document.createElement('textarea');
-      t.value = text; t.setAttribute('readonly', ''); t.className = 'kopier-puffer';
-      document.body.appendChild(t); t.select();
+      const feld = document.createElement('textarea');
+      feld.value = text; feld.setAttribute('readonly', ''); feld.className = 'kopier-puffer';
+      document.body.appendChild(feld); feld.select();
       try { ok = document.execCommand('copy'); } catch (f) { ok = false; }
-      t.remove();
+      feld.remove();
     }
-    knopf.textContent = ok ? 'Kopiert ✓' : 'Bitte markieren';
-    clearTimeout(knopf._zeit); knopf._zeit = setTimeout(() => { knopf.textContent = 'Kopieren'; }, 1600);
+    knopf.textContent = ok ? t('Kopiert ✓') : t('Bitte markieren');
+    clearTimeout(knopf._zeit); knopf._zeit = setTimeout(() => { knopf.textContent = t('Kopieren'); }, 1600);
   }
 
   function oeffneInfo(id) {
@@ -628,11 +629,11 @@
     const liste = (u.neueste.aenderungen && u.neueste.aenderungen.length) ? u.neueste.aenderungen
       : (u.neueste.notizen && u.neueste.notizen.length ? [{ version: u.neueste.version, url: u.neueste.url, neu: u.neueste.notizen, einmalig: '' }] : []);
     if (!liste.length) return '';
-    const block = (r) => `${r.einmalig ? `<div class="upd-einmalig"><span class="upd-einmalig-titel">Einmalig nach dem Update:</span> ${mitCode(r.einmalig)}</div>` : ''}`
+    const block = (r) => `${r.einmalig ? `<div class="upd-einmalig"><span class="upd-einmalig-titel">${t('Einmalig nach dem Update:')}</span> ${mitCode(r.einmalig)}</div>` : ''}`
       + (r.neu && r.neu.length ? `<ul>${r.neu.map(n => `<li>${mitCode(n)}</li>`).join('')}</ul>` : '')
-      + `<a href="${esc(r.url || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">Release-Notiz ${esc(r.version)} auf GitHub ↗</a>`;
+      + `<a href="${esc(r.url || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">${t('Release-Notiz {v} auf GitHub ↗', { v: esc(r.version) })}</a>`;
     const [erste, ...aeltere] = liste;
-    const titel = liste.length > 1 ? `Neu seit ${esc(u.installiert)} · ${liste.length} Versionen` : `Neu in ${esc(erste.version)}`;
+    const titel = liste.length > 1 ? t('Neu seit {v} · {n} Versionen', { v: esc(u.installiert), n: liste.length }) : t('Neu in {v}', { v: esc(erste.version) });
     return `<div class="upd-neu"><div class="upd-neu-titel">${titel}</div>`
       + (liste.length > 1 ? `<div class="upd-version">${esc(erste.version)}</div>` : '') + block(erste)
       + aeltere.map(r => `<details class="upd-aelter"><summary>${esc(r.version)}</summary>${block(r)}</details>`).join('')
@@ -647,10 +648,10 @@
 
     // Updates
     let upd = kv([
-      ['Installiert', esc(u.installiert || '–')],
-      ['Neueste', u.neueste && u.neueste.version ? (neu ? `${esc(u.neueste.version)} · erschienen am ${u.neueste.veroeffentlicht ? datum(u.neueste.veroeffentlicht) : '–'}` : `${esc(u.neueste.version)} – auf dem neuesten Stand`) : (u.neueste && u.neueste.fehler ? 'nicht abrufbar' : 'noch nicht geprüft'), neu ? 'laeuft' : 'ok'],
-      ['Geprüft', u.neueste && u.neueste.geprueft ? `${tm(u.neueste.geprueft) === tm(jetzt) ? 'heute' : tm(u.neueste.geprueft)} ${hm(u.neueste.geprueft)} bei GitHub · alle 6 Std.` : '–'],
-      ['Runner', `${st.version ? 'actions-runner ' + esc(st.version) : '–'} · aktualisiert sich selbst`],
+      [t('Installiert'), esc(u.installiert || '–')],
+      [t('Neueste'), u.neueste && u.neueste.version ? (neu ? t('{v} · erschienen am {d}', { v: esc(u.neueste.version), d: u.neueste.veroeffentlicht ? datum(u.neueste.veroeffentlicht) : '–' }) : t('{v} – auf dem neuesten Stand', { v: esc(u.neueste.version) })) : (u.neueste && u.neueste.fehler ? t('nicht abrufbar') : t('noch nicht geprüft')), neu ? 'laeuft' : 'ok'],
+      [t('Geprüft'), u.neueste && u.neueste.geprueft ? t('{tag} {z} bei GitHub · alle 6 Std.', { tag: tm(u.neueste.geprueft) === tm(jetzt) ? t('heute') : tm(u.neueste.geprueft), z: hm(u.neueste.geprueft) }) : '–'],
+      ['Runner', `${st.version ? 'actions-runner ' + esc(st.version) : '–'} · ${t('aktualisiert sich selbst')}`],
     ]);
     upd += pruefKnopf(u, us, neu);
     if (neu) upd += aenderungenHtml(u);
@@ -658,47 +659,48 @@
       const nr = us.schritt || 1;
       const zeilen = UPDATE_SCHRITTE.map((s, i) => {
         if (us.zustand === 'fehler') { const f = i + 1 === nr; const fertig = i + 1 < nr; return `<li class="${fertig ? '' : f ? '' : 'offen'}">${fertig ? IC.ok(16) : f ? `<span class="fehler">${IC.x(16)}</span>` : IC.offen()}<span>${s[0]}</span><span class="upd-zusatz">${f ? esc(us.meldung || '') : ''}</span></li>`; }
-        return `<li class="${i + 1 === nr ? 'aktiv' : i + 1 > nr ? 'offen' : ''}">${i + 1 < nr ? `<span class="ok">${IC.ok(16)}</span>` : i + 1 === nr ? IC.dreh() : IC.offen()}<span>${s[0]}</span><span class="upd-zusatz">${i + 1 < nr ? s[1] : i + 1 === nr ? 'läuft …' : ''}</span></li>`;
-      }).join('') + (us.zustand === 'fehler' ? `<li><span class="ok">${IC.ok(16)}</span><span>Version ${esc(u.installiert)} wiederhergestellt</span><span class="upd-zusatz">läuft wieder</span></li>` : '');
+        return `<li class="${i + 1 === nr ? 'aktiv' : i + 1 > nr ? 'offen' : ''}">${i + 1 < nr ? `<span class="ok">${IC.ok(16)}</span>` : i + 1 === nr ? IC.dreh() : IC.offen()}<span>${s[0]}</span><span class="upd-zusatz">${i + 1 < nr ? s[1] : i + 1 === nr ? t('läuft …') : ''}</span></li>`;
+      }).join('') + (us.zustand === 'fehler' ? `<li><span class="ok">${IC.ok(16)}</span><span>${t('Version {v} wiederhergestellt', { v: esc(u.installiert) })}</span><span class="upd-zusatz">${t('läuft wieder')}</span></li>` : '');
       upd += `<ol class="upd-schritte" aria-live="polite">${zeilen}</ol>`;
     }
-    if (us.zustand === 'fehler') upd += `<div class="hinweis fehler">${IC.x(15)}<div>Update fehlgeschlagen <span>– ${esc(us.meldung || 'die neue Version hat nach dem Neustart nicht geantwortet')}. Version ${esc(u.installiert)} wurde automatisch wiederhergestellt. Details: <code class="inl">journalctl -u runner-monitor-update -n 50</code></span></div></div>`;
-    if (us.zustand === 'erfolg' && jetzt - ms(us.zeit) < 3600000) upd += `<div class="hinweis ok">${IC.ok(15)}<div>Aktualisiert auf ${esc(u.installiert)} <span>– um ${hm(us.zeit)}. Dienst läuft, alle Daten kommen an.</span></div></div>`;
+    if (us.zustand === 'fehler') upd += `<div class="hinweis fehler">${IC.x(15)}<div>${t('Update fehlgeschlagen')} <span>– ${t('{m}. Version {v} wurde automatisch wiederhergestellt. Details:', { m: esc(us.meldung || t('die neue Version hat nach dem Neustart nicht geantwortet')), v: esc(u.installiert) })} <code class="inl">journalctl -u runner-monitor-update -n 50</code></span></div></div>`;
+    if (us.zustand === 'erfolg' && jetzt - ms(us.zeit) < 3600000) upd += `<div class="hinweis ok">${IC.ok(15)}<div>${t('Aktualisiert auf {v}', { v: esc(u.installiert) })} <span>– ${t('um {z}. Dienst läuft, alle Daten kommen an.', { z: hm(us.zeit) })}</span></div></div>`;
     const bereit = !u.neueste || u.neueste.bereit !== false;  // Paket hängt schon am Release (#63)
-    if (neu && !bereit && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><p class="info-notiz">Version ${esc(u.neueste.version)} wird gerade bereitgestellt – das Paket ist in ein bis zwei Minuten da. Der Monitor prüft von selbst erneut.</p></div>`;
-    else if (neu && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${us.zustand === 'fehler' ? 'Erneut versuchen' : `Jetzt auf ${esc(u.neueste.version)} aktualisieren`}</button><p class="info-notiz">Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.</p></div>`;
-    upd += `<label class="upd-auto"><input type="checkbox" data-aktion="update-auto" ${u.auto ? 'checked' : ''}>Automatisch aktualisieren – nachts ab 3 Uhr, sobald kein Job läuft</label>`;
+    if (neu && !bereit && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><p class="info-notiz">${t('Version {v} wird gerade bereitgestellt – das Paket ist in ein bis zwei Minuten da. Der Monitor prüft von selbst erneut.', { v: esc(u.neueste.version) })}</p></div>`;
+    else if (neu && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${us.zustand === 'fehler' ? t('Erneut versuchen') : t('Jetzt auf {v} aktualisieren', { v: esc(u.neueste.version) })}</button><p class="info-notiz">${t('Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.')}</p></div>`;
+    upd += `<label class="upd-auto"><input type="checkbox" data-aktion="update-auto" ${u.auto ? 'checked' : ''}>${t('Automatisch aktualisieren – nachts ab 3 Uhr, sobald kein Job läuft')}</label>`;
     const as = u.autoStand || {};
     if (u.auto && neu && us.zustand !== 'laeuft' && as.version === u.neueste.version) {
-      if (as.zustand === 'vorgemerkt') upd += `<p class="info-notiz">Update auf ${esc(as.version)} vorgemerkt – startet, sobald der Runner keinen Job mehr hat (bis 7 Uhr).</p>`;
-      else if (as.zustand === 'verschoben') upd += `<p class="info-notiz">Letzte Nacht lief bis 7 Uhr durchgehend ein Job – nächster Versuch in der kommenden Nacht ab 3 Uhr.</p>`;
+      if (as.zustand === 'vorgemerkt') upd += `<p class="info-notiz">${t('Update auf {v} vorgemerkt – startet, sobald der Runner keinen Job mehr hat (bis 7 Uhr).', { v: esc(as.version) })}</p>`;
+      else if (as.zustand === 'verschoben') upd += `<p class="info-notiz">${t('Letzte Nacht lief bis 7 Uhr durchgehend ein Job – nächster Versuch in der kommenden Nacht ab 3 Uhr.')}</p>`;
     }
 
-    const t = RM.thema();
-    const modi = [['system', 'Automatisch'], ['hell', 'Hell'], ['dunkel', 'Dunkel']].map(([v, n]) => `<button type="button" class="seg-knopf" data-aktion="thema" data-thema="${v}" aria-pressed="${t === v}">${n}</button>`).join('');
+    const th = RM.thema(), sp = I18N.sprache();
+    const modi = [['system', t('Automatisch')], ['hell', t('Hell')], ['dunkel', t('Dunkel')]].map(([v, n]) => `<button type="button" class="seg-knopf" data-aktion="thema" data-thema="${v}" aria-pressed="${th === v}">${n}</button>`).join('');
+    const sprachen = [['de', 'Deutsch'], ['en', 'English']].map(([v, n]) => `<button type="button" class="seg-knopf" data-aktion="sprache" data-sprache="${v}" aria-pressed="${sp === v}" lang="${v}">${n}</button>`).join('');
 
     const anl = anleitungen().map(a => {
       const offen = S.info === a.id;
-      return `<div class="anl"><button type="button" class="anl-kopf" data-aktion="anleitung" data-anleitung="${a.id}" aria-expanded="${offen}">${IC.chev(offen)}<span class="anl-titel">${a.titel}</span>${a.aktiv ? `<span class="pill ${a.cls || 'warn'}">jetzt aktiv</span>` : ''}</button>${offen ? `<p class="anl-wann">${a.wann}</p><ol class="anl-schritte">${a.schritte.map(([text, code]) => `<li><span>${esc(text)}</span>${code ? codeBox(code) : ''}</li>`).join('')}</ol>` : ''}</div>`;
+      return `<div class="anl"><button type="button" class="anl-kopf" data-aktion="anleitung" data-anleitung="${a.id}" aria-expanded="${offen}">${IC.chev(offen)}<span class="anl-titel">${a.titel}</span>${a.aktiv ? `<span class="pill ${a.cls || 'warn'}">${t('jetzt aktiv')}</span>` : ''}</button>${offen ? `<p class="anl-wann">${a.wann}</p><ol class="anl-schritte">${a.schritte.map(([text, code]) => `<li><span>${esc(text)}</span>${code ? codeBox(code) : ''}</li>`).join('')}</ol>` : ''}</div>`;
     }).join('');
 
     const tage = w.tokenAblauf ? Math.ceil((ms(w.tokenAblauf) - jetzt) / 86400000) : null;
     const kont = w.kontingent || {};
     const gh = kv([
-      ['Organisation', esc(w.org || '–')],
-      ['Token', w.abfrage === 'kein-token' ? 'nicht eingerichtet' : w.abfrage === 'token-ungueltig' ? 'ungültig oder abgelaufen' : 'hinterlegt, nur lesend', ['kein-token', 'token-ungueltig'].includes(w.abfrage) ? 'warn' : ''],
-      ['Rechte', 'Actions, Metadata, Self-hosted runners – je Read-only' + (w.runnerGrund ? ` <span class="warn">(${esc(w.runnerGrund)})</span>` : '')],
-      ['Ablauf', w.tokenAblauf ? `${datum(w.tokenAblauf)} (in ${tage} ${mehrzahl(tage, 'Tag', 'Tagen')})` : '–', tage != null && tage <= 14 ? 'warn' : ''],
-      ['Letzte Abfrage', w.abfrage === 'kein-token' ? 'aus' : w.abfrage === 'ok' ? `${zeit(w.abgefragt)} · erfolgreich` : `fehlgeschlagen · letzte erfolgreiche ${w.abgefragt ? zeit(w.abgefragt) : '–'}`, w.abfrage !== 'ok' && w.abfrage !== 'kein-token' ? 'warn' : ''],
-      ['Nächste Abfrage', '<span data-tick="naechste"></span>'],
-      ['API-Kontingent', kont.limit ? `${zahl(kont.frei)} von ${zahl(kont.limit)} frei, Reset ${hm(kont.reset)}` : '–'],
-      ['Token-Datei', '/etc/runner-monitor/github-token'],
+      [t('Organisation'), esc(w.org || '–')],
+      ['Token', w.abfrage === 'kein-token' ? t('nicht eingerichtet') : w.abfrage === 'token-ungueltig' ? t('ungültig oder abgelaufen') : t('hinterlegt, nur lesend'), ['kein-token', 'token-ungueltig'].includes(w.abfrage) ? 'warn' : ''],
+      [t('Rechte'), t('Actions, Metadata, Self-hosted runners – je Read-only') + (w.runnerGrund ? ` <span class="warn">(${esc(w.runnerGrund)})</span>` : '')],
+      [t('Ablauf'), w.tokenAblauf ? t('{d} (in {n} {tage})', { d: datum(w.tokenAblauf), n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }) : '–', tage != null && tage <= 14 ? 'warn' : ''],
+      [t('Letzte Abfrage'), w.abfrage === 'kein-token' ? t('aus') : w.abfrage === 'ok' ? t('{z} · erfolgreich', { z: zeit(w.abgefragt) }) : t('fehlgeschlagen · letzte erfolgreiche {z}', { z: w.abgefragt ? zeit(w.abgefragt) : '–' }), w.abfrage !== 'ok' && w.abfrage !== 'kein-token' ? 'warn' : ''],
+      [t('Nächste Abfrage'), '<span data-tick="naechste"></span>'],
+      [t('API-Kontingent'), kont.limit ? t('{a} von {b} frei, Reset {z}', { a: zahl(kont.frei), b: zahl(kont.limit), z: hm(kont.reset) }) : '–'],
+      [t('Token-Datei'), '/etc/runner-monitor/github-token'],
     ]);
     const ueber = kv([
       ['Version', esc(u.installiert || st.monitorVersion || '–')],
-      ['Adresse', esc(location.host)],
-      ['Dienst', 'runner-monitor (systemd, eigener Benutzer)'],
-      ['Aktualisierung', 'Systemwerte jede Sekunde, GitHub alle 30 s'],
+      [t('Adresse'), esc(location.host)],
+      [t('Dienst'), t('runner-monitor (systemd, eigener Benutzer)')],
+      [t('Aktualisierung'), t('Systemwerte jede Sekunde, GitHub alle 30 s')],
     ]);
     const issue = (vorlage) => `https://github.com/${REPO}/issues/new?template=${vorlage}&version=${encodeURIComponent(u.installiert || '')}&runner=${encodeURIComponent(st.version || '')}&browser=${encodeURIComponent(navigator.userAgent.slice(0, 120))}`;
 
@@ -707,16 +709,16 @@
     return {
       eyebrow: `${esc(st.vm || '')}${st.runner ? ' · ' + esc(st.runner) : ''}`,
       upd,
-      modi: `<div class="info-zeile"><span class="mut">Modus</span><div class="segment" role="group" aria-label="Hell oder dunkel">${modi}</div></div><p class="info-notiz">„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.</p>`,
+      modi: `<div class="info-zeile"><span class="mut">${t('Modus')}</span><div class="segment" role="group" aria-label="${t('Hell oder dunkel')}">${modi}</div></div><div class="info-zeile"><span class="mut">${t('Sprache')}</span><div class="segment" role="group" aria-label="${t('Sprache')}">${sprachen}</div></div><p class="info-notiz">${t('„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.')}</p>`,
       anl,
       gh,
-      ueber: `<p class="info-text">Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung mit Netzwerk, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.</p>${ueber}<p class="info-text umbruch">Ersteller: Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>Quellcode und Doku: <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
-      issue: `<p class="info-text">Der Monitor ist ein offenes Projekt. Fehler und Wünsche landen als Issue im GitHub-Repository. Der Knopf öffnet GitHub mit einer vorbereiteten Vorlage, in der die technischen Angaben schon stehen:</p>${kv([
+      ueber: `<p class="info-text">${t('Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung mit Netzwerk, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.')}</p>${ueber}<p class="info-text umbruch">${t('Ersteller:')} Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>${t('Quellcode und Doku:')} <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
+      issue: `<p class="info-text">${t('Der Monitor ist ein offenes Projekt. Fehler und Wünsche landen als Issue im GitHub-Repository. Der Knopf öffnet GitHub mit einer vorbereiteten Vorlage, in der die technischen Angaben schon stehen:')}</p>${kv([
         ['Version', `Runner-Monitor ${esc(u.installiert || st.monitorVersion || '–')}`],
         ['System', esc(st.system || '–')],
         ['Runner', st.version ? `actions-runner ${esc(st.version)}` : '–'],
-        ['Browser', 'wird automatisch ergänzt'],
-      ])}<div class="knopf-reihe"><a class="knopf" href="${issue('fehler.yml')}" rel="noopener" target="_blank">${IC.kaefer()}Fehler melden ↗</a><a class="knopf" href="${issue('idee.yml')}" rel="noopener" target="_blank">Idee vorschlagen ↗</a></div><p class="info-notiz">Vor dem Absenden prüfen: Keine IP-Adressen, Rechnernamen, Tokens oder Passwörter in das Issue schreiben, das Repository ist öffentlich. Log-Ausschnitte nur gekürzt einfügen.</p>`,
+        ['Browser', t('wird automatisch ergänzt')],
+      ])}<div class="knopf-reihe"><a class="knopf" href="${issue('fehler.yml')}" rel="noopener" target="_blank">${IC.kaefer()}${t('Fehler melden ↗')}</a><a class="knopf" href="${issue('idee.yml')}" rel="noopener" target="_blank">${t('Idee vorschlagen ↗')}</a></div><p class="info-notiz">${t('Vor dem Absenden prüfen: Keine IP-Adressen, Rechnernamen, Tokens oder Passwörter in das Issue schreiben, das Repository ist öffentlich. Log-Ausschnitte nur gekürzt einfügen.')}</p>`,
     };
   }
 
@@ -724,16 +726,16 @@
       <div class="info-scrim" data-aktion="info-zu"></div>
       <aside class="info" role="dialog" aria-modal="true" aria-labelledby="info-titel" tabindex="-1">
         <div class="info-kopf">
-          <div class="info-kopf-text"><div class="vm-eyebrow" data-teil="eyebrow"></div><h2 class="info-titel" id="info-titel">Info &amp; Hilfe</h2></div>
-          <div class="info-kopf-knoepfe"><button type="button" class="knopf" data-aktion="abmelden">Abmelden</button><button type="button" class="knopf" data-aktion="info-zu">Schließen</button></div>
+          <div class="info-kopf-text"><div class="vm-eyebrow" data-teil="eyebrow"></div><h2 class="info-titel" id="info-titel">${esc(t('Info & Hilfe'))}</h2></div>
+          <div class="info-kopf-knoepfe"><button type="button" class="knopf" data-aktion="abmelden">${t('Abmelden')}</button><button type="button" class="knopf" data-aktion="info-zu">${t('Schließen')}</button></div>
         </div>
         <div class="info-body">
-          <section class="info-abschnitt"><h3 class="info-h">Updates</h3><div data-teil="upd"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">Darstellung</h3><div data-teil="modi"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">Was tun, wenn …</h3><div data-teil="anl"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">GitHub-Verbindung</h3><div data-teil="gh"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">Über diesen Monitor</h3><div data-teil="ueber"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">Fehler gefunden oder Idee?</h3><div data-teil="issue"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">${t('Updates')}</h3><div data-teil="upd"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">${t('Darstellung')}</h3><div data-teil="modi"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">${t('Was tun, wenn …')}</h3><div data-teil="anl"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">${t('GitHub-Verbindung')}</h3><div data-teil="gh"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">${t('Über diesen Monitor')}</h3><div data-teil="ueber"></div></section>
+          <section class="info-abschnitt"><h3 class="info-h">${t('Fehler gefunden oder Idee?')}</h3><div data-teil="issue"></div></section>
         </div>
       </aside>`;
 
@@ -753,7 +755,7 @@
   function tickInfo() {
     const el = $('info-ebene').querySelector('[data-tick="naechste"]'); if (!el) return;
     const w = S.workflows || {};
-    el.textContent = w.naechste && w.abfrage !== 'kein-token' ? `in ${Math.max(0, Math.round((ms(w.naechste) - Date.now()) / 1000))} s (alle 30 s)` : '–';
+    el.textContent = w.naechste && w.abfrage !== 'kein-token' ? t('in {n} s (alle 30 s)', { n: Math.max(0, Math.round((ms(w.naechste) - Date.now()) / 1000)) }) : '–';
   }
 
   /* ------------------------------------------------------------ Bedienung */
@@ -764,6 +766,7 @@
     else if (a === 'info-zu') schliesseInfo();
     else if (a === 'anleitung') { S.info = S.info === b.dataset.anleitung ? 'alle' : b.dataset.anleitung; renderInfo(); }
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
+    else if (a === 'sprache') { if (b.dataset.sprache !== I18N.sprache()) { I18N.setzeSprache(b.dataset.sprache); location.reload(); } }
     else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; renderWorkflows(); }
     else if (a === 'abmelden') { if (!DEMO) await RM.sende('/api/abmelden'); location.href = '/anmelden'; }
     else if (a === 'kopieren') kopiere(b);
@@ -779,7 +782,7 @@
       b.disabled = true;
       if (DEMO) { window.RM_DEMO.updateStarten(); return; }
       const r = await RM.sende('/api/update/starten');
-      if (!r.ok) { b.disabled = false; b.insertAdjacentHTML('afterend', `<p class="info-notiz fehler">${esc(r.daten.fehler || 'Update konnte nicht gestartet werden.')}</p>`); }
+      if (!r.ok) { b.disabled = false; b.insertAdjacentHTML('afterend', `<p class="info-notiz fehler">${esc(r.daten.fehler || t('Update konnte nicht gestartet werden.'))}</p>`); }
     }
   });
   document.addEventListener('change', async (e) => {
@@ -792,7 +795,7 @@
     const folgt = { system: 'hell', hell: 'dunkel', dunkel: 'system' }[RM.thema()];
     RM.setzeThema(folgt); renderModus(); renderInfo();
   });
-  $('k-info').innerHTML = `${IC.info()}Info &amp; Hilfe`;
+  $('k-info').innerHTML = `${IC.info()}${esc(t('Info & Hilfe'))}`;
   $('k-info').addEventListener('click', () => oeffneInfo('alle'));
   $('k-pause').addEventListener('click', umschaltenPause);
   /* Im Log hochscrollen hält das Mitlaufen an (neue Zeilen werden gesammelt), zurück nach
