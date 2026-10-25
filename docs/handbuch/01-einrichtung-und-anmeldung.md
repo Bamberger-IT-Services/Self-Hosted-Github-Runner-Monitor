@@ -6,7 +6,8 @@
 
 Nach `sudo ./einrichten.sh` auf der VM ([Einrichtung](../EINRICHTUNG.md)) die angezeigte
 Adresse öffnen, z. B. `http://192.0.2.20:8090`. Solange kein Zugang besteht, führt jede
-Adresse zur Einrichtung in vier Schritten.
+Adresse zur Einrichtung in vier Schritten. Oben rechts lässt sich die Sprache wechseln
+(Deutsch/English, Vorgabe nach Browser); auf der Anmeldeseite sitzt der Umschalter unten.
 
 | Schritt | Bild |
 |---|---|

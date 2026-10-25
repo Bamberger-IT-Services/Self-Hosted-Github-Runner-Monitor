@@ -98,6 +98,14 @@ class App:
             return bool(token) and self.einrichtung.get(token or "", 0) > time.time()
 
 
+
+def meldung(vorlage: str, **werte: object) -> dict:
+    """Text für die Oberfläche: ``text`` (deutsch, eingesetzt) und – mit Platzhaltern – ``vorlage``
+    und ``werte``. Die Oberfläche übersetzt über web/i18n.js; der deutsche Text ist der Schlüssel (#81)."""
+    if not werte:
+        return {"text": vorlage}
+    return {"text": vorlage.format(**werte), "vorlage": vorlage, "werte": {k: str(v) for k, v in werte.items()}}
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "runner-monitor"
     sys_version = ""
@@ -147,14 +155,18 @@ class Handler(BaseHTTPRequestHandler):
     def _weiter(self, ziel: str) -> None:
         self._kopf(HTTPStatus.FOUND, "text/plain; charset=utf-8", 0, {"Location": ziel})
 
-    def _fehler(self, status: int, text: str, schliessen: bool = False) -> None:
+    def _fehler(self, status: int, text: str, schliessen: bool = False, werte: dict | None = None) -> None:
+        """Fehler als JSON. ``text`` ist der deutsche Text und zugleich der Schlüssel der Übersetzung
+        in web/i18n.js; mit ``werte`` ist er eine Vorlage mit {platzhaltern} (#81)."""
         fehler_id = uuid.uuid4().hex[:8]
         LOG.info("Fehler %s %s: %s %s", fehler_id, status, self.command, getattr(self, "path", ""))
         extra = None
         if schliessen:
             self.close_connection = True
             extra = {"Connection": "close"}
-        self._json(status, {"fehler": text, "fehlerId": fehler_id}, extra)
+        m = meldung(text, **(werte or {}))
+        antwort = {"fehler": m.pop("text"), **m, "fehlerId": fehler_id}
+        self._json(status, antwort, extra)
 
     def send_error(self, code: int, message: str | None = None, explain: str | None = None) -> None:
         """Fehler, die schon beim Lesen der Anfrage entstehen (kaputte Anfragezeile, unbekannte Methode):
@@ -403,7 +415,7 @@ class Handler(BaseHTTPRequestHandler):
         if not (release.get("bereit", True) and release.get("archiv") and release.get("pruefsumme")):
             # Paket hängt noch nicht am Release (#63): gleich neu prüfen lassen statt scheitern
             zugang._schreibe(app.k.auftraege_verz / "release-pruefen", {"zeit": time.time()})  # noqa: SLF001
-            self._fehler(HTTPStatus.CONFLICT, f"Version {neueste} wird noch bereitgestellt – bitte in ein bis zwei Minuten erneut versuchen.")
+            self._fehler(HTTPStatus.CONFLICT, "Version {v} wird noch bereitgestellt – bitte in ein bis zwei Minuten erneut versuchen.", werte={"v": neueste})
             return
         status = lies_json(app.k.update_status_datei, {}) or {}
         if status.get("zustand") == "laeuft" and time.time() - status.get("zeit", 0) < 600:
@@ -456,8 +468,9 @@ def github_pruefen(org: str, token: str) -> dict:
         antwort = k.hole(f"/orgs/{org}/repos", {"per_page": 100})
         anzahl = len(antwort.daten) if isinstance(antwort.daten, list) else 0
         ablauf = github.token_ablauf(antwort.kopf.get("github-authentication-token-expiration"))
-        ergebnisse.append({"ok": True, "text": "Token gültig" + (", läuft ab am " + time.strftime("%d.%m.%Y", time.localtime(ablauf)) if ablauf else ", ohne Ablaufdatum"), "ablauf": ablauf})
-        ergebnisse.append({"ok": True, "text": f"Organisation {org} gefunden, {anzahl}{'+' if anzahl == 100 else ''} Repositories"})
+        gueltig = meldung("Token gültig, läuft ab am {d}", d=time.strftime("%d.%m.%Y", time.localtime(ablauf))) if ablauf else meldung("Token gültig, ohne Ablaufdatum")
+        ergebnisse.append({"ok": True, **gueltig, "ablauf": ablauf})
+        ergebnisse.append({"ok": True, **meldung("Organisation {org} gefunden, {n} Repositories", org=org, n=f"{anzahl}{'+' if anzahl == 100 else ''}")})
         try:
             if anzahl:
                 erstes = antwort.daten[0]["name"]
@@ -473,12 +486,12 @@ def github_pruefen(org: str, token: str) -> dict:
         return {"ok": True, "ergebnisse": ergebnisse}
     except github.GitHubFehler as fehler:
         texte = {
-            "token-ungueltig": "Token ungültig oder abgelaufen.",
-            "keine-rechte": f"Organisation {org} nicht gefunden oder kein Zugriff.",
-            "nicht-erreichbar": "GitHub ist von der VM aus nicht erreichbar.",
-            "kontingent": "API-Kontingent erschöpft, bitte später erneut prüfen.",
+            "token-ungueltig": meldung("Token ungültig oder abgelaufen."),
+            "keine-rechte": meldung("Organisation {org} nicht gefunden oder kein Zugriff.", org=org),
+            "nicht-erreichbar": meldung("GitHub ist von der VM aus nicht erreichbar."),
+            "kontingent": meldung("API-Kontingent erschöpft, bitte später erneut prüfen."),
         }
-        return {"ok": False, "ergebnisse": [{"fehler": True, "text": texte.get(fehler.art, str(fehler))}]}
+        return {"ok": False, "ergebnisse": [{"fehler": True, **texte.get(fehler.art, {"text": str(fehler)})}]}
 
 
 def _github_routen(handler: Handler, pfad: str, daten: dict) -> bool:

@@ -82,5 +82,18 @@ const RM = (() => {
     }
   }
 
-  return { p2, ms, zahl, zeit, hm, tm, datum, wt, dauer, vor, seit, esc, mehrzahl, $, IC, thema, setzeThema, sende, t };
+  /* Text aus einer Server-Antwort übersetzen: mit Vorlage und Werten (z. B. „Version {v} …“) oder
+     als fester deutscher Text – der deutsche Text ist der Schlüssel in i18n.js (#81). */
+  const serverText = (d, feld = 'fehler') => (d && d.vorlage ? t(d.vorlage, d.werte) : t(String((d && d[feld]) || '')));
+
+  /* Knopf zum Umschalten der Sprache (Anmeldung, Einrichtung): zeigt die jeweils andere Sprache. */
+  function sprachKnopf(el) {
+    if (!el || typeof I18N === 'undefined') return;
+    const andere = I18N.sprache() === 'de' ? 'en' : 'de';
+    el.textContent = andere === 'en' ? 'English' : 'Deutsch';
+    el.lang = andere;
+    el.addEventListener('click', () => { I18N.setzeSprache(andere); location.reload(); });
+  }
+
+  return { p2, ms, zahl, zeit, hm, tm, datum, wt, dauer, vor, seit, esc, mehrzahl, $, IC, thema, setzeThema, sende, t, serverText, sprachKnopf };
 })();

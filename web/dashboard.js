@@ -782,7 +782,7 @@
       b.disabled = true;
       if (DEMO) { window.RM_DEMO.updateStarten(); return; }
       const r = await RM.sende('/api/update/starten');
-      if (!r.ok) { b.disabled = false; b.insertAdjacentHTML('afterend', `<p class="info-notiz fehler">${esc(r.daten.fehler || t('Update konnte nicht gestartet werden.'))}</p>`); }
+      if (!r.ok) { b.disabled = false; b.insertAdjacentHTML('afterend', `<p class="info-notiz fehler">${esc(r.daten.fehler ? RM.serverText(r.daten) : t('Update konnte nicht gestartet werden.'))}</p>`); }
     }
   });
   document.addEventListener('change', async (e) => {
