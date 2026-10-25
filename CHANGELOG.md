@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.7.0] – 25.10.2026
+
 ### Geändert
 - Automatisches Update wartet, bis der Runner frei ist: ab 3 Uhr vorgemerkt, gestartet, sobald kein
   Job läuft (bis 7 Uhr, sonst nächste Nacht), höchstens ein Versuch je Nacht; Info › Updates zeigt
