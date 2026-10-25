@@ -376,6 +376,7 @@ class Zustand:
             "neueste": release,
             "status": status,
             "auto": bool(einstellungen.get("autoUpdate")),
+            "autoStand": lies_json(self.k.lauf_verz / "auto-update.json", {}) or {},  # vorgemerkt/verschoben/gestartet (#77)
         }
 
     def _github_dateien(self) -> None:
@@ -391,7 +392,8 @@ class Zustand:
         pfad = self.k.lauf_verz / "docker.json"
         if self._geaendert(pfad):
             self._setze("container", (lies_json(pfad, {}) or {}).get("container", []))
-        for pfad in (self.k.lauf_verz / "release.json", self.k.update_status_datei, self.k.einstellungen_datei):
+        for pfad in (self.k.lauf_verz / "release.json", self.k.update_status_datei, self.k.einstellungen_datei,
+                     self.k.lauf_verz / "auto-update.json"):
             if self._geaendert(pfad):
                 self._setze("update", self._update())
                 break

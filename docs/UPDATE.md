@@ -21,8 +21,11 @@ erreichbar.
 
 ![Update verfügbar](handbuch/bilder/update-verfuegbar.png)
 
-**Automatisch:** In Info › Updates „Automatisch aktualisieren“ einschalten – dann nachts um
-3 Uhr, aber nur, wenn gerade kein Job läuft.
+**Automatisch:** In Info › Updates „Automatisch aktualisieren“ einschalten. Ab 3 Uhr nachts wird
+ein neues Update vorgemerkt und startet, sobald der Runner keinen Job hat, spätestens bis 7 Uhr.
+Läuft bis dahin durchgehend ein Job, kommt es in der nächsten Nacht dran. Info › Updates zeigt den
+Stand („vorgemerkt“ oder „nächster Versuch in der kommenden Nacht“). Neu gestartet werden nur die
+Monitor-Dienste, der Runner und laufende Jobs merken davon nichts.
 
 ## Per SSH
 
