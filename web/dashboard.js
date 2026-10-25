@@ -619,6 +619,26 @@
     $('k-info').focus();
   }
 
+  // Inline-Code aus Release-Notizen (`…`) nach dem Maskieren als <code> zeigen
+  const mitCode = (text) => esc(text).replace(/`([^`]+)`/g, '<code class="inl">$1</code>');
+
+  // Was sich gegenüber der installierten Version ändert (#78): je Version „Neu in X“ und
+  // „Einmalig nach dem Update“; neueste offen, ältere eingeklappt.
+  function aenderungenHtml(u) {
+    const liste = (u.neueste.aenderungen && u.neueste.aenderungen.length) ? u.neueste.aenderungen
+      : (u.neueste.notizen && u.neueste.notizen.length ? [{ version: u.neueste.version, url: u.neueste.url, neu: u.neueste.notizen, einmalig: '' }] : []);
+    if (!liste.length) return '';
+    const block = (r) => `${r.einmalig ? `<div class="upd-einmalig"><span class="upd-einmalig-titel">Einmalig nach dem Update:</span> ${mitCode(r.einmalig)}</div>` : ''}`
+      + (r.neu && r.neu.length ? `<ul>${r.neu.map(n => `<li>${mitCode(n)}</li>`).join('')}</ul>` : '')
+      + `<a href="${esc(r.url || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">Release-Notiz ${esc(r.version)} auf GitHub ↗</a>`;
+    const [erste, ...aeltere] = liste;
+    const titel = liste.length > 1 ? `Neu seit ${esc(u.installiert)} · ${liste.length} Versionen` : `Neu in ${esc(erste.version)}`;
+    return `<div class="upd-neu"><div class="upd-neu-titel">${titel}</div>`
+      + (liste.length > 1 ? `<div class="upd-version">${esc(erste.version)}</div>` : '') + block(erste)
+      + aeltere.map(r => `<details class="upd-aelter"><summary>${esc(r.version)}</summary>${block(r)}</details>`).join('')
+      + '</div>';
+  }
+
   function infoTeile() {
     const st = S.status || {}, w = S.workflows || {}, u = S.update || {}, us = u.status || {};
     const jetzt = Date.now();
@@ -633,7 +653,7 @@
       ['Runner', `${st.version ? 'actions-runner ' + esc(st.version) : '–'} · aktualisiert sich selbst`],
     ]);
     upd += pruefKnopf(u, us, neu);
-    if (neu && u.neueste.notizen && u.neueste.notizen.length) upd += `<div class="upd-neu"><div class="upd-neu-titel">Neu in ${esc(u.neueste.version)}</div><ul>${u.neueste.notizen.map(n => `<li>${esc(n)}</li>`).join('')}</ul><a href="${esc(u.neueste.url || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">Alle Änderungen auf GitHub ↗</a></div>`;
+    if (neu) upd += aenderungenHtml(u);
     if (us.zustand === 'laeuft' || us.zustand === 'fehler') {
       const nr = us.schritt || 1;
       const zeilen = UPDATE_SCHRITTE.map((s, i) => {

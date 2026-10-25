@@ -90,6 +90,39 @@ class SeitenTest(unittest.TestCase):
             self.assertEqual(runner.lies_registrierung(Path(verz) / "fehlt"), {})
 
 
+class AenderungenTest(unittest.TestCase):
+    """Änderungen seit der installierten Version (#78)."""
+
+    def test_notiz_aus_dem_repo(self):
+        text = Path("docs/releases/v0.6.1.md").read_text(encoding="utf-8")
+        d = github.deute_notiz(text)
+        self.assertTrue(d["neu"] and d["neu"][0].startswith("Runner-Einrichtung"))
+        self.assertIn("einrichten.sh runner", d["einmalig"])
+        d = github.deute_notiz(Path("docs/releases/v0.5.0.md").read_text(encoding="utf-8"))
+        self.assertEqual(d["einmalig"].split(".")[0], "Offene Dashboard-Fenster dürfen neu geladen werden, müssen aber nicht")
+
+    def test_alte_notiz_ohne_abschnitte(self):
+        self.assertEqual(github.deute_notiz("Text\n- eins\n* zwei\n")["neu"], ["eins", "zwei"])
+
+    def test_versionen_zwischen_installiert_und_neueste(self):
+        def rel(tag, body="## Was ist neu\n- x\n", **mehr):
+            return {"tag_name": tag, "body": body, "html_url": f"https://example.org/{tag}", "published_at": "2026-10-25T00:00:00Z", **mehr}
+
+        class Klient:
+            def hole(self, pfad, parameter=None):
+                return github.Antwort([rel("v0.7.0"), rel("v0.6.2"), rel("v0.6.1"), rel("v0.6.10", prerelease=True),
+                                       rel("v0.8.0", draft=True), rel("kaputt")], {})
+        liste = github.aenderungen(Klient(), "beispiel-org/x", "0.6.1", "0.7.0")
+        self.assertEqual([r["version"] for r in liste], ["0.7.0", "0.6.2"])
+        self.assertEqual(liste[0]["neu"], ["x"])
+
+    def test_fehler_ergibt_leere_liste(self):
+        class Klient:
+            def hole(self, pfad, parameter=None):
+                raise github.GitHubFehler("nicht-erreichbar", "weg")
+        self.assertEqual(github.aenderungen(Klient(), "beispiel-org/x", "0.6.1", "0.7.0"), [])
+
+
 class DienstGrundTest(unittest.TestCase):
     """Gestoppter Dienst: Ursache aus systemd „Result“ (#68)."""
 

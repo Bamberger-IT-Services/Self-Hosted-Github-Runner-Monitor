@@ -339,6 +339,11 @@ body.dashboard { overflow: hidden; }
 .upd-neu-titel { font-weight: 650; margin-bottom: 4px; }
 .upd-neu ul { margin: 0 0 8px; padding-left: 18px; }
 .upd-neu a { color: var(--brand); font-weight: 600; font-size: 12.5px; }
+.upd-version { font-weight: 600; font-size: 12.5px; color: var(--ink-muted); margin: 6px 0 2px; }
+.upd-einmalig { margin: 4px 0 8px; padding: 8px 10px; border-radius: var(--r-sm); background: var(--surface-alt); border-left: 3px solid var(--warning); font-size: 12.5px; line-height: 18px; }
+.upd-einmalig-titel { font-weight: 650; }
+.upd-aelter { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px; }
+.upd-aelter summary { cursor: pointer; font-weight: 600; font-size: 12.5px; color: var(--ink-muted); }
 .upd-aktion { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 10px 0; }
 .upd-aktion.zeile { flex-direction: row; align-items: center; }
 .upd-schritte { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }

@@ -112,6 +112,10 @@ Geprüft mit Bildschirmfotos bei 1440 × 900 (Design und App nebeneinander), hel
   nicht geplant).
 - Docker-Container werden gesammelt, aber nicht angezeigt; eine Anzeige ist nicht geplant (E-05,
   Issue #22 vom Projektinhaber geschlossen).
+- **Änderungen seit der installierten Version** (#78, Erweiterung von „Neu in X“): Bei mehreren
+  Versionen heißt der Kasten „Neu seit X · n Versionen“, die neueste steht offen, ältere sind
+  einklappbar (`details`). „Einmalig nach dem Update“ steht als Kasten mit gelbem Rand über den
+  Punkten der Version.
 - **Grund eines gestoppten Dienstes** (#68, ohne Entwurf): Die Status-Karte „Dienst gestoppt“ hat
   eine zusätzliche Zeile „Grund“ (z. B. „Speicher voll (OOM-Killer)“) im vorhandenen kv-Stil, die
   Meldung oben nennt die Ursache vor „Jobs bleiben in der Warteschlange“. Im nächsten Design
