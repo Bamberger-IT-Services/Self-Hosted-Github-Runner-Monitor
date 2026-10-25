@@ -546,3 +546,7 @@ body.einrichtung { min-height: 100vh; display: flex; flex-direction: column; fon
   .einrichtung .feld input.gross { width: 100%; }
   .einrichtung .kopf-sub { display: none; }
 }
+
+/* Sprachumschalter auf Anmeldung und Einrichtung (#81) */
+.sprache-knopf { margin-top: 0; font-size: 12px; font-weight: 600; }
+.einrichtung .sprache-knopf { flex: 0 0 auto; margin-left: 12px; }

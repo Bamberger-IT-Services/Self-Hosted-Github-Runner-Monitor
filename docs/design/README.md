@@ -112,6 +112,9 @@ Geprüft mit Bildschirmfotos bei 1440 × 900 (Design und App nebeneinander), hel
   nicht geplant).
 - Docker-Container werden gesammelt, aber nicht angezeigt; eine Anzeige ist nicht geplant (E-05,
   Issue #22 vom Projektinhaber geschlossen).
+- **Sprachumschalter auf Anmeldung und Einrichtung** (#81, ohne Entwurf): ein Textknopf mit der
+  jeweils anderen Sprache („English“/„Deutsch“) – auf der Anmeldeseite in der Fußzeile, in der
+  Einrichtung rechts in der Kopfzeile.
 - **Sprache** (#80, ohne Entwurf): In Info › Darstellung steht unter „Modus“ eine zweite Zeile
   „Sprache“ mit dem Segment „Deutsch | English“ im selben Stil. Englische Texte sind teils länger;
   die Karten sind darauf geprüft (Bildschirmfotos im PR). Die Demo-Leiste bleibt deutsch.

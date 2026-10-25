@@ -1,5 +1,6 @@
 """Sprachumschaltung (#79): Jeder deutsche Text, der über t() oder data-t läuft, hat eine englische
-Fassung in web/i18n.js, und die Platzhalter stimmen überein."""
+Fassung in web/i18n.js, und die Platzhalter stimmen überein. Dazu die Meldungen des Servers (#81):
+Der deutsche Text (bzw. die Vorlage mit {platzhaltern}) ist der Schlüssel."""
 
 import html
 import json
@@ -8,7 +9,8 @@ import unittest
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / "web"
-SEITEN = ["gemeinsam.js", "dashboard.js", "dashboard.html"]
+SEITEN = ["gemeinsam.js", "dashboard.js", "dashboard.html", "anmelden.js", "anmelden.html", "einrichtung.js", "einrichtung.html"]
+WURZEL = WEB.parent
 
 
 def englisch() -> dict[str, str]:
@@ -36,19 +38,47 @@ def schluessel(datei: str) -> list[str]:
     return gefunden
 
 
+def server_meldungen() -> list[str]:
+    """Feste Texte und Vorlagen, die der Server an die Oberfläche schickt."""
+    from runner_monitor import zugang
+    s = (WURZEL / "runner_monitor" / "server.py").read_text(encoding="utf-8")
+    texte = re.findall(r'_fehler\(HTTPStatus\.\w+, "([^"]+)"', s)
+    texte += re.findall(r'meldung\("([^"]+)"', s)
+    texte += re.findall(r'"(?:fehler|text)": "([^"]+)"', s)
+    texte += re.findall(r'"(?:falsch|abgelaufen|fehlt)": "([^"]+)"', s)
+    z = (WURZEL / "runner_monitor" / "zugang.py").read_text(encoding="utf-8")
+    texte += re.findall(r'ZugangFehler\("([^"]+)"\)', z)
+    texte += re.findall(r'return "(Dieses[^"]+)"', z)
+    texte += [f"Das Passwort braucht mindestens {zugang.PASSWORT_MIN} Zeichen.",
+              f"Das Passwort darf höchstens {zugang.PASSWORT_MAX} Zeichen haben."]
+    return texte
+
+
 class I18nTest(unittest.TestCase):
     def test_alles_uebersetzt(self):
         en = englisch()
         fehlt = sorted({k for datei in SEITEN for k in schluessel(datei) if k not in en})
         self.assertEqual(fehlt, [], "ohne englische Fassung")
 
+    def test_server_meldungen_uebersetzt(self):
+        en = englisch()
+        meldungen = server_meldungen()
+        self.assertGreater(len(meldungen), 20)
+        self.assertEqual(sorted({m for m in meldungen if m not in en}), [], "Server-Meldung ohne englische Fassung")
+
+    def test_meldung_mit_vorlage(self):
+        from runner_monitor import server
+        self.assertEqual(server.meldung("Nicht gefunden"), {"text": "Nicht gefunden"})
+        m = server.meldung("Version {v} wird noch bereitgestellt – bitte in ein bis zwei Minuten erneut versuchen.", v="1.2.3")
+        self.assertEqual(m["werte"], {"v": "1.2.3"})
+        self.assertTrue(m["text"].startswith("Version 1.2.3 "))
+
     def test_platzhalter_gleich(self):
         for de, en in englisch().items():
             self.assertEqual(sorted(re.findall(r"\{(\w+)\}", de)), sorted(re.findall(r"\{(\w+)\}", en)), de)
 
     def test_keine_toten_eintraege(self):
-        alle = {k for datei in SEITEN + ["anmelden.js", "anmelden.html", "einrichtung.js", "einrichtung.html"]
-                if (WEB / datei).exists() for k in schluessel(datei)}
+        alle = {k for datei in SEITEN for k in schluessel(datei)} | set(server_meldungen())
         tot = sorted(set(englisch()) - alle)
         self.assertEqual(tot, [], "Übersetzungen ohne Verwendung")
 
