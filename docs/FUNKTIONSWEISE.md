@@ -173,7 +173,11 @@ dieselben Daten ohne Server (Entwicklung, Bildschirmfotos).
 4. Meldet `/api/health` binnen 30 s nicht die neue Version, hängt er zurück auf die alte und
    meldet „Update fehlgeschlagen“. Drei Versionen bleiben liegen (`./einrichten.sh zurueck`).
 
-Automatisch aktualisieren (Schalter in „Info“): nachts um 3 Uhr, nur wenn kein Job läuft.
+Automatisch aktualisieren (Schalter in „Info“): Ab 3 Uhr ist ein neues Update vorgemerkt. Der
+Sammler startet es, sobald kein Job läuft (`pgrep Runner.Worker`), spätestens bis 7 Uhr, sonst in
+der nächsten Nacht. Höchstens ein Versuch je Nacht. Der Stand (`vorgemerkt`, `verschoben`,
+`gestartet`) liegt in `/run/runner-monitor/auto-update.json` und übersteht den Neustart durch das
+Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner bleibt unberührt.
 
 ## Dateien und Rechte
 
