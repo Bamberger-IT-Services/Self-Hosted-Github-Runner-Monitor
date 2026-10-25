@@ -11,6 +11,7 @@ laufenden Schritts als Live-Log.
 
 - **Runner-Status:** Dienst aktiv/gestoppt, online/offline bei GitHub, laufender Job mit
   Repository, Workflow, Schritt und Laufzeit, die letzten fünf Jobs.
+- **Sprache:** Oberfläche auf Deutsch oder Englisch (Info › Darstellung, Vorgabe nach Browser).
 - **Auslastung:** CPU gesamt und je Kern, RAM, Swap, Netzwerk (empfangen/gesendet mit Verlauf), Last, Verlauf der letzten 10 Minuten.
 - **Prozesse und Platten:** die sechs größten Prozesse, alle Laufwerke mit Aufräumschwelle.
 - **Workflows je Repository:** was läuft, was wartet (über ein nur lesendes GitHub-Token).

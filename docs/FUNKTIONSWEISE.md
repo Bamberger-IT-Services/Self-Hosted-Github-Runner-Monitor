@@ -212,5 +212,5 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/zugang.py` | Passwörter, Sitzungen, Sperren, Einrichtungscode |
 | `runner_monitor/sammler.py` | root-Sammler (GitHub, Docker, Releases, Aufträge) |
 | `runner_monitor/aktualisierer.py` | root-Update-Hilfsdienst |
-| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js` |
+| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`, Wahl je Browser in `localStorage` `rm-sprache`) |
 | `einrichten.sh` | Installation, Wartung, Entfernen |

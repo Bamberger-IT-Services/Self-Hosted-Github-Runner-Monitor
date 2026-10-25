@@ -112,6 +112,9 @@ Geprüft mit Bildschirmfotos bei 1440 × 900 (Design und App nebeneinander), hel
   nicht geplant).
 - Docker-Container werden gesammelt, aber nicht angezeigt; eine Anzeige ist nicht geplant (E-05,
   Issue #22 vom Projektinhaber geschlossen).
+- **Sprache** (#80, ohne Entwurf): In Info › Darstellung steht unter „Modus“ eine zweite Zeile
+  „Sprache“ mit dem Segment „Deutsch | English“ im selben Stil. Englische Texte sind teils länger;
+  die Karten sind darauf geprüft (Bildschirmfotos im PR). Die Demo-Leiste bleibt deutsch.
 - **Nacht-Update vorgemerkt** (#77, ohne Entwurf): Unter „Automatisch aktualisieren“ steht bei
   Bedarf eine Notiz im Stil `info-notiz` („Update auf X vorgemerkt …“ bzw. „nächster Versuch in der
   kommenden Nacht“).

@@ -10,6 +10,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   den Stand (#77).
 
 ### Neu
+- Dashboard auf Englisch umschaltbar: Info › Darstellung › Sprache (Vorgabe nach Browser, je
+  Browser gemerkt); Texte über `web/i18n.js`, ein Test prüft, dass jeder Text übersetzt ist (#80).
 - Info › Updates zeigt alle Änderungen seit der installierten Version – je Version „Was ist neu“
   und hervorgehoben „Einmalig nach dem Update“, ältere Versionen zum Aufklappen (#78).
 
