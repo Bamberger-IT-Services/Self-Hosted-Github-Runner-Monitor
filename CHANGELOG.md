@@ -4,6 +4,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Geändert
+- Automatisches Update wartet, bis der Runner frei ist: ab 3 Uhr vorgemerkt, gestartet, sobald kein
+  Job läuft (bis 7 Uhr, sonst nächste Nacht), höchstens ein Versuch je Nacht; Info › Updates zeigt
+  den Stand (#77).
+
 ### Neu
 - Info › Updates zeigt alle Änderungen seit der installierten Version – je Version „Was ist neu“
   und hervorgehoben „Einmalig nach dem Update“, ältere Versionen zum Aufklappen (#78).

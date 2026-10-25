@@ -29,6 +29,7 @@ LOG = logging.getLogger("runner_monitor.sammler")
 TAKT_DOCKER = 2
 TAKT_GITHUB = 30
 TAKT_RELEASE = 6 * 3600
+AUTO_FENSTER = (3, 7)     # automatisches Update: ab 3 Uhr, spätestens bis 7 Uhr (#77)
 TAKT_NICHT_BEREIT = 120  # Release ohne Paket (Workflow lädt noch hoch): bald erneut fragen (#63)
 MANUELL_MIN_ABSTAND = 60  # „Jetzt prüfen“ schont das GitHub-Kontingent
 
@@ -101,7 +102,6 @@ class Sammler:
         self.letzter_erfolg: float | None = None
         self.naechste_github = 0.0
         self.naechste_release = 0.0
-        self.letztes_auto_update = ""
         self.letzte_manuelle_pruefung = 0.0
         self._gh_speicher: dict = {}  # ETags und ruhige Repositories über die Durchläufe (Issue #15)
         self._gh_speicher_token: tuple[str, str] = ("", "")
@@ -180,24 +180,50 @@ class Sammler:
         schreibe_oeffentlich(self.k.lauf_verz / "release.json", daten)
         return daten
 
-    def auto_update(self) -> None:
-        """Nachts um 3 Uhr, nur wenn eingeschaltet, eine neuere Version da ist und kein Job läuft."""
-        jetzt = time.localtime()
-        heute = time.strftime("%Y-%m-%d", jetzt)
-        if jetzt.tm_hour != 3 or self.letztes_auto_update == heute:
-            return
+    @staticmethod
+    def _job_laeuft() -> bool:
+        return subprocess.run(["pgrep", "-f", "Runner.Worker"], capture_output=True, check=False).returncode == 0
+
+    def auto_update(self, jetzt: float | None = None) -> None:
+        """Automatisches Update (#77): ab 3 Uhr vorgemerkt, gestartet, sobald kein Job läuft – bis
+        spätestens 7 Uhr, danach erst in der nächsten Nacht. Höchstens ein Versuch je Nacht.
+
+        Der Stand liegt in ``auto-update.json`` im Laufzeitordner (übersteht den Neustart des Sammlers
+        durch das Update selbst, damit ein fehlgeschlagener Versuch nicht jede Minute wiederkommt)
+        und wird in Info › Updates angezeigt. Das Update startet nur die Monitor-Dienste neu, der
+        Runner und ein laufender Job bleiben unberührt."""
+        jetzt = time.time() if jetzt is None else jetzt
+        t = time.localtime(jetzt)
+        nacht = time.strftime("%Y-%m-%d", t)
+        datei = self.k.lauf_verz / "auto-update.json"
+        stand = self._lies(datei) or {}
         einst = self._lies(self.k.einstellungen_datei) or {}
         release = self._lies(self.k.lauf_verz / "release.json") or {}
-        if not einst.get("autoUpdate") or github.vergleiche(release.get("version", ""), VERSION) <= 0:
+        version = release.get("version", "")
+        faellig = bool(einst.get("autoUpdate")) and github.vergleiche(version, VERSION) > 0
+        if not faellig:
+            if stand:
+                schreibe_oeffentlich(datei, {})
             return
+        if not AUTO_FENSTER[0] <= t.tm_hour < AUTO_FENSTER[1]:
+            if stand.get("zustand") == "vorgemerkt":
+                # Die ganze Nacht lief ein Job: nächste Nacht erneut
+                schreibe_oeffentlich(datei, {**stand, "zustand": "verschoben"})
+            return
+        if stand.get("nacht") == nacht and stand.get("zustand") == "gestartet":
+            return  # heute schon versucht
         if not paket_bereit(release):
             return  # Paket wird noch hochgeladen – der Sammler fragt in 2 Minuten erneut
-        if subprocess.run(["pgrep", "-f", "Runner.Worker"], capture_output=True, check=False).returncode == 0:
-            return  # Job läuft – in der nächsten Minute erneut prüfen
-        self.letztes_auto_update = heute
+        if self._job_laeuft():
+            if stand.get("zustand") != "vorgemerkt" or stand.get("nacht") != nacht or stand.get("version") != version:
+                schreibe_oeffentlich(datei, {"nacht": nacht, "version": version, "zustand": "vorgemerkt", "seit": jetzt})
+                LOG.info("Automatisches Update auf %s vorgemerkt – startet, sobald kein Job läuft", version)
+            return  # in der nächsten Minute erneut prüfen
+        schreibe_oeffentlich(datei, {"nacht": nacht, "version": version, "zustand": "gestartet", "seit": jetzt})
         auftrag = self.k.auftraege_verz / "update"
         auftrag.parent.mkdir(parents=True, exist_ok=True)
-        auftrag.write_text(json.dumps({"version": release["version"], "zeit": time.time(), "automatisch": True}), encoding="utf-8")
+        auftrag.write_text(json.dumps({"version": version, "zeit": jetzt, "automatisch": True}), encoding="utf-8")
+        LOG.info("Automatisches Update auf %s gestartet", version)
 
     @staticmethod
     def _lies(pfad: Path):

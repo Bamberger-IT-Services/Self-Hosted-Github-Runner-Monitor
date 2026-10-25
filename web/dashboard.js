@@ -667,7 +667,12 @@
     const bereit = !u.neueste || u.neueste.bereit !== false;  // Paket hängt schon am Release (#63)
     if (neu && !bereit && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><p class="info-notiz">Version ${esc(u.neueste.version)} wird gerade bereitgestellt – das Paket ist in ein bis zwei Minuten da. Der Monitor prüft von selbst erneut.</p></div>`;
     else if (neu && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${us.zustand === 'fehler' ? 'Erneut versuchen' : `Jetzt auf ${esc(u.neueste.version)} aktualisieren`}</button><p class="info-notiz">Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.</p></div>`;
-    upd += `<label class="upd-auto"><input type="checkbox" data-aktion="update-auto" ${u.auto ? 'checked' : ''}>Automatisch aktualisieren – nachts um 3 Uhr, nur wenn kein Job läuft</label>`;
+    upd += `<label class="upd-auto"><input type="checkbox" data-aktion="update-auto" ${u.auto ? 'checked' : ''}>Automatisch aktualisieren – nachts ab 3 Uhr, sobald kein Job läuft</label>`;
+    const as = u.autoStand || {};
+    if (u.auto && neu && us.zustand !== 'laeuft' && as.version === u.neueste.version) {
+      if (as.zustand === 'vorgemerkt') upd += `<p class="info-notiz">Update auf ${esc(as.version)} vorgemerkt – startet, sobald der Runner keinen Job mehr hat (bis 7 Uhr).</p>`;
+      else if (as.zustand === 'verschoben') upd += `<p class="info-notiz">Letzte Nacht lief bis 7 Uhr durchgehend ein Job – nächster Versuch in der kommenden Nacht ab 3 Uhr.</p>`;
+    }
 
     const t = RM.thema();
     const modi = [['system', 'Automatisch'], ['hell', 'Hell'], ['dunkel', 'Dunkel']].map(([v, n]) => `<button type="button" class="seg-knopf" data-aktion="thema" data-thema="${v}" aria-pressed="${t === v}">${n}</button>`).join('');

@@ -90,6 +90,85 @@ class SeitenTest(unittest.TestCase):
             self.assertEqual(runner.lies_registrierung(Path(verz) / "fehlt"), {})
 
 
+class AutoUpdateTest(unittest.TestCase):
+    """Nacht-Update wartet, bis der Runner frei ist (#77)."""
+
+    def setUp(self):
+        import json
+        import time
+        from runner_monitor import konfig
+        self.verz = tempfile.TemporaryDirectory()
+        d = Path(self.verz.name)
+        self.k = konfig.lade(datei=d / "fehlt.env", umgebung={"MONITOR_DATEN_VERZ": str(d / "daten"), "MONITOR_LAUF_VERZ": str(d / "lauf")})
+        self.k.lauf_verz.mkdir(parents=True)
+        self.k.daten_verz.mkdir(parents=True)
+        url = "https://github.com/beispiel-org/x/releases/download/v99.0.0/runner-monitor-99.0.0.tar.gz"
+        (self.k.lauf_verz / "release.json").write_text(json.dumps({"version": "99.0.0", "archiv": url, "pruefsumme": url + ".sha256", "bereit": True}))
+        self.k.einstellungen_datei.write_text(json.dumps({"autoUpdate": True}))
+        self.s = sammler.Sammler(self.k)
+        self.job = False
+        self.s._job_laeuft = lambda: self.job
+        self.um = lambda tag, stunde, minute=0: time.mktime((2026, 10, tag, stunde, minute, 0, 0, 0, -1))
+
+    def tearDown(self):
+        self.verz.cleanup()
+
+    def stand(self):
+        import json
+        try:
+            return json.loads((self.k.lauf_verz / "auto-update.json").read_text())
+        except OSError:
+            return {}
+
+    def auftrag(self):
+        return (self.k.auftraege_verz / "update").exists()
+
+    def test_nicht_vor_drei_uhr(self):
+        self.s.auto_update(self.um(25, 2, 59))
+        self.assertFalse(self.auftrag())
+
+    def test_frei_um_drei(self):
+        self.s.auto_update(self.um(25, 3, 0))
+        self.assertTrue(self.auftrag())
+        self.assertEqual(self.stand()["zustand"], "gestartet")
+
+    def test_job_laeuft_dann_vorgemerkt_und_nach_vier_uhr_gestartet(self):
+        self.job = True
+        self.s.auto_update(self.um(25, 3, 0))
+        self.s.auto_update(self.um(25, 3, 59))
+        self.assertFalse(self.auftrag())
+        self.assertEqual(self.stand()["zustand"], "vorgemerkt")
+        self.job = False
+        self.s.auto_update(self.um(25, 4, 37))      # früher: Nacht verpasst
+        self.assertTrue(self.auftrag())
+
+    def test_ganze_nacht_belegt_dann_verschoben(self):
+        self.job = True
+        self.s.auto_update(self.um(25, 3, 0))
+        self.s.auto_update(self.um(25, 7, 0))
+        self.assertFalse(self.auftrag())
+        self.assertEqual(self.stand()["zustand"], "verschoben")
+        self.job = False
+        self.s.auto_update(self.um(25, 12, 0))      # tagsüber nicht
+        self.assertFalse(self.auftrag())
+        self.s.auto_update(self.um(26, 3, 1))
+        self.assertTrue(self.auftrag())
+
+    def test_hoechstens_ein_versuch_je_nacht(self):
+        self.s.auto_update(self.um(25, 3, 0))
+        (self.k.auftraege_verz / "update").unlink()   # Update lief, schlug fehl (alte Version zurück)
+        neu = sammler.Sammler(self.k)                 # Sammler wurde dabei neu gestartet
+        neu._job_laeuft = lambda: False
+        neu.auto_update(self.um(25, 3, 5))
+        self.assertFalse(self.auftrag())
+        neu.auto_update(self.um(26, 3, 0))
+        self.assertTrue(self.auftrag())
+
+    def test_ausgeschaltet_oder_aktuell(self):
+        import json
+        self.k.einstellungen_datei.write_text(json.dumps({"autoUpdate": False}))
+        self.s.auto_update(self.um(25, 3, 0))
+        self.assertFalse(self.auftrag())
 class AenderungenTest(unittest.TestCase):
     """Änderungen seit der installierten Version (#78)."""
 
