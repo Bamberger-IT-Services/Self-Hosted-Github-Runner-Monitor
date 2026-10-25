@@ -172,8 +172,11 @@ class Sammler:
         schreibe_oeffentlich(self.k.lauf_verz / "github.json", ergebnis)
 
     def release(self) -> dict:
-        daten = github.neueste_version(github.Klient(self.token()), self.k.release_repo)
+        klient = github.Klient(self.token())
+        daten = github.neueste_version(klient, self.k.release_repo)
         daten["installiert"] = VERSION
+        if github.vergleiche(daten.get("version", ""), VERSION) > 0:
+            daten["aenderungen"] = github.aenderungen(klient, self.k.release_repo, VERSION, daten["version"])
         schreibe_oeffentlich(self.k.lauf_verz / "release.json", daten)
         return daten
 

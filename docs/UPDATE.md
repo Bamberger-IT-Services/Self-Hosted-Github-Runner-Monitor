@@ -6,8 +6,9 @@ Der Monitor prüft alle 6 Stunden, ob es auf GitHub ein neueres Release gibt –
 **Info › Updates › „Jetzt prüfen“** (höchstens einmal je Minute, auf der VM alternativ
 `sudo systemctl restart runner-monitor-sammler`). Gibt es eins, erscheint
 oben die Meldung **„Version X.Y.Z verfügbar“**. Vorher die Release-Notiz lesen
-(`docs/releases/vX.Y.Z.md` oder „Was ist neu?“). Steht dort ein einmaliger Schritt, kommt er
-nach dem Update dran.
+(`docs/releases/vX.Y.Z.md` oder „Was ist neu?“). Info › Updates zeigt alle Versionen seit der
+installierten – je Version „Was ist neu“ und, hervorgehoben, „Einmalig nach dem Update“. Ein
+einmaliger Schritt kommt nach dem Update dran.
 
 ## Im Browser (empfohlen)
 

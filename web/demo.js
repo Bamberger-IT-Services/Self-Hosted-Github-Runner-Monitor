@@ -63,7 +63,11 @@ window.RM_DEMO = (() => {
   };
   const update = () => {
     const t = jetzt();
-    const neueste = { geprueft: t - 3100, version: upd === 'aktuell' ? INST : NEU, veroeffentlicht: t - 2 * 86400, url: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases', notizen: ['Mehrere Runner auf einer VM', 'Log-Suche im Live-Log', 'Kleinere Korrekturen in der Einrichtung'] };
+    const neueste = { geprueft: t - 3100, version: upd === 'aktuell' ? INST : NEU, veroeffentlicht: t - 2 * 86400, url: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases', notizen: ['Mehrere Runner auf einer VM', 'Log-Suche im Live-Log', 'Kleinere Korrekturen in der Einrichtung'],
+      aenderungen: upd === 'aktuell' ? [] : [
+        { version: NEU, url: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases', neu: ['Log-Suche im Live-Log', 'Kleinere Korrekturen in der Einrichtung'], einmalig: '' },
+        { version: INST.split('.').map((x, i) => i === 2 ? Number(x) + 1 : x).join('.'), url: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases', neu: ['Runner-Dienst übersteht Speichermangel', 'Grund für gestoppten Dienst im Dashboard'], einmalig: 'Empfohlen: `sudo /opt/runner-monitor/aktuell/einrichten.sh runner` einmal ausführen.' },
+      ] };
     const st = upd === 'laeuft' ? { zustand: 'laeuft', schritt: Math.min(5, 1 + Math.floor(updSchritt / 4)), version: NEU, zeit: t - updSchritt }
       : upd === 'fehler' ? { zustand: 'fehler', schritt: 5, version: NEU, zeit: t - 300, meldung: 'die neue Version hat nach dem Neustart nicht geantwortet' } : {};
     return { installiert: INST, neueste, status: st, auto: false };

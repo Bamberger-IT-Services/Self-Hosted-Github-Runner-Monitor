@@ -282,6 +282,59 @@ def neueste_version(klient: Klient, repo: str) -> dict:
     }
 
 
+AENDERUNGEN_MAX_VERSIONEN = 10
+AENDERUNGEN_MAX_PUNKTE = 12
+EINMALIG_MAX = 600
+
+
+def abschnitte(text: str) -> dict[str, list[str]]:
+    """Release-Notiz (docs/releases/vX.md) in Abschnitte „## Überschrift“ → Zeilen zerlegen."""
+    teile: dict[str, list[str]] = {}
+    aktuell = ""
+    for zeile in (text or "").splitlines():
+        if zeile.startswith("## "):
+            aktuell = zeile[3:].strip().lower()
+            teile.setdefault(aktuell, [])
+        elif aktuell:
+            teile[aktuell].append(zeile.rstrip())
+    return teile
+
+
+def deute_notiz(text: str) -> dict:
+    """„Was ist neu“ als Punkte, „Einmalig nach dem Update“ als Text (ohne „Keine Schritte nötig.“)."""
+    teile = abschnitte(text)
+    punkte = lambda zeilen: [z.strip()[1:].strip() for z in zeilen if z.strip().startswith(("-", "*"))]
+    neu = punkte(teile.get("was ist neu", []))
+    if not neu:  # ältere Notizen ohne Abschnitt: alle Aufzählungspunkte
+        neu = punkte((text or "").splitlines())
+    einmalig = " ".join(z.strip() for z in teile.get("einmalig nach dem update", []) if z.strip())
+    einmalig = re.sub(r"^Keine Schritte nötig\.?\s*", "", einmalig).strip()
+    return {"neu": neu[:AENDERUNGEN_MAX_PUNKTE], "einmalig": einmalig[:EINMALIG_MAX]}
+
+
+def aenderungen(klient: Klient, repo: str, installiert: str, neueste: str) -> list[dict]:
+    """Alle veröffentlichten Releases nach ``installiert`` bis einschließlich ``neueste``, neueste
+    zuerst – damit Info › Updates zeigt, was sich gegenüber dem installierten Stand ändert (#78)."""
+    try:
+        daten = klient.hole(f"/repos/{repo}/releases", {"per_page": 30}).daten
+    except GitHubFehler:
+        return []
+    liste = []
+    for rel in daten if isinstance(daten, list) else []:
+        if not isinstance(rel, dict) or rel.get("draft") or rel.get("prerelease"):
+            continue
+        tag = rel.get("tag_name", "")
+        version = tag[1:] if tag.startswith("v") else tag
+        if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+            continue
+        if vergleiche(version, installiert) <= 0 or vergleiche(version, neueste) > 0:
+            continue
+        liste.append({"version": version, "url": rel.get("html_url", ""),
+                      "veroeffentlicht": iso_zu_unix(rel.get("published_at")), **deute_notiz(rel.get("body") or "")})
+    liste.sort(key=lambda r: tuple(int(x) for x in r["version"].split(".")), reverse=True)
+    return liste[:AENDERUNGEN_MAX_VERSIONEN]
+
+
 def vergleiche(a: str, b: str) -> int:
     """SemVer ohne Vorab-Teil vergleichen: -1, 0, 1."""
     def teile(v: str) -> tuple[int, ...]:
