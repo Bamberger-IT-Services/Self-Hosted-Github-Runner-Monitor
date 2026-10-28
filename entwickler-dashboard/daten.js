@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "29.10.2026 00:10",
+  stand: "29.10.2026 00:17",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -189,6 +189,7 @@ window.RUNNER_MONITOR = {
     { id: "E-13", thema: "Design", frage: "Netzwerk-Variante im Design 0.3.0: Wo steht die Netzauslastung?", optionen: ["Variante A: eigener Block in der RAM-Spalte", "Andere Variante"], datei: "docs/design/README.md", status: "entschieden", antwort: "Variante A: eigener Block in der RAM-Spalte – Vorgabe im Design (Claude nach Design-Vorgabe, 23.10.2026)" },
     { id: "E-14", thema: "Oberfläche", frage: "Sprache (#90): Texte auf echte Schlüssel mit de.json/en.json umbauen (Design 0.8.0) oder den deutschen Text als Schlüssel in web/i18n.js behalten?", optionen: ["Deutscher Text bleibt Schlüssel in web/i18n.js", "Umbau auf Schlüssel mit de.json/en.json"], datei: "web/i18n.js", status: "entschieden", antwort: "Deutscher Text bleibt Schlüssel in web/i18n.js: läuft seit 0.7.0, tests/test_i18n.py sichert die Vollständigkeit, der Umbau brächte Risiko ohne Nutzen. Umgesetzt in #90: Segment Automatisch | Deutsch | English, Wahl in localStorage „runner-monitor.sprache“ (auto|de|en, alter Schlüssel rm-sprache wird übernommen), Automatisch folgt navigator.languages[0] (Entscheidung von Claude im Auftrag von Tobias – Auftrag 29.10.2026: offene Themen selbstständig erledigen; jederzeit widerrufbar)" },
     { id: "E-15", thema: "Fehlermeldung", frage: "Was geschieht mit den GitHub-Issue-Vorlagen fehler.yml und idee.yml, nachdem Fehler und Ideen per E-Mail kommen (#98)?", optionen: ["Entfernen, config.yml mit E-Mail-Kontaktlink (a)", "Vorlagen behalten"], datei: ".github/ISSUE_TEMPLATE/config.yml", status: "entschieden", antwort: "Option (a): fehler.yml und idee.yml entfernt, config.yml verweist per mailto auf info@bamberger-it-services.de; aufgabe.yml bleibt (Claude im Auftrag von Tobias, 29.10.2026)" },
+    { id: "E-16", thema: "Runner-Erkennung", frage: "Einstufung und Fähigkeiten von Forgejo, Gitea und GitLab, solange es keinen Adapter gibt (#91): wie heute lieferbar oder wie im Design-Ziel?", optionen: ["Wie heute lieferbar: „teil“, nur Dienst und Journal (umgesetzt, Empfehlung)", "Wie im Design-Ziel: Forgejo/Gitea „voll“ schon jetzt"], datei: "runner_monitor/erkennung.py", status: "offen" },
   ],
 
   /* Aufgaben stehen seit 23.10.2026 als Issues im GitHub-Project (Anweisung 08), nicht mehr hier.
@@ -250,6 +251,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "29.10.2026 00:17", text: "#91 umgesetzt (PR offen): runner_monitor/erkennung.py erkennt GitHub-, Forgejo-, Gitea-, GitLab- und unbekannte Runner über systemd-Units, Prozesse, .runner/config.toml und eine Server-Probe ohne Zugangsdaten (Grad sicher/wahrscheinlich/unklar, Merkmale). einrichten.sh zeigt den Abschnitt „Runner auf dieser VM“ wie im Design; der Sammler sucht beim Start und alle 6 Std. (/run/runner-monitor/erkennung.json). runner.json nur gelesen. Offen: E-14 (Einstufung vor den Adaptern)." },
     { datum: "29.10.2026 00:00", text: "#90 Sprache: Segment Automatisch | Deutsch | English in Info › Darstellung, Wahl in localStorage „runner-monitor.sprache“ (auto|de|en, alter Schlüssel rm-sprache einmalig übernommen), Automatisch folgt navigator.languages[0] (de* → Deutsch, sonst Englisch), Hinweistext nach Design 0.8.0; englische Texte der vorhandenen Oberfläche an das Wörterbuch des Designs angeglichen; Tests in tests/test_i18n.py und tests/js/i18n.test.mjs. E-14: deutscher Text bleibt Schlüssel in web/i18n.js, kein Umbau auf de.json/en.json." },
     { datum: "29.10.2026 00:00", text: "#98 umgesetzt: Fehler und Ideen per E-Mail statt GitHub-Issues (mailto: mit Vorlage und technischen Angaben, auch beim fehlgeschlagenen Update; Logik in web/mail.js, Test tests/js/mail.test.mjs). Handbuch, Datenschutz, README, CHANGELOG und Designabgleich angepasst. Review nachgezogen: Update-Fehler als Knopf neben „Erneut versuchen“, Briefumschlag-Symbol, Mailtext nach Main 0.8.0, Tokenfilter auch für 40-Hex. E-15: Issue-Vorlagen fehler.yml/idee.yml entfernt, config.yml mit E-Mail-Kontaktlink." },
     { datum: "28.10.2026 23:45", text: "Design 0.8.0: Epic #100 mit Teil-Issues #89–#99 und #101 angelegt (Labels, Meilenstein v0.8.0), Design in PR #102 abgelegt. #89 umgesetzt: Verlauf mit festen Zeitfenstern (Eimer am absoluten Zeitpunkt) und Zeitraum-Umschalter 30 s/2/5/10 Min.; Node-Tests in der CI. Offen: Entscheidungen zu #90 (feste Schlüssel) und #92 (Format /api/zustand), prio-Labels durch Tobias." },

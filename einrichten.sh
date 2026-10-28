@@ -87,6 +87,29 @@ PY
   chown "$NUTZER:$NUTZER" "$DATEN/systempruefung.json"; chmod 640 "$DATEN/systempruefung.json"
 }
 
+# Abschnitt „Runner auf dieser VM“ (Design 0.8.0, #91): runner_monitor.erkennung sucht GitHub-,
+# Forgejo-, Gitea-, GitLab- und unbekannte Runner (systemd-Units, Prozesse, .runner-Dateien,
+# Server-API ohne Zugangsdaten) und gibt die Zeilen aus. Rückgabe 0 = gefunden, 3 = keiner.
+# Vorhandene Runner bleiben unverändert; ohne Fund bietet das Skript die Einrichtung an.
+runner_suchen() {
+  local rc=0 farbe=""
+  abschnitt "Runner auf dieser VM"
+  if [ -t 1 ]; then farbe=--farbe; fi
+  (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 "$PYTHON" -m runner_monitor.erkennung --text --einrichtung ${farbe:+"$farbe"} \
+      --runner-verz "$RUNNER_VERZ" --zuordnung "$ETC/runner.json" --token-datei "$ETC/github-token") || rc=$?
+  case "$rc" in
+    0) ;;
+    3)
+      hinweis "Kein Runner gefunden (geprüft: systemd-Units, Prozesse, .runner-Dateien)."
+      hin "Der Monitor kann trotzdem die VM überwachen. Später Runner ergänzen:"
+      hin "  sudo $BASIS/aktuell/einrichten.sh runner"
+      if frage "Jetzt einen Runner einrichten?"; then runner_einrichten
+      else hin "→ Im Browser: „Von Hand zuordnen“ oder „Ohne Runner fortfahren“"; fi
+      ;;
+    *) hinweis "Runner-Erkennung nicht möglich – der Monitor sucht nach dem Start selbst (alle 6 Std.)." ;;
+  esac
+}
+
 alte_ansicht_entfernen() {
   # Vorgänger (ttyd-Terminalansicht aus monitor-einrichten.sh) nutzte denselben Dienstnamen.
   if [ -f "$SYSTEMD/runner-monitor.service" ] && grep -q ttyd "$SYSTEMD/runner-monitor.service"; then
@@ -130,17 +153,7 @@ installieren() {
   dev="$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')" || true
   ip="$(eigene_ip)"; netz="$(lan_netz)"
   ok "Netz: ${ip:-unbekannt}${dev:+ ($dev)}${netz:+, lokales Netz $netz}"
-  if [ -f "$RUNNER_VERZ/.runner" ]; then
-    local unit; unit="$(runner_unit || true)"
-    ok "GitHub-Runner gefunden: $(runner_name) in $RUNNER_VERZ, Dienst $( [ -n "$unit" ] && systemctl is-active --quiet "$unit" && echo aktiv || echo 'nicht aktiv')"
-    hin "→ Der Runner bleibt unverändert, es wird nur der Monitor eingerichtet."
-  else
-    hinweis "Kein GitHub-Runner gefunden."
-    printf '    %s\n' "Runner jetzt mit einrichten? Dafür brauchen Sie ein Registrierungs-Token:"
-    hin 'GitHub › Organisation › Settings › Actions › Runners › „New runner“'
-    if frage "Runner einrichten?"; then runner_einrichten; else
-      hin "Später: sudo $BASIS/aktuell/einrichten.sh runner – bis dahin zeigt der Monitor nur die VM."; fi
-  fi
+  runner_suchen
 
   abschnitt "Monitor einrichten"
   id "$NUTZER" >/dev/null 2>&1 || useradd --system --no-create-home --home-dir "$DATEN" --shell /usr/sbin/nologin "$NUTZER"

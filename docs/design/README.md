@@ -75,12 +75,13 @@ Was 0.3.0 gegenüber v1 geändert hat, steht unten und gilt weiter.
 | Job: Schritt aus einer Quelle, „3 von –“, gestrichelter Rest, Log „Schritt 3/–“ | `runner_monitor/zustand.py`, `web/dashboard.js` | umgesetzt | #44 (PR #48) |
 | Versionsnummern | Doku, Release | umgesetzt | #45 |
 
-Abgleich mit Design 0.8.0 (Verlauf):
+Abgleich mit Design 0.8.0 (Verlauf, Runner-Erkennung):
 
 | Bildschirm (0.8.0) | Code | Stand | Bemerkung |
 |---|---|---|---|
 | Auslastung: Zeitraum-Umschalter 30 s / 2 / 5 / 10 Min., feste Eimergrenzen, Netz-Maximum, Skala nach Spitze im Zeitraum, aria-label mit Zeitraum | `web/verlauf.js`, `web/dashboard.*`, `web/stil.css`, `web/i18n.js`, `tests/js/verlauf.test.mjs` | umgesetzt | #89; Gruppierung nicht mehr vom Listenende; Wahl in `localStorage["runner-monitor.zeitraum"]` |
 | Info › „Fehler gefunden oder Idee?“: keine GitHub-Issues mehr, `mailto:` an info@bamberger-it-services.de (Fehler melden, Idee vorschlagen) mit Betreff, Vorlage und automatischen Angaben, Hinweis ohne Tokens/Passwörter; „Fehler melden“ beim fehlgeschlagenen Update | `web/mail.js`, `web/dashboard.js`, `web/i18n.js`, `tests/js/mail.test.mjs` | umgesetzt | #98; Sprache der Vorlage folgt der Oberfläche; Abweichungen: „Runner“/„Gewählt“ zeigen nur den einen erkannten Runner (Zustand Job/Bereit/Gestoppt/Offline), bis die Mehrfach-Runner-Ansicht da ist; die Update-Mail enthält zusätzlich die Zeile „Meldung:“ des Aktualisierers und keinen Schlusssatz (wie im Entwurf); Token-Muster werden aus den Angaben entfernt; Knopf „Fehler melden“ beim Update-Fehler als `a.knopf` in der Zeile neben „Erneut versuchen“ (Zeilenklasse `.upd-aktion.zeile` statt Inline-Stil, wegen CSP); Issue-Vorlagen für Fehler/Ideen entfernt (E-15) |
+| 6. Einrichtungsskript: Abschnitt „Runner auf dieser VM“ (mehrere Runner, kein Runner); Datenmodell › Erkennung | `runner_monitor/erkennung.py`, `runner_monitor/sammler.py`, `einrichten.sh`, `tests/test_erkennung.py` | umgesetzt | #91; Spalten wie im Design. Abweichung: die Hinweiszeile im Design ist 82 Zeichen lang und wird bei 80 umbrochen. Zusätzlich `!` für „wahrscheinlich“ mit Grund und „Dienst gestoppt“. Fund-Format wie im README plus `aktiv`, `grund`. `runner.json` nur lesen, der POST-Endpunkt kommt mit #96/#97 |
 
 Abgleich mit Design 0.3.0 (gilt weiter):
 

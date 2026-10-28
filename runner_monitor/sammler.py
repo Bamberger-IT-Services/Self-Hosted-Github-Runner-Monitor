@@ -1,4 +1,4 @@
-"""Sammler (läuft als root): Docker-Status, GitHub-Abfrage, Update-Prüfung, Aufträge.
+"""Sammler (läuft als root): Docker-Status, GitHub-Abfrage, Update-Prüfung, Runner-Erkennung, Aufträge.
 
 Warum root? Wer Docker abfragen darf, ist praktisch root, und das GitHub-Token soll nur
 root lesen können. Deshalb macht der Weboberflächen-Dienst beides nicht selbst, sondern
@@ -22,13 +22,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import VERSION, github, runner
+from . import VERSION, erkennung, github, runner
 from .konfig import Konfig, lade
 
 LOG = logging.getLogger("runner_monitor.sammler")
 TAKT_DOCKER = 2
 TAKT_GITHUB = 30
 TAKT_RELEASE = 6 * 3600
+TAKT_ERKENNUNG = 6 * 3600  # Runner auf der VM erkennen: beim Start und alle 6 Stunden (#91)
 AUTO_FENSTER = (3, 7)     # automatisches Update: ab 3 Uhr, spätestens bis 7 Uhr (#77)
 TAKT_NICHT_BEREIT = 120  # Release ohne Paket (Workflow lädt noch hoch): bald erneut fragen (#63)
 MANUELL_MIN_ABSTAND = 60  # „Jetzt prüfen“ schont das GitHub-Kontingent
@@ -102,6 +103,7 @@ class Sammler:
         self.letzter_erfolg: float | None = None
         self.naechste_github = 0.0
         self.naechste_release = 0.0
+        self.naechste_erkennung = 0.0
         self.letzte_manuelle_pruefung = 0.0
         self._gh_speicher: dict = {}  # ETags und ruhige Repositories über die Durchläufe (Issue #15)
         self._gh_speicher_token: tuple[str, str] = ("", "")
@@ -180,6 +182,14 @@ class Sammler:
         schreibe_oeffentlich(self.k.lauf_verz / "release.json", daten)
         return daten
 
+    def erkennung(self) -> None:
+        """Runner auf der VM erkennen (#91) → ``erkennung.json``. Läuft als root, weil ``.runner`` von
+        Forgejo/Gitea und ``config.toml`` von GitLab meist nur für root lesbar sind; Tokens daraus
+        landen nie im Ergebnis (die Datei ist 0644)."""
+        daten = erkennung.erkenne(runner_verz=self.k.runner_verz, zuordnung_datei=self.k.zuordnung_datei,
+                                  token_datei=self.k.token_datei)
+        schreibe_oeffentlich(self.k.lauf_verz / "erkennung.json", daten)
+
     @staticmethod
     def _job_laeuft() -> bool:
         return subprocess.run(["pgrep", "-f", "Runner.Worker"], capture_output=True, check=False).returncode == 0
@@ -244,6 +254,12 @@ class Sammler:
             if github.vergleiche(daten.get("version", ""), VERSION) > 0 and not paket_bereit(daten):
                 self.naechste_release = jetzt + TAKT_NICHT_BEREIT
         self.auto_update()
+        if jetzt >= self.naechste_erkennung:
+            self.naechste_erkennung = jetzt + TAKT_ERKENNUNG
+            try:
+                self.erkennung()
+            except Exception:  # noqa: BLE001 – die Erkennung darf GitHub und Docker nie aufhalten
+                LOG.exception("Fehler bei der Runner-Erkennung")
 
     def laufe(self) -> None:  # pragma: no cover – Endlosschleife
         while True:

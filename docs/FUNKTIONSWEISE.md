@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 25.10.2026 · Version 0.7.0**
+**Stand: 29.10.2026 · Version 0.7.0 (Runner-Erkennung aus 0.8.0 in Arbeit)**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -44,7 +44,7 @@ Drei systemd-Dienste, alle in Python 3 nur mit der Standardbibliothek ([ADR-0001
 | Dienst | Läuft als | Aufgabe |
 |---|---|---|
 | `runner-monitor` | `runner-monitor` (ohne Anmeldung, Gruppe `systemd-journal`) | Webserver auf Port 8090: Seiten, Anmeldung, Server-Sent Events. Misst die VM, liest Journal und Schritt-Logs des Runners. |
-| `runner-monitor-sammler` | root | Fragt GitHub (mit dem Token, das nur root lesen kann) und Docker ab, prüft auf neue Releases, übernimmt Aufträge der Oberfläche. |
+| `runner-monitor-sammler` | root | Fragt GitHub (mit dem Token, das nur root lesen kann) und Docker ab, prüft auf neue Releases, erkennt die Runner auf der VM (beim Start und alle 6 h), übernimmt Aufträge der Oberfläche. |
 | `runner-monitor-update` | root, nur bei Bedarf | Installiert ein Update ([ADR-0004](adr/0004-update-hilfsdienst.md)). Startet über `runner-monitor-update.path`, sobald ein Auftrag liegt. |
 
 **Warum zwei Benutzer?** Der Webserver ist das, was aus dem Netz erreichbar ist. Er läuft
@@ -81,6 +81,77 @@ Name und Ergebnis kommen dann allein aus dem Journal, Repository und Schrittname
 
 **Fällt GitHub aus**, behält der Sammler den letzten erfolgreichen Stand und markiert ihn; die
 Oberfläche zeigt „Stand von hh:mm:ss“ und die Zeit bis zum nächsten Versuch.
+
+## Runner erkennen (seit Design 0.8.0, #91)
+
+`runner_monitor/erkennung.py` findet selbst, welche Runner auf der VM laufen – auch mehrere und
+auch andere als GitHub. Der Sammler (root) ruft sie **beim Start und alle 6 Stunden** auf und legt
+das Ergebnis in `/run/runner-monitor/erkennung.json` (0644, ohne Geheimnisse); `einrichten.sh`
+zeigt dieselbe Erkennung in „System prüfen“ › „Runner auf dieser VM“
+(`python3 -m runner_monitor.erkennung --text`, Rückgabe 3 = kein Runner). Das Dashboard zeigt
+bis zu den Anbieter-Adaptern (#92, #93, #99) weiter nur den GitHub-Runner wie bisher.
+
+| Quelle | Was gelesen wird | Merkmal (Beispiel) |
+|---|---|---|
+| systemd-Units | Unit-Dateien in `/etc/systemd/system`, `/run/systemd/system`, `/usr/local/lib/systemd/system`, `/usr/lib/systemd/system`, `/lib/systemd/system` samt Drop-ins; `ExecStart`, `WorkingDirectory`; aktiviert über `*.wants/`, aktiv über `systemctl is-active` | „systemd-Unit forgejo-runner.service“ |
+| Prozesse | `/proc/<pid>/cmdline`, `cgroup` (welche Unit, Container?), `cwd` – nur bekannte Programme (`Runner.Listener`, `forgejo-runner`, `act_runner`, `gitlab-runner`) | „Prozess forgejo-runner daemon“ |
+| Registrierungen | `.runner` (GitHub: `agentName`, `gitHubUrl`; Forgejo/Gitea: `name`, `address`) neben Unit und Prozess, laut `config.yml` (`runner.file`) und an üblichen Orten (`/opt/*`, `/srv/*`, `/var/lib/*`, `/home/*`, `/root`); GitLab: `config.toml` (`name`, `url`) | „/opt/actions-runner/.runner mit gitHubUrl“ |
+| Server-API ohne Zugangsdaten | Forgejo `/api/forgejo/v1/version`, Gitea `/api/v1/version`, GitLab-Anmeldeseite, GitHub Enterprise `/api/v3/meta` (github.com gilt als bekannt) | „/api/forgejo/v1/version antwortet: 13.0“ |
+| Runner-Version | GitHub aus `bin/Runner.Listener.deps.json`, sonst aus dem Journal der Unit („with version: v9.1.0“, „version=17.5.2“) | – |
+
+**Grad:** `sicher` – eindeutige Merkmale (Registrierung und Dienst oder Prozess) **und** Server
+bestätigt; `wahrscheinlich` – Dienst erkannt, aber Server nicht erreichbar, ohne Netz, ohne
+Registrierung oder mit widersprüchlichen Merkmalen; `unklar` – nur allgemeine Hinweise (Name der
+Unit enthält „runner“, „agent“, „build“ …, startet Container). Bekannte Nicht-Runner
+(`qemu-guest-agent`, `runner-monitor*` …) zählen nicht; unbekannte Units nur, wenn sie aktiviert
+oder aktiv sind. Zwischen Forgejo und Gitea entscheidet die Antwort des Servers.
+
+**Einstufung und Fähigkeiten** richten sich nach dem, was diese Version liefern kann (Tabelle
+`FAEHIG` in `erkennung.py`): GitHub `voll` (Status, Jobs, Schritte, Logs); Forgejo, Gitea, GitLab
+`teil` (erkannt, noch ohne Adapter: Dienst und Journal); unbekannt `unbekannt` (Grundüberwachung).
+`updates` ist überall `false`.
+
+Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README):
+
+```json
+{ "id": "runner-vm-02", "name": "runner-vm-02", "dienst": "forgejo", "server": "https://git.example.org",
+  "version": "13.0 / Runner 9.1", "grad": "sicher", "merkmale": ["systemd-Unit forgejo-runner.service", "…"],
+  "einstufung": "teil", "stand": "offen", "unit": "forgejo-runner.service", "log": null,
+  "faehig": { "status": true, "jobs": false, "schritte": false, "logs": true, "updates": false },
+  "aktiv": true, "grund": null }
+```
+
+`dienst`: `github|forgejo|gitea|gitlab|unbekannt`; `stand`: `angebunden|grund|ignoriert|offen`
+(GitHub mit vorhandenem Token: `angebunden`, sonst `offen`, bis eine Zuordnung etwas anderes sagt);
+`log`: Pfad oder `null` (= Journal der Unit; GitHub: `<runner>/_diag`). Zusätzlich zum Design:
+`aktiv` (Unit läuft: `true`/`false`/`null` unbekannt) und `grund` (warum nur „wahrscheinlich“).
+Die Datei hat außerdem `zeit` und `geprueft` (die geprüften Quellen). IDs sind eindeutig
+(gleicher Name → `-2`, `-3`), Funde mit Dienst vor solchen ohne.
+
+**Zuordnung und Ignorieren** stehen dauerhaft in `/etc/runner-monitor/runner.json`
+(root:runner-monitor, 0640). Gelesen wird sie schon (`erkennung.lies_zuordnung`), schreiben wird
+sie der Sammler auf Auftrag der Oberfläche (POST-Endpunkt mit #96/#97):
+
+```json
+{ "version": 1,
+  "runner": {
+    "buildagent":   { "stand": "grund", "dienst": "unbekannt", "name": "Build-Agent",
+                      "unit": "buildagent.service", "log": "/var/log/buildagent/agent.log" },
+    "runner-vm-03": { "stand": "ignoriert" } } }
+```
+
+Schlüssel ist die `id` des Funds; jedes Feld ist freiwillig. Ungültige Einträge oder Felder werden
+verworfen. Ein Eintrag mit `unit`, der nicht gefunden wurde, erscheint als „von Hand zugeordnet“.
+
+**Sicherheit:** Die Erkennung führt nichts aus, was in einem Fund steht (kein `ExecStart`, kein
+Runner-Programm, keine Shell); aufgerufen werden nur `systemctl is-active -- <unit>` und
+`journalctl -u <unit>` mit geprüftem Namen. Registrierungen werden nur unter festen Dateinamen
+(`.runner`, `config.toml`) gelesen, ohne Symlinks zu folgen, als reguläre Datei bis 64 KB (eine FIFO
+blockiert nicht). `token` aus `.runner`/`config.toml` wird nie übernommen, `.credentials` nie gelesen,
+vom GitHub-Token wird nur geprüft, ob die Datei da ist. Namen, Unit-Namen, Pfade und Adressen
+werden streng geprüft (Adressen ohne Zugangsdaten, Abfrage und Anker); die Textausgabe ersetzt
+Steuerzeichen. Die Server-Probe ist ein GET ohne Zugangsdaten und ohne Weiterleitungen, 3 s je
+Anfrage, 10 s insgesamt, höchstens 8 Server. Fehler in einer Quelle beenden die Erkennung nie.
 
 ## Vom Server in den Browser
 
@@ -204,8 +275,9 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `/opt/runner-monitor/aktuell` | root | Verweis auf die laufende Version |
 | `/etc/runner-monitor/konfig.env` | root:runner-monitor, 0640 | Einstellungen ([Vorlage](../deploy/konfig.env.example)) |
 | `/etc/runner-monitor/github-token` | root, 0600 | GitHub-Token (nur der Sammler liest es) |
+| `/etc/runner-monitor/runner.json` | root:runner-monitor, 0640 | Zuordnung und Ignorieren erkannter Runner (siehe „Runner erkennen“) |
 | `/var/lib/runner-monitor/` | runner-monitor, 0750 | `zugang.json` (scrypt-Hash), `sitzungen.json`, `sperren.json`, `einstellungen.json` (Organisation, Auto-Update), `einrichtungscode.json`, `systempruefung.json`, `update-status.json`, `verlauf.json` (Verlauf der letzten 10 Min., alle 10 s gesichert), `auftraege/` |
-| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json` – Ergebnisse des Sammlers |
+| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner) – Ergebnisse des Sammlers |
 | `/etc/systemd/system/runner-monitor*.{service,path}` | root | Dienste ([deploy/systemd](../deploy/systemd/)) |
 
 ## Was der Monitor nicht kann
@@ -213,7 +285,8 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 - Nichts verändern: kein Neustart des Runners, kein Abbrechen von Jobs (nur anschauen).
 - Kein HTTPS von sich aus – gedacht für das lokale Netz. Wer von außen zugreifen will, setzt
   einen Reverse-Proxy mit TLS davor ([Sicherheitsbericht](sicherheit/bericht.md), S-01).
-- Ein Runner je VM (der erste gefundene `actions.runner.*`-Dienst).
+- Ein Runner je VM im Dashboard (der erste gefundene `actions.runner.*`-Dienst). Die Erkennung findet
+  schon alle Runner; mehrere im Dashboard kommen mit #94.
 
 ## Quellcode
 
@@ -223,6 +296,7 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/konfig.py` | Einstellungen aus `konfig.env` und `MONITOR_*` |
 | `runner_monitor/system.py` | Messungen aus `/proc` |
 | `runner_monitor/runner.py` | Runner-Registrierung, Dienststatus, Journal- und Schritt-Logs |
+| `runner_monitor/erkennung.py` | Erkennung aller Runner auf der VM (Units, Prozesse, Registrierungen, Server-Probe), Zuordnung aus `runner.json`, Ausgabe für `einrichten.sh` |
 | `runner_monitor/github.py` | GitHub-API: Läufe, Jobs, Runner, Releases |
 | `runner_monitor/zustand.py` | Gesamtstand, Verlauf, Verteilung an alle Browserfenster |
 | `runner_monitor/server.py` | HTTP, Anmeldung, Einrichtung, SSE |

@@ -60,6 +60,11 @@ class Konfig:
         return self.daten_verz / "einstellungen.json"
 
     @property
+    def zuordnung_datei(self) -> Path:
+        """Zuordnung und Ignorieren der erkannten Runner (#91), neben dem Token, nur root schreibt."""
+        return self.token_datei.parent / "runner.json"
+
+    @property
     def auftraege_verz(self) -> Path:
         return self.daten_verz / "auftraege"
 

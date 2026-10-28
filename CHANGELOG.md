@@ -11,6 +11,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Sprache des Browsers (`de…` → Deutsch, alles andere → Englisch); die Wahl wird je Browser unter
   `runner-monitor.sprache` gemerkt, die bisherige Wahl übernommen (#90).
   Hinweis: Wer bisher nichts gewählt hat und einen nicht deutschen Browser nutzt, sieht jetzt Englisch.
+- Runner-Erkennung: Der Monitor findet selbst alle Runner auf der VM (GitHub, Forgejo, Gitea,
+  GitLab, unbekannte) über systemd-Units, Prozesse, `.runner`-Dateien und eine Abfrage beim Server
+  ohne Zugangsdaten, mit Grad sicher/wahrscheinlich/unklar und Begründung. `einrichten.sh` zeigt
+  sie in „System prüfen“ › „Runner auf dieser VM“; der Sammler sucht beim Start und alle 6 Stunden
+  (`/run/runner-monitor/erkennung.json`). Das Dashboard bleibt vorerst beim GitHub-Runner (#91).
 
 ### Geändert
 - Fehler und Ideen gehen per E-Mail an Bamberger IT Services statt als GitHub-Issue: Info › „Fehler
