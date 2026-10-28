@@ -21,9 +21,17 @@
   const stoppGrund = (st) => st && st.dienst && st.dienst.grund ? (STOPP_GRUND[st.dienst.grund] || st.dienst.grund) : '';
   const UPDATE_SCHRITTE = [[t('Release herunterladen'), t('Archiv und Prüfsumme')], [t('Prüfsumme prüfen'), t('SHA-256 stimmt')], [t('Installieren'), t('alte Version gesichert')], [t('Monitor neu starten'), t('kurz nicht erreichbar')], [t('Funktion prüfen'), t('Daten kommen an')]];
 
+  /* Zeitraum der Verläufe: nur im Browser gemerkt (Sekunden); ungültig oder Speicher gesperrt → 10 Min. */
+  function zeitraumLaden() {
+    try { return VERLAUF.zeitraum(localStorage.getItem('runner-monitor.zeitraum')); } catch (e) { return VERLAUF.STANDARD; }
+  }
+  function zeitraumSpeichern(r) {
+    try { localStorage.setItem('runner-monitor.zeitraum', String(r)); } catch (e) { /* gesperrt: gilt nur für diese Seite */ }
+  }
+
   const S = {
     status: null, system: null, prozesse: [], platten: [], workflows: null, update: null,
-    cpuH: [], ramH: [], netzH: [], ereignisse: [], zeilenN: 0, puffer: [],
+    cpuH: [], ramH: [], netzH: [], ende: null, zeitraum: zeitraumLaden(), ereignisse: [], zeilenN: 0, puffer: [],
     verbindung: 'verbindet', letzteDaten: 0,
     umbruch: true, angehalten: false, hoch: false, pruefung: null, wfOffen: false, info: null, kerneN: 0,
   };
@@ -87,12 +95,16 @@
       case 'status': S.status = d; renderKopf(); renderStatus(); renderLogKopf(); break;
       case 'system':
         S.system = d;
-        if (d.verlauf) { S.cpuH = d.verlauf.cpu.slice(-600); S.ramH = d.verlauf.ram.slice(-600); S.netzH = (d.verlauf.netz || []).slice(-600); S.verlaufStart = d.verlauf.start || null; }
-        else {
+        // S.ende = absolute Sekunde des letzten Werts; die Eimergrenzen der Verläufe hängen daran (verlauf.js)
+        if (d.verlauf) {
+          S.cpuH = d.verlauf.cpu.slice(-VERLAUF.MAX_WERTE); S.ramH = d.verlauf.ram.slice(-VERLAUF.MAX_WERTE); S.netzH = (d.verlauf.netz || []).slice(-VERLAUF.MAX_WERTE);
+          S.ende = Math.round(d.zeit);
+        } else {
           S.cpuH.push(d.cpu); S.ramH.push(d.ram.gesamt ? d.ram.belegt / d.ram.gesamt * 100 : 0);
           if (d.netz) S.netzH.push([d.netz.empfangen, d.netz.gesendet]);
-          if (S.cpuH.length > 600) { S.cpuH.shift(); S.ramH.shift(); }
-          if (S.netzH.length > 600) S.netzH.shift();
+          S.ende = S.ende == null ? Math.round(d.zeit) : S.ende + 1;
+          if (S.cpuH.length > VERLAUF.MAX_WERTE) { S.cpuH.shift(); S.ramH.shift(); }
+          if (S.netzH.length > VERLAUF.MAX_WERTE) S.netzH.shift();
         }
         renderSystem(); break;
       case 'prozesse': S.prozesse = d; renderProzesse(); break;
@@ -306,27 +318,29 @@
   }
 
   /* ------------------------------------------------------------ Auslastung */
-  // 600 Werte = 10 Minuten, 120 Stützpunkte zu je 5 s. Kürzerer Verlauf liegt rechtsbündig („jetzt“ rechts).
-  /* Vorhandene Sekundenwerte (bis 600) über die volle Breite gestreckt (Design 0.4.0):
-     Stützpunkte = min(120, Länge), Fläche immer von x=0 bis x=300. max = Skala (100 % bzw. die
-     Netz-Spitze), agg 'max' hält kurze Spitzen sichtbar (Netz), sonst Mittelwert (CPU, RAM). */
-  function spark(h, max = 100, agg = 'mittel') {
-    const daten = h.slice(-600); if (!daten.length) return ['', ''];
-    if (daten.length === 1) daten.push(daten[0]);  // ein Wert: waagerechte Linie statt eines Sprungs von 0
-    const K = Math.max(2, Math.min(120, daten.length)), b = daten.length / K, pts = [];
-    for (let i = 0; i < K; i++) {
-      let s = 0, c = 0, mx = 0;
-      for (let j = Math.floor(i * b); j < Math.floor((i + 1) * b); j++) { s += daten[j]; c++; if (daten[j] > mx) mx = daten[j]; }
-      const v = agg === 'max' ? mx : (c ? s / c : 0);
-      pts.push(`${(i * 300 / (K - 1)).toFixed(1)},${(45 - Math.max(0, Math.min(1, v / max)) * 43).toFixed(1)}`);
-    }
-    const linie = 'M' + pts.join(' L');
-    return [linie, `${linie} L300.0,46 L0.0,46 Z`];
+  /* Verläufe mit festen Zeitfenstern (Design 0.8.0): Rechenlogik in verlauf.js. Der Zeitraum gilt für
+     alle Verläufe der Karte; CPU/RAM zeigen den Mittelwert je Eimer, das Netz das Maximum. */
+  function spark(h, max = 100, agg = 'mittel') { return VERLAUF.pfade(h, S.ende == null ? 0 : S.ende, S.zeitraum, max, agg); }
+  /* Texte je Zeitraum, als feste Schlüssel für die Übersetzung (tests/test_i18n.py). */
+  function zeitraumTexte(r) {
+    return {
+      30: { achse: t('vor 30 s'), aria: t('der letzten 30 Sekunden') },
+      120: { achse: t('vor 2 Min.'), aria: t('der letzten 2 Minuten') },
+      300: { achse: t('vor 5 Min.'), aria: t('der letzten 5 Minuten') },
+      600: { achse: t('vor 10 Min.'), aria: t('der letzten 10 Minuten') },
+    }[r];
   }
-  /* Achse links: „vor 10 Min.“ bei vollem Verlauf, sonst ab wann gemessen wird („seit 14:02“). */
+  /* Achse links: „vor 2 Min.“ bei vollem Verlauf, sonst ab wann gemessen wird („seit 14:02“). */
   function achseVon() {
-    if (S.cpuH.length >= 600 || !S.verlaufStart) return t('vor 10 Min.');
-    return t('seit {z}', { z: hm(S.verlaufStart) });
+    if (S.ende == null || VERLAUF.voll(S.cpuH.length, S.zeitraum)) return zeitraumTexte(S.zeitraum).achse;
+    return t('seit {z}', { z: hm(S.ende + 1 - S.cpuH.length) });
+  }
+  function renderZeitraum() {
+    document.querySelectorAll('#zeitraum .seg-knopf').forEach((b) => { b.setAttribute('aria-pressed', String(Number(b.dataset.zeitraum) === S.zeitraum)); });
+    const z = zeitraumTexte(S.zeitraum).aria;
+    $('cpu-svg').setAttribute('aria-label', t('CPU-Verlauf {zr}', { zr: z }));
+    $('ram-svg').setAttribute('aria-label', t('RAM-Verlauf {zr}', { zr: z }));
+    $('netz-svg').setAttribute('aria-label', t('Netzwerk-Verlauf {zr}, empfangen und gesendet', { zr: z }));
   }
 
   /* Bytes je Sekunde, dezimal wie bei Netzwerken üblich (1 MB/s = 1 000 000 B/s). */
@@ -359,12 +373,13 @@
     $('swap').textContent = `${zahl(d.swap.belegt / GiB, 1)} / ${zahl(d.swap.gesamt / GiB, 1)} GB`;
     if (d.netz) {
       setzeRate('netz-rx', d.netz.empfangen); setzeRate('netz-tx', d.netz.gesendet);
-      // Skala nach der Spitze der letzten 10 Minuten, mindestens 64 KB/s – so bleibt der Leerlauf ruhig.
-      const spitze = S.netzH.reduce((m, [rx, tx]) => Math.max(m, rx, tx), 0), skala = Math.max(spitze, 64e3);
+      // Skala nach der Spitze im gewählten Zeitraum, mindestens 64 KB/s – so bleibt der Leerlauf ruhig.
+      const { spitze, skala } = VERLAUF.spitze([S.netzH.map(w => w[0]), S.netzH.map(w => w[1])], S.zeitraum, 64e3);
       const [rl2, rf2] = spark(S.netzH.map(w => w[0]), skala, 'max'), [tl] = spark(S.netzH.map(w => w[1]), skala, 'max');
       $('netz-rx-linie').setAttribute('d', rl2); $('netz-rx-flaeche').setAttribute('d', rf2); $('netz-tx-linie').setAttribute('d', tl);
       const [w, e] = rate(spitze); $('netz-spitze').textContent = t('Spitze {w} {e}', { w, e });
     }
+    renderZeitraum();
     const von = achseVon();
     document.querySelectorAll('.achse-von').forEach((el) => { if (el.textContent !== von) el.textContent = von; });
     $('l1').textContent = zahl(d.last[0], 2); $('l5').textContent = zahl(d.last[1], 2); $('l15').textContent = zahl(d.last[2], 2); $('kerne-n').textContent = n;
@@ -767,6 +782,7 @@
     else if (a === 'anleitung') { S.info = S.info === b.dataset.anleitung ? 'alle' : b.dataset.anleitung; renderInfo(); }
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
     else if (a === 'sprache') { if (b.dataset.sprache !== I18N.sprache()) { I18N.setzeSprache(b.dataset.sprache); location.reload(); } }
+    else if (a === 'zeitraum') { S.zeitraum = VERLAUF.zeitraum(b.dataset.zeitraum); zeitraumSpeichern(S.zeitraum); renderZeitraum(); renderSystem(); }
     else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; renderWorkflows(); }
     else if (a === 'abmelden') { if (!DEMO) await RM.sende('/api/abmelden'); location.href = '/anmelden'; }
     else if (a === 'kopieren') kopiere(b);
@@ -845,6 +861,7 @@
       if (quelle.readyState === EventSource.CLOSED) { neuTimer = setTimeout(verbinde, wartezeit); wartezeit = Math.min(wartezeit * 2, 30000); }
     };
   }
+  renderZeitraum();  // gespeicherte Wahl sofort zeigen, auch vor den ersten Daten
   if (DEMO) {
     const s = document.createElement('script');
     s.src = '/static/demo.js';

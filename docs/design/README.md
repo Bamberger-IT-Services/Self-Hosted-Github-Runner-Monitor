@@ -75,6 +75,12 @@ Was 0.3.0 gegenüber v1 geändert hat, steht unten und gilt weiter.
 | Job: Schritt aus einer Quelle, „3 von –“, gestrichelter Rest, Log „Schritt 3/–“ | `runner_monitor/zustand.py`, `web/dashboard.js` | umgesetzt | #44 (PR #48) |
 | Versionsnummern | Doku, Release | umgesetzt | #45 |
 
+Abgleich mit Design 0.8.0 (Verlauf):
+
+| Bildschirm (0.8.0) | Code | Stand | Bemerkung |
+|---|---|---|---|
+| Auslastung: Zeitraum-Umschalter 30 s / 2 / 5 / 10 Min., feste Eimergrenzen, Netz-Maximum, Skala nach Spitze im Zeitraum, aria-label mit Zeitraum | `web/verlauf.js`, `web/dashboard.*`, `web/stil.css`, `web/i18n.js`, `tests/js/verlauf.test.mjs` | umgesetzt | #89; Gruppierung nicht mehr vom Listenende; Wahl in `localStorage["runner-monitor.zeitraum"]` |
+
 Abgleich mit Design 0.3.0 (gilt weiter):
 
 Geprüft mit Bildschirmfotos bei 1440 × 900 (Design und App nebeneinander), hell und dunkel,

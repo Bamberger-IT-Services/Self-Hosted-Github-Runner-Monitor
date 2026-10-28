@@ -141,6 +141,10 @@ body.dashboard { overflow: hidden; }
 .karte-titel { white-space: nowrap; font-size: 13px; line-height: 16px; font-weight: 650; letter-spacing: -0.005em; }
 .karte-meta { margin-left: auto; font-size: 12px; color: var(--ink-muted); white-space: nowrap; }
 
+/* Zeitraum der Verläufe im Kopf der Karte „Auslastung“ (Design 0.8.0): 22 px hoch, rechts neben der Meta-Zeile */
+.zeitraum { margin-left: 10px; flex: none; }
+.zeitraum .seg-knopf { height: 22px; padding: 0 7px; white-space: nowrap; }
+
 /* Runner-Status */
 .pillen { margin-left: auto; display: flex; gap: 6px; }
 .status { flex: 0 0 486px; padding: 18px 20px; }

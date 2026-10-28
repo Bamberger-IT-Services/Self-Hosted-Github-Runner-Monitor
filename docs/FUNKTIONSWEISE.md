@@ -118,7 +118,20 @@ neu; Zahl, Name, Segmente und Laufzeit werden direkt gesetzt.
 atomar nach `verlauf.json` (temp + rename). Beim Start übernimmt er ihn, wenn er jünger als 10 Minuten
 ist und die Pause höchstens 60 s dauerte; die Lücke füllt der erste neue Messwert. Sonst beginnt der
 Verlauf leer. Die Oberfläche streckt die vorhandenen Werte über die ganze Breite und schreibt links
-„seit hh:mm“, bis 10 Minuten voll sind („vor 10 Min.“).
+„seit hh:mm“, bis der gewählte Zeitraum voll ist („vor 10 Min.“).
+
+**Zeitfenster der Verläufe (seit Design 0.8.0, #89):** Die Karte „Auslastung“ hat im Kopf ein Segment
+„30 s | 2 Min. | 5 Min. | 10 Min.“, das für CPU, RAM und Netz gemeinsam gilt. Die Wahl steht in
+`localStorage["runner-monitor.zeitraum"]` (Sekunden; ungültig oder Speicher gesperrt → 10 Min.).
+Die Rechenlogik liegt in `web/verlauf.js` (ohne DOM, mit `node --test tests/js/*.test.mjs` geprüft):
+Die Werte werden in Eimer fester Größe gruppiert (30 s und 2 Min. → 1 s, 5 Min. → 3 s,
+10 Min. → 5 s), deren Grenzen an der **absoluten** Sekunde hängen (Eimer = `floor(t / Eimergröße)`).
+Die absolute Sekunde des letzten Werts ist `round(system.zeit)` der Momentaufnahme, jeder neue Wert
+zählt eins weiter. `dashboard.js` gruppiert also nicht mehr vom Listenende aus: Der letzte Wert liegt bei
+x = 100 % („jetzt“), die Kurve wandert je Sekunde um eine Messung nach links, und nur der rechte Rand
+ändert sich. CPU und RAM zeigen den Mittelwert je Eimer, das Netz das Maximum (Spitzen bleiben
+sichtbar). Die Netz-Skala richtet sich nach der Spitze im gewählten Zeitraum, mindestens 64 KB/s.
+Der Server schickt weiter 600 Sekundenwerte; `/api/zustand` und `verlauf.json` bleiben unverändert.
 
 **Höchstens 6 Live-Verbindungen je Sitzung:** Ein weiteres Fenster derselben Anmeldung bekommt 429 und
 versucht es mit wachsender Wartezeit erneut; sobald ein anderes Fenster zu ist, verbindet es sich.
@@ -216,5 +229,5 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/zugang.py` | Passwörter, Sitzungen, Sperren, Einrichtungscode |
 | `runner_monitor/sammler.py` | root-Sammler (GitHub, Docker, Releases, Aufträge) |
 | `runner_monitor/aktualisierer.py` | root-Update-Hilfsdienst |
-| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`, Wahl je Browser in `localStorage` `rm-sprache`) |
+| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`, Wahl je Browser in `localStorage` `rm-sprache`) |
 | `einrichten.sh` | Installation, Wartung, Entfernen |

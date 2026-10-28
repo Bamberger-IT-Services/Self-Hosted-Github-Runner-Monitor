@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "25.10.2026 10:04",
+  stand: "28.10.2026 23:45",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -248,6 +248,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "28.10.2026 23:45", text: "Design 0.8.0: Epic #100 mit Teil-Issues #89–#99 und #101 angelegt (Labels, Meilenstein v0.8.0), Design in PR #102 abgelegt. #89 umgesetzt: Verlauf mit festen Zeitfenstern (Eimer am absoluten Zeitpunkt) und Zeitraum-Umschalter 30 s/2/5/10 Min.; Node-Tests in der CI. Offen: Entscheidungen zu #90 (feste Schlüssel) und #92 (Format /api/zustand), prio-Labels durch Tobias." },
     { datum: "25.10.2026 10:04", text: "0.7.0: #77 Nacht-Update wartet auf freien Runner (bis 7 Uhr, ein Versuch je Nacht), #78 Änderungen seit der installierten Version, Epic #79 Deutsch/Englisch (#80 Dashboard, #81 Anmeldung, Einrichtung, Server-Meldungen). #21 Branch-Schutz und private Sicherheitsmeldungen eingerichtet (OK Projektinhaber), #22–#24 auf Wunsch geschlossen." },
     { datum: "25.10.2026 00:55", text: "0.6.1: Runner nach OOM-Kill gestoppt (Rückmeldung aus dem Betrieb, VM auf 4 GB RAM ohne Swap). #70 RAM-Empfehlung in docs/RUNNER.md, #67 Runner-Einrichtung mit OOMPolicy=continue, Restart=on-failure und Swap, #68 Grund für gestoppten Dienst im Dashboard, #69 Runner-Version aus deps.json. Backlog geprüft: #21 (blocked, GitHub-Einstellungen), #22–#24 (brauchen Design) sind nicht erledigt." },
     { datum: "24.10.2026 00:03", text: "0.6.0: #63 Update gleich nach dem Release (Paket noch nicht angehängt → „wird bereitgestellt“, neue Prüfung nach 2 Min.; Rückmeldung aus dem Betrieb beim Update auf 0.5.0), #18 Herkunft per GitHub-Attestierung (ADR-0005), #20 ZAP-Baseline mit zwei behobenen Befunden (S-ZAP-01, S-HTTP-01). Offen: #21 (blocked), #22–#24 brauchen ein Design." },
