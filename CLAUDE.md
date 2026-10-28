@@ -11,6 +11,14 @@ Kurz: mit Tobias auf Deutsch und per „du“; Entscheidungen per Auswahlfrage, 
 CI bei jedem PR; Doku im selben PR; `entwickler-dashboard/daten.js` (Entscheidungen, Verlauf)
 nach jeder Arbeitsrunde (`stand` aus `TZ=Europe/Berlin date +"%d.%m.%Y %H:%M"`).
 
+## Modellwahl (Anweisung 09, seit 28.10.2026)
+Sitzungen, die Issues abarbeiten, laufen auf **Sonnet**. Vor jedem Issue nennt Claude im Chat die Stufe
+(„Stufe Umsetzung, weil …“) und gibt die Arbeit an den passenden Subagenten in `.claude/agents/` ab:
+- `routine` (Haiku, wenig Aufwand): Labels, Issues, CI-Protokolle, Tippfehler, Versionsnummern, Dashboard.
+- `umsetzer` (Sonnet, mittel): Issues mit klaren Akzeptanzkriterien, Oberfläche nach Entwurf, Tests.
+- `architekt` (Opus, hoch): Aktualisierer und Herkunftsprüfung, `einrichten.sh` und Runner-Einrichtung, Anmeldung, Tokens, Sicherheitsbericht, Release – dazu Fehler mit unklarer Ursache und das Review größerer PRs vor dem Merge.
+Im Zweifel die höhere Stufe; nach dem zweiten Fehlversuch hochstufen, nie stillschweigend herunter.
+
 **Aufgaben** stehen als Issues in diesem Repo auf Forgejo (Anweisung 08, das GitHub-Project
 entfällt): nächstes Issue = offen, ohne `agent:`-Label und ohne `blocked`, höchste Priorität
 zuerst; vor dem Start `agent:claude`; Branch `feature/<nr>-<kurzname>` bzw. `fix/<nr>-<kurzname>`
