@@ -1,6 +1,6 @@
 # Sicherheitsbericht
 
-**Stand: 25.10.2026 · Version 0.7.0** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
+**Stand: 29.10.2026 · Version 0.7.0** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
 
 Einsatzrahmen: ein Monitor im **lokalen Netz** einer Runner-VM, ein Zugang, nur lesend.
 Erreichbar über HTTP auf Port 8090, die Firewall-Regel des Einrichtungsskripts lässt nur das
@@ -19,6 +19,7 @@ eigene Netz zu.
 | S-ZAP-01 | Ohne JavaScript schickte das Anmeldeformular Benutzername und Passwort per GET in der Adresse (ZAP-Regel 10024) – landet in Verlauf und Proxy-Logs | niedrig | behoben: Formular mit `method="post"` (Issue #20) | 23.10.2026 |
 | S-HTTP-01 | Wurde ein POST vor dem Lesen des Körpers abgelehnt (Herkunft, Inhaltstyp, Größe), blieb der Körper in der Verbindung und wurde als nächste Anfrage gelesen; Fehlerseiten der Standardbibliothek (kaputte Anfragezeile, unbekannte Methode) kamen ohne Sicherheits-Kopfzeilen | niedrig | behoben: Verbindung wird dann geschlossen (`Connection: close`), alle Fehler als JSON mit CSP und den übrigen Kopfzeilen (Issue #20) | 23.10.2026 |
 | S-DOS-01 | Ein angemeldeter Browser konnte beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | behoben: höchstens 6 Live-Verbindungen je Sitzung, weitere bekommen 429 (Issue #19); hängende Verbindungen enden nach 60 s, übergelaufene Warteschlangen beenden den Strom (seit 0.3.1) | 23.10.2026 |
+| S-ERK-01 | Runner-Erkennung (#91) läuft als root und wertet Unit-Dateien, `/proc` und `.runner`-Dateien aus – auch solche, die ein Benutzer der VM anlegen kann (`/home/*`). Ohne Schutz könnte er so eine Server-Abfrage des Sammlers an eine Adresse seiner Wahl auslösen, den Sammler mit einem langsamen Server oder DNS aufhalten, über Symlinks root-Dateien lesen lassen oder mit einem nachgemachten Fund die ID und Zuordnung eines echten Runners übernehmen | niedrig | behandelt (Review #107): nichts aus einem Fund wird ausgeführt; keinem Symlink gefolgt außer bei Unit-Dateien, `lstat` vor dem Öffnen, `O_NOFOLLOW`/`O_NONBLOCK`/`O_NOCTTY`, Größengrenzen; Tokens nie übernommen; Namen, Units, Pfade, Adressen nach festen Mustern; Server-Probe nur für Funde mit systemd-Unit (E-17), GET auf feste Pfade ohne Zugangsdaten und Weiterleitungen, harte Fristen 3 s/10 s in eigenem Faden (auch DNS), höchstens 8 Server; Erkennung im Sammler als eigener Prozess mit 60 s Grenze, Ergebnis geprüft; IDs zuerst an Funde mit Unit, Funde ohne Unit nie „angebunden“, Adapter nehmen Server und Log-Pfad nie aus dem Fund (E-18); Steuerzeichen in der Textausgabe ersetzt. Offen: `PrivateDevices=yes` für den Sammler (möglich, noch nicht auf der VM erprobt) | 29.10.2026 |
 
 Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), siehe
 [SECURITY.md](../../SECURITY.md).
@@ -54,6 +55,9 @@ Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), 
 
 - POST nur JSON, höchstens 16 KB. Organisation und Token mit festen Mustern geprüft.
 - Alle Ausgaben im Browser über `esc()`; ANSI-Log wird in Textknoten zerlegt, kein HTML aus Logs.
+- Runner-Erkennung: Funde (Unit-Dateien, Befehlszeilen, `.runner`, `config.toml`) gelten als
+  feindliche Eingabe – nur gelesen und geprüft, nie ausgeführt; `systemctl`/`journalctl` nur mit
+  geprüftem Unit-Namen als eigenem Argument (S-ERK-01, [FUNKTIONSWEISE](../FUNKTIONSWEISE.md)).
 
 ## V7 Fehler und Protokoll
 

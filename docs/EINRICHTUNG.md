@@ -32,9 +32,39 @@ Das Skript arbeitet in drei Abschnitten:
 
 | Abschnitt | Was passiert |
 |---|---|
-| System prüfen | Betriebssystem, Python, Docker, Netz (Adresse, lokales Netz). Sucht den Runner in `/opt/actions-runner`; ist er da, bleibt er unverändert. Fehlt er, fragt das Skript, ob es ihn einrichten soll (siehe unten). |
+| System prüfen | Betriebssystem, Python, Docker, Netz (Adresse, lokales Netz). Abschnitt **Runner auf dieser VM**: erkennt alle Runner – GitHub, Forgejo, Gitea, GitLab und unbekannte – über systemd-Units, Prozesse, `.runner`-Dateien und eine Abfrage beim Server ohne Zugangsdaten (Beispiel unten). Gefundene Runner bleiben unverändert. Ohne Fund fragt das Skript, ob es einen GitHub-Runner einrichten soll (siehe unten). |
 | Monitor einrichten | Systembenutzer `runner-monitor` (kein root, keine Anmeldung, darf das Journal lesen), `/var/lib/runner-monitor`, `/etc/runner-monitor/konfig.env`, Programm nach `/opt/runner-monitor/versionen/0.7.0` mit Verweis `aktuell`, Dienste `runner-monitor`, `runner-monitor-sammler`, `runner-monitor-update.path`. Eine alte Terminalansicht (ttyd, `monitor-einrichten.sh`) wird ersetzt, ihr Token übernommen. |
 | Firewall (ufw) | SSH bleibt erlaubt, Port 8090 nur aus dem lokalen Netz (z. B. `192.0.2.0/24`). Ist ufw aus, fragt das Skript, ob es ihn einschalten soll. |
+
+Runner auf dieser VM, zum Beispiel mit drei Funden:
+
+```
+Runner auf dieser VM
+  ✓ runner-vm-01   GitHub    github.com/beispiel-org   2.338.1   sicher
+  ✓ runner-vm-02   Forgejo   git.example.org           13.0      sicher
+  ? buildagent     unbekannt –                         –         unklar
+      Hinweise: Dienst buildagent.service, Name enthält „agent“, startet
+                Container
+      → Im Browser zuordnen oder ignorieren (Schritt „Runner“)
+    Die Runner bleiben unverändert, es wird nur der Monitor eingerichtet.
+```
+
+`sicher`: eindeutige Merkmale und der Server hat bestätigt. `wahrscheinlich` (`!`): Dienst erkannt,
+aber der Server war nicht erreichbar – das Skript nennt den Grund. `unklar` (`?`): nur allgemeine
+Hinweise; im Browser zuordnen oder ignorieren. Ohne Fund:
+
+```
+Runner auf dieser VM
+  ! Kein Runner gefunden (geprüft: systemd-Units, Prozesse, .runner-Dateien).
+    Der Monitor kann trotzdem die VM überwachen. Später Runner ergänzen:
+      sudo /opt/runner-monitor/aktuell/einrichten.sh runner
+    Jetzt einen Runner einrichten? [j/N] n
+    → Im Browser: „Von Hand zuordnen“ oder „Ohne Runner fortfahren“
+```
+
+Nach der Installation sucht der Monitor beim Start und alle 6 Stunden erneut. Die Erkennung von Hand:
+`sudo python3 -m runner_monitor.erkennung --text` im Ordner `/opt/runner-monitor/aktuell`
+(`--json` für alle Merkmale).
 
 Am Ende stehen Adresse und **Einrichtungscode** (60 Minuten gültig), zum Beispiel:
 

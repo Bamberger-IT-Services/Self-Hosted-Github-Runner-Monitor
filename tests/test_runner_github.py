@@ -305,6 +305,7 @@ class ReleaseBereitTest(unittest.TestCase):
         k.lauf_verz.mkdir(parents=True)
         s = sammler.Sammler(k)
         s.naechste_github = float("inf")
+        s.naechste_erkennung = float("inf")
         s.auftraege = lambda: None
         s.auto_update = lambda: None
         s.release = lambda: antworten.pop(0)
