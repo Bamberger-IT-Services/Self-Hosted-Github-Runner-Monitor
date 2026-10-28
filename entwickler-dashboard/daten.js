@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "28.10.2026 23:45",
+  stand: "29.10.2026 00:10",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -187,6 +187,7 @@ window.RUNNER_MONITOR = {
     { id: "E-11", thema: "Repository", frage: "Lizenz für das öffentliche Repository (#31)? Ohne Lizenz sind alle Rechte vorbehalten.", optionen: ["MIT", "Keine Lizenz", "Apache-2.0"], status: "entschieden", antwort: "Keine Lizenz: alle Rechte bei Bamberger IT Services, der Code ist nur zum Lesen öffentlich (Tobias, Auswahlfrage, 23.10.2026)" },
     { id: "E-12", thema: "Betrieb", frage: "Die Projektanweisung sagt „Als Docker sollte es dennoch funktionieren“ – zusätzlich einen Container (privilegiert, --pid=host, Journal- und Runner-Mounts) anbieten (A-17)?", optionen: ["Zusätzlich Docker", "Kein Docker"], datei: "docs/adr/0002-systemd-statt-docker.md", status: "entschieden", antwort: "Kein Docker-Container, auch nicht zusätzlich – nur systemd; der Satz in der Projektanweisung gilt nicht, bestätigt E-02 (Tobias, 23.10.2026)" },
     { id: "E-13", thema: "Design", frage: "Netzwerk-Variante im Design 0.3.0: Wo steht die Netzauslastung?", optionen: ["Variante A: eigener Block in der RAM-Spalte", "Andere Variante"], datei: "docs/design/README.md", status: "entschieden", antwort: "Variante A: eigener Block in der RAM-Spalte – Vorgabe im Design (Claude nach Design-Vorgabe, 23.10.2026)" },
+    { id: "E-15", thema: "Fehlermeldung", frage: "Was geschieht mit den GitHub-Issue-Vorlagen fehler.yml und idee.yml, nachdem Fehler und Ideen per E-Mail kommen (#98)?", optionen: ["Entfernen, config.yml mit E-Mail-Kontaktlink (a)", "Vorlagen behalten"], datei: ".github/ISSUE_TEMPLATE/config.yml", status: "entschieden", antwort: "Option (a): fehler.yml und idee.yml entfernt, config.yml verweist per mailto auf info@bamberger-it-services.de; aufgabe.yml bleibt (Claude im Auftrag von Tobias, 29.10.2026)" },
   ],
 
   /* Aufgaben stehen seit 23.10.2026 als Issues im GitHub-Project (Anweisung 08), nicht mehr hier.
@@ -195,7 +196,7 @@ window.RUNNER_MONITOR = {
     url: "https://github.com/orgs/Bamberger-IT-Services/projects/5",
     titel: "Self-Hosted-Github-Runner-Monitor Roadmap",
     issues: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/issues",
-    neu: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/issues/new/choose",
+    neu: "mailto:info@bamberger-it-services.de",
   },
 
   /* Wo finde ich was: lokal, im Repository, auf der VM, im Monitor. Keine echten Adressen oder Rechnernamen. */
@@ -248,6 +249,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "29.10.2026 00:00", text: "#98 umgesetzt: Fehler und Ideen per E-Mail statt GitHub-Issues (mailto: mit Vorlage und technischen Angaben, auch beim fehlgeschlagenen Update; Logik in web/mail.js, Test tests/js/mail.test.mjs). Handbuch, Datenschutz, README, CHANGELOG und Designabgleich angepasst. Review nachgezogen: Update-Fehler als Knopf neben „Erneut versuchen“, Briefumschlag-Symbol, Mailtext nach Main 0.8.0, Tokenfilter auch für 40-Hex. E-15: Issue-Vorlagen fehler.yml/idee.yml entfernt, config.yml mit E-Mail-Kontaktlink." },
     { datum: "28.10.2026 23:45", text: "Design 0.8.0: Epic #100 mit Teil-Issues #89–#99 und #101 angelegt (Labels, Meilenstein v0.8.0), Design in PR #102 abgelegt. #89 umgesetzt: Verlauf mit festen Zeitfenstern (Eimer am absoluten Zeitpunkt) und Zeitraum-Umschalter 30 s/2/5/10 Min.; Node-Tests in der CI. Offen: Entscheidungen zu #90 (feste Schlüssel) und #92 (Format /api/zustand), prio-Labels durch Tobias." },
     { datum: "25.10.2026 10:04", text: "0.7.0: #77 Nacht-Update wartet auf freien Runner (bis 7 Uhr, ein Versuch je Nacht), #78 Änderungen seit der installierten Version, Epic #79 Deutsch/Englisch (#80 Dashboard, #81 Anmeldung, Einrichtung, Server-Meldungen). #21 Branch-Schutz und private Sicherheitsmeldungen eingerichtet (OK Projektinhaber), #22–#24 auf Wunsch geschlossen." },
     { datum: "25.10.2026 00:55", text: "0.6.1: Runner nach OOM-Kill gestoppt (Rückmeldung aus dem Betrieb, VM auf 4 GB RAM ohne Swap). #70 RAM-Empfehlung in docs/RUNNER.md, #67 Runner-Einrichtung mit OOMPolicy=continue, Restart=on-failure und Swap, #68 Grund für gestoppten Dienst im Dashboard, #69 Runner-Version aus deps.json. Backlog geprüft: #21 (blocked, GitHub-Einstellungen), #22–#24 (brauchen Design) sind nicht erledigt." },

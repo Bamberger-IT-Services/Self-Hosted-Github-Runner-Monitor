@@ -4,6 +4,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Neu
+- Verlauf mit festen Zeitfenstern: Auslastung hat einen Zeitraum-Umschalter (30 s, 2, 5 oder 10 Min.);
+  die Werte werden in Eimer mit festen Grenzen gruppiert, die Kurve wandert ruhig nach links (#89).
+
+### Geändert
+- Fehler und Ideen gehen per E-Mail an Bamberger IT Services statt als GitHub-Issue: Info › „Fehler
+  gefunden oder Idee?“ und der fehlgeschlagene Update öffnen das Mailprogramm mit Betreff, Vorlage und
+  den technischen Angaben (Version, System, Runner, Browser); Vorlage in Deutsch oder Englisch nach
+  Oberfläche, Token-Muster werden entfernt. Die Issue-Vorlagen für Fehler und Ideen entfallen (#98).
+
 ## [0.7.0] – 25.10.2026
 
 ### Geändert

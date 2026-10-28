@@ -659,6 +659,13 @@
     const st = S.status || {}, w = S.workflows || {}, u = S.update || {}, us = u.status || {};
     const jetzt = Date.now();
     const neu = u.neueste && u.neueste.version && vergleiche(u.neueste.version, u.installiert) > 0;
+    // Technische Angaben für die Mail (web/mail.js); was der aktuelle Stand hergibt
+    const dz = st.dienst && st.dienst.zustand;
+    const mailAngaben = {
+      version: u.installiert || st.monitorVersion || '', system: st.system || '', browser: navigator.userAgent,
+      runner: st.runner ? [{ name: st.runner, dienst: 'GitHub', version: st.version || '' }] : [],
+      gewaehlt: st.runner && dz && dz !== 'fehlt' ? { name: st.runner, zustand: dz === 'gestoppt' ? t('Gestoppt') : st.github && st.github.zustand === 'offline' ? t('Offline') : st.job ? t('Job') : t('Bereit') } : null,
+    };
     const kv = (liste) => `<dl class="kv">${liste.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`).join('')}</dl>`;
 
     // Updates
@@ -682,7 +689,14 @@
     if (us.zustand === 'erfolg' && jetzt - ms(us.zeit) < 3600000) upd += `<div class="hinweis ok">${IC.ok(15)}<div>${t('Aktualisiert auf {v}', { v: esc(u.installiert) })} <span>– ${t('um {z}. Dienst läuft, alle Daten kommen an.', { z: hm(us.zeit) })}</span></div></div>`;
     const bereit = !u.neueste || u.neueste.bereit !== false;  // Paket hängt schon am Release (#63)
     if (neu && !bereit && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><p class="info-notiz">${t('Version {v} wird gerade bereitgestellt – das Paket ist in ein bis zwei Minuten da. Der Monitor prüft von selbst erneut.', { v: esc(u.neueste.version) })}</p></div>`;
-    else if (neu && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${us.zustand === 'fehler' ? t('Erneut versuchen') : t('Jetzt auf {v} aktualisieren', { v: esc(u.neueste.version) })}</button><p class="info-notiz">${t('Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.')}</p></div>`;
+    else if (neu && us.zustand !== 'laeuft') {
+      const fehl = us.zustand === 'fehler';
+      const hinweisZeit = `<p class="info-notiz">${t('Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.')}</p>`;
+      const melden = fehl ? `<a class="knopf" href="${esc(MAIL.updateFehler({ ...mailAngaben, alt: u.installiert, neu: us.version || u.neueste.version, meldung: us.meldung || t('die neue Version hat nach dem Neustart nicht geantwortet') }, t))}">${t('Fehler melden')}</a>` : '';
+      upd += `<div class="upd-aktion${fehl ? ' zeile' : ''}"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${fehl ? t('Erneut versuchen') : t('Jetzt auf {v} aktualisieren', { v: esc(u.neueste.version) })}</button>${fehl ? melden + '</div>' + hinweisZeit : hinweisZeit + '</div>'}`;
+    } else if (us.zustand === 'fehler') {
+      upd += `<div class="upd-aktion zeile"><a class="knopf" href="${esc(MAIL.updateFehler({ ...mailAngaben, alt: u.installiert, neu: us.version || '', meldung: us.meldung || t('die neue Version hat nach dem Neustart nicht geantwortet') }, t))}">${t('Fehler melden')}</a></div>`;
+    }
     upd += `<label class="upd-auto"><input type="checkbox" data-aktion="update-auto" ${u.auto ? 'checked' : ''}>${t('Automatisch aktualisieren – nachts ab 3 Uhr, sobald kein Job läuft')}</label>`;
     const as = u.autoStand || {};
     if (u.auto && neu && us.zustand !== 'laeuft' && as.version === u.neueste.version) {
@@ -717,7 +731,6 @@
       [t('Dienst'), t('runner-monitor (systemd, eigener Benutzer)')],
       [t('Aktualisierung'), t('Systemwerte jede Sekunde, GitHub alle 30 s')],
     ]);
-    const issue = (vorlage) => `https://github.com/${REPO}/issues/new?template=${vorlage}&version=${encodeURIComponent(u.installiert || '')}&runner=${encodeURIComponent(st.version || '')}&browser=${encodeURIComponent(navigator.userAgent.slice(0, 120))}`;
 
     // Teile einzeln austauschen statt das ganze Blatt neu zu bauen: Sonst startet die Einblend-
     // Animation bei jeder Aktualisierung neu, Auswahl und Fokus gehen verloren.
@@ -728,12 +741,12 @@
       anl,
       gh,
       ueber: `<p class="info-text">${t('Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung mit Netzwerk, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.')}</p>${ueber}<p class="info-text umbruch">${t('Ersteller:')} Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>${t('Quellcode und Doku:')} <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
-      issue: `<p class="info-text">${t('Der Monitor ist ein offenes Projekt. Fehler und Wünsche landen als Issue im GitHub-Repository. Der Knopf öffnet GitHub mit einer vorbereiteten Vorlage, in der die technischen Angaben schon stehen:')}</p>${kv([
+      issue: `<p class="info-text">${t('Fehler und Wünsche gehen per E-Mail an')} <a class="verweis" href="mailto:${MAIL.ADRESSE}">${MAIL.ADRESSE}</a>${t('. Der Knopf öffnet das E-Mail-Programm mit Betreff und einer Vorlage, in der die technischen Angaben schon stehen:')}</p>${kv([
         ['Version', `Runner-Monitor ${esc(u.installiert || st.monitorVersion || '–')}`],
         ['System', esc(st.system || '–')],
         ['Runner', st.version ? `actions-runner ${esc(st.version)}` : '–'],
         ['Browser', t('wird automatisch ergänzt')],
-      ])}<div class="knopf-reihe"><a class="knopf" href="${issue('fehler.yml')}" rel="noopener" target="_blank">${IC.kaefer()}${t('Fehler melden ↗')}</a><a class="knopf" href="${issue('idee.yml')}" rel="noopener" target="_blank">${t('Idee vorschlagen ↗')}</a></div><p class="info-notiz">${t('Vor dem Absenden prüfen: Keine IP-Adressen, Rechnernamen, Tokens oder Passwörter in das Issue schreiben, das Repository ist öffentlich. Log-Ausschnitte nur gekürzt einfügen.')}</p>`,
+      ])}<div class="knopf-reihe"><a class="knopf" href="${esc(MAIL.fehler(mailAngaben, t))}">${IC.brief()}${t('Fehler melden')}</a><a class="knopf" href="${esc(MAIL.idee(mailAngaben, t))}">${t('Idee vorschlagen')}</a></div><p class="info-notiz">${t('Vor dem Absenden prüfen: Keine Tokens oder Passwörter mitschicken. Log-Ausschnitte nur gekürzt einfügen.')}</p>`,
     };
   }
 

@@ -104,8 +104,9 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 
 ## Mitmachen
 
-Fehler und Ideen als [Issue](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/issues/new/choose) –
-**bitte ohne IP-Adressen, Rechnernamen, Tokens oder Passwörter**, das Repository ist öffentlich.
+Fehler und Ideen per E-Mail an [info@bamberger-it-services.de](mailto:info@bamberger-it-services.de) – im Dashboard unter
+*Info & Hilfe › Fehler gefunden oder Idee?* mit vorbereiteter Vorlage. **Bitte keine Tokens oder Passwörter mitschicken**,
+Log-Ausschnitte nur gekürzt.
 Sicherheitslücken vertraulich über *Security › Report a vulnerability*.
 
 Ein Projekt von [Bamberger IT Services](https://bamberger-it-services.de). © 2026 Bamberger IT Services, alle Rechte vorbehalten –
