@@ -85,23 +85,28 @@ Oberfläche zeigt „Stand von hh:mm:ss“ und die Zeit bis zum nächsten Versuc
 ## Runner erkennen (seit Design 0.8.0, #91)
 
 `runner_monitor/erkennung.py` findet selbst, welche Runner auf der VM laufen – auch mehrere und
-auch andere als GitHub. Der Sammler (root) ruft sie **beim Start und alle 6 Stunden** auf und legt
-das Ergebnis in `/run/runner-monitor/erkennung.json` (0644, ohne Geheimnisse); `einrichten.sh`
-zeigt dieselbe Erkennung in „System prüfen“ › „Runner auf dieser VM“
-(`python3 -m runner_monitor.erkennung --text`, Rückgabe 3 = kein Runner). Das Dashboard zeigt
-bis zu den Anbieter-Adaptern (#92, #93, #99) weiter nur den GitHub-Runner wie bisher.
+auch andere als GitHub. Der Sammler (root) startet sie **beim Start und alle 6 Stunden** als
+**eigenen Prozess** (`python3 -m runner_monitor.erkennung --json`), schaut in seinen folgenden
+Takten (2 s) nach und beendet ihn nach 60 s – ein hängender DNS-Server oder ein tröpfelnder Server
+hält so weder GitHub- noch Docker-Abfrage auf. Die Ausgabe landet in einer temporären Datei, wird
+geprüft (`erkennung.pruefe_ergebnis`: Form, Werte, höchstens 2 MB, nur bekannte Felder) und erst
+dann nach `/run/runner-monitor/erkennung.json` geschrieben (0644, ohne Geheimnisse); ein
+abgebrochener oder ungültiger Lauf lässt die alte Datei stehen. `einrichten.sh` zeigt dieselbe
+Erkennung in „System prüfen“ › „Runner auf dieser VM“ (`timeout 60 python3 -m
+runner_monitor.erkennung --text`, Rückgabe 3 = kein Runner). Das Dashboard zeigt bis zu den
+Anbieter-Adaptern (#92, #93, #99) weiter nur den GitHub-Runner wie bisher.
 
 | Quelle | Was gelesen wird | Merkmal (Beispiel) |
 |---|---|---|
 | systemd-Units | Unit-Dateien in `/etc/systemd/system`, `/run/systemd/system`, `/usr/local/lib/systemd/system`, `/usr/lib/systemd/system`, `/lib/systemd/system` samt Drop-ins; `ExecStart`, `WorkingDirectory`; aktiviert über `*.wants/`, aktiv über `systemctl is-active` | „systemd-Unit forgejo-runner.service“ |
 | Prozesse | `/proc/<pid>/cmdline`, `cgroup` (welche Unit, Container?), `cwd` – nur bekannte Programme (`Runner.Listener`, `forgejo-runner`, `act_runner`, `gitlab-runner`) | „Prozess forgejo-runner daemon“ |
 | Registrierungen | `.runner` (GitHub: `agentName`, `gitHubUrl`; Forgejo/Gitea: `name`, `address`) neben Unit und Prozess, laut `config.yml` (`runner.file`) und an üblichen Orten (`/opt/*`, `/srv/*`, `/var/lib/*`, `/home/*`, `/root`); GitLab: `config.toml` (`name`, `url`) | „/opt/actions-runner/.runner mit gitHubUrl“ |
-| Server-API ohne Zugangsdaten | Forgejo `/api/forgejo/v1/version`, Gitea `/api/v1/version`, GitLab-Anmeldeseite, GitHub Enterprise `/api/v3/meta` (github.com gilt als bekannt) | „/api/forgejo/v1/version antwortet: 13.0“ |
+| Server-API ohne Zugangsdaten | nur für Funde mit systemd-Unit (E-17): Forgejo `/api/forgejo/v1/version`, Gitea `/api/v1/version`, GitLab-Anmeldeseite, GitHub Enterprise `/api/v3/meta` (github.com gilt als bekannt) | „/api/forgejo/v1/version antwortet: 13.0“ |
 | Runner-Version | GitHub aus `bin/Runner.Listener.deps.json`, sonst aus dem Journal der Unit („with version: v9.1.0“, „version=17.5.2“) | – |
 
-**Grad:** `sicher` – eindeutige Merkmale (Registrierung und Dienst oder Prozess) **und** Server
-bestätigt; `wahrscheinlich` – Dienst erkannt, aber Server nicht erreichbar, ohne Netz, ohne
-Registrierung oder mit widersprüchlichen Merkmalen; `unklar` – nur allgemeine Hinweise (Name der
+**Grad:** `sicher` – eindeutige Merkmale (Registrierung und systemd-Unit) **und** Server
+bestätigt; `wahrscheinlich` – Dienst erkannt, aber Server nicht erreichbar, ohne Netz, nicht geprüft
+(Fund ohne Unit, E-17), ohne Registrierung oder mit widersprüchlichen Merkmalen; `unklar` – nur allgemeine Hinweise (Name der
 Unit enthält „runner“, „agent“, „build“ …, startet Container). Bekannte Nicht-Runner
 (`qemu-guest-agent`, `runner-monitor*` …) zählen nicht; unbekannte Units nur, wenn sie aktiviert
 oder aktiv sind. Zwischen Forgejo und Gitea entscheidet die Antwort des Servers.
@@ -109,7 +114,7 @@ oder aktiv sind. Zwischen Forgejo und Gitea entscheidet die Antwort des Servers.
 **Einstufung und Fähigkeiten** richten sich nach dem, was diese Version liefern kann (Tabelle
 `FAEHIG` in `erkennung.py`): GitHub `voll` (Status, Jobs, Schritte, Logs); Forgejo, Gitea, GitLab
 `teil` (erkannt, noch ohne Adapter: Dienst und Journal); unbekannt `unbekannt` (Grundüberwachung).
-`updates` ist überall `false`.
+`updates` ist überall `false` (E-16). Ein Fund ohne Unit hat weder `status` noch `logs`.
 
 Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README):
 
@@ -122,11 +127,20 @@ Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README)
 ```
 
 `dienst`: `github|forgejo|gitea|gitlab|unbekannt`; `stand`: `angebunden|grund|ignoriert|offen`
-(GitHub mit vorhandenem Token: `angebunden`, sonst `offen`, bis eine Zuordnung etwas anderes sagt);
-`log`: Pfad oder `null` (= Journal der Unit; GitHub: `<runner>/_diag`). Zusätzlich zum Design:
-`aktiv` (Unit läuft: `true`/`false`/`null` unbekannt) und `grund` (warum nur „wahrscheinlich“).
-Die Datei hat außerdem `zeit` und `geprueft` (die geprüften Quellen). IDs sind eindeutig
-(gleicher Name → `-2`, `-3`), Funde mit Dienst vor solchen ohne.
+(GitHub mit Unit und vorhandenem Token: `angebunden`, sonst `offen`, bis eine Zuordnung etwas
+anderes sagt; ein Fund ohne Unit ist nie `angebunden`, E-18); `log`: Pfad oder `null` (= Journal der
+Unit; GitHub mit Unit: `<runner>/_diag`, ohne Unit `null`). Zusätzlich zum Design: `aktiv` (Unit
+läuft: `true`/`false`/`null` unbekannt; bei einer zugeordneten anderen Unit deren Zustand) und
+`grund` (warum nur „wahrscheinlich“). Die Datei hat außerdem `zeit` und `geprueft`.
+
+**IDs (E-18):** aus dem Namen, eindeutig (gleicher Name → `-2`, `-3`) und **zuerst an Funde mit
+Unit** vergeben – ein nachgemachter Fund (z. B. eine `.runner` in `/home`) bekommt so nie die ID
+eines echten Runners und damit nie dessen Zuordnung. Für die Adapter (#92, #93, #99) gilt: Server
+und Log-Pfad kommen nur aus `runner.json` bzw. den Zugangsdaten (`zugang/`), nie aus dem Fund – der
+Fund ist nur ein Vorschlag für die Einrichtung.
+
+**Spalte „Version“** in `einrichten.sh` wie im Design: bei GitHub die Runner-Version, sonst die
+Server-Version; ist nur die Runner-Version bekannt, steht dort „–“ (sie bleibt im JSON).
 
 **Zuordnung und Ignorieren** stehen dauerhaft in `/etc/runner-monitor/runner.json`
 (root:runner-monitor, 0640). Gelesen wird sie schon (`erkennung.lies_zuordnung`), schreiben wird
@@ -143,15 +157,26 @@ sie der Sammler auf Auftrag der Oberfläche (POST-Endpunkt mit #96/#97):
 Schlüssel ist die `id` des Funds; jedes Feld ist freiwillig. Ungültige Einträge oder Felder werden
 verworfen. Ein Eintrag mit `unit`, der nicht gefunden wurde, erscheint als „von Hand zugeordnet“.
 
-**Sicherheit:** Die Erkennung führt nichts aus, was in einem Fund steht (kein `ExecStart`, kein
-Runner-Programm, keine Shell); aufgerufen werden nur `systemctl is-active -- <unit>` und
-`journalctl -u <unit>` mit geprüftem Namen. Registrierungen werden nur unter festen Dateinamen
-(`.runner`, `config.toml`) gelesen, ohne Symlinks zu folgen, als reguläre Datei bis 64 KB (eine FIFO
-blockiert nicht). `token` aus `.runner`/`config.toml` wird nie übernommen, `.credentials` nie gelesen,
-vom GitHub-Token wird nur geprüft, ob die Datei da ist. Namen, Unit-Namen, Pfade und Adressen
-werden streng geprüft (Adressen ohne Zugangsdaten, Abfrage und Anker); die Textausgabe ersetzt
-Steuerzeichen. Die Server-Probe ist ein GET ohne Zugangsdaten und ohne Weiterleitungen, 3 s je
-Anfrage, 10 s insgesamt, höchstens 8 Server. Fehler in einer Quelle beenden die Erkennung nie.
+**Sicherheit (S-ERK-01):** Die Erkennung führt nichts aus, was in einem Fund steht (kein
+`ExecStart`, kein Runner-Programm, keine Shell); aufgerufen werden nur `systemctl is-active -- <unit>`
+und `journalctl -u <unit>` mit geprüftem Namen. **Keinem Symlink wird gefolgt** außer bei
+Unit-Dateien in den root-eigenen systemd-Verzeichnissen – also nicht bei `.runner`, `config.toml`,
+`config.yml`, `deps.json`, `runner.json` und `/proc`. Vor dem Öffnen prüft `lstat`, dass es eine
+reguläre Datei ist (keine FIFO, kein Gerät); geöffnet wird mit `O_NOFOLLOW`, `O_NONBLOCK` und
+`O_NOCTTY`, danach muss es dieselbe Datei sein; gelesen wird bis zu einer Grenze (64 KB, `deps.json`
+4 MB). Registrierungen nur unter festen Dateinamen (`.runner`, `config.toml`). `token` aus
+`.runner`/`config.toml` wird nie übernommen, `.credentials` nie gelesen, vom GitHub-Token wird nur
+geprüft, ob die Datei da ist. Namen, Unit-Namen, Pfade und Adressen werden streng geprüft (Adressen
+ohne Zugangsdaten, Abfrage und Anker); die Textausgabe ersetzt Steuerzeichen. Die Server-Probe
+(nur Funde mit Unit) ist ein GET auf feste Pfade ohne Zugangsdaten und ohne Weiterleitungen, mit
+**harten** Fristen von 3 s je Anfrage und 10 s insgesamt, höchstens 8 Server: Sie läuft in einem
+eigenen Faden, der zur Frist zurückgelassen wird – das deckt auch DNS und tröpfelnde Antworten ab.
+Darüber liegt die Grenze des Prozesses (Sammler 60 s, `einrichten.sh` `timeout 60`). Fehler in einer
+Quelle beenden die Erkennung nie.
+
+`PrivateDevices=yes` für den Sammler wäre nach Prüfung möglich (Docker über `/run/docker.sock`,
+`systemctl` über D-Bus, `journalctl` über `/var/log/journal` brauchen keine Geräte) – ist aber nicht
+gesetzt, weil es auf einer echten VM noch nicht erprobt ist; Vorschlag für ein eigenes Issue.
 
 ## Vom Server in den Browser
 
