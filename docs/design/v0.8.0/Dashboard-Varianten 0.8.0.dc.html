@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<style>body{margin:0;background:#eceef0}a{color:#0e628f}a:hover{color:#0a4d70}</style>
+</helmet>
+<section style="padding: 48px; display: flex; flex-direction: column; gap: 28px; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; color: #1d2a33">
+  <div style="max-width: 920px; display: flex; flex-direction: column; gap: 8px">
+    <div style="font-size: 13px; font-weight: 650; color: #0e628f">Design 0.8.0 · Punkt 2</div>
+    <h1 style="margin: 0; font-size: 30px; line-height: 36px; font-weight: 650; letter-spacing: -0.02em">Dashboard mit mehreren Runnern – drei Varianten</h1>
+    <p style="margin: 0; font-size: 15px; line-height: 22px; color: #4f5d67; text-wrap: pretty">Gleiche Daten in allen drei: runner-vm-01 (GitHub, Job läuft) ist gewählt, runner-vm-02 (Forgejo, Bereit) und buildagent (unbekannt, Grundüberwachung) daneben. Auslastung, Prozesse und Platten gehören zur VM und bleiben gleich. Runner-Status, Workflows und Live-Log zeigen den gewählten Runner. Klick auf einen Runner wählt ihn aus; die Wahl merkt sich der Browser. Bei einem Runner sieht das Dashboard in allen Varianten aus wie heute (<a href="#1d">1d</a>).</p>
+  </div>
+  <div style="display: flex; flex-wrap: wrap; gap: 48px; align-items: flex-start">
+    <div id="1a" style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; gap: 10px"><span style="font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 2px; background: #0e628f; color: #ffffff">1a</span><span style="font-size: 18px; font-weight: 650">A · Umschalter in der Kopfzeile</span></div>
+      <div style="max-width: 1440px; font-size: 14px; line-height: 20px; color: #4f5d67">Segment an der Stelle des Runner-Namens: je Runner Zustandspunkt, Name, Dienst und Zustand. Kein zusätzlicher Platz im Raster. Die Labels wandern in die Karte „Runner-Status“. Bei 4+ Runnern wird es in der Kopfzeile eng.</div>
+      <div style="width: 1440px; height: 900px; box-shadow: 0 2px 12px rgba(0,0,0,.12); background: #ffffff"><dc-import name="Main 0.8.0" zustand="job" runner="3" gewaehlt="1" auswahl="A" hint-size="1440px,900px"></dc-import></div>
+    </div>
+    <div id="1b" style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; gap: 10px"><span style="font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 2px; background: #0e628f; color: #ffffff">1b</span><span style="font-size: 18px; font-weight: 650">B · Übersichtsleiste über dem Raster</span></div>
+      <div style="max-width: 1440px; font-size: 14px; line-height: 20px; color: #4f5d67">Eine Kachel je Runner mit Zustand und einer Zeile Detail (z. B. Repository, Job, Laufzeit). Am meisten Information, kostet 62 px Höhe – die Karte „Workflows“ wird kürzer. Skaliert gut bis 5 Runner.</div>
+      <div style="width: 1440px; height: 900px; box-shadow: 0 2px 12px rgba(0,0,0,.12); background: #ffffff"><dc-import name="Main 0.8.0" zustand="job" runner="3" gewaehlt="1" auswahl="B" hint-size="1440px,900px"></dc-import></div>
+    </div>
+    <div id="1c" style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; gap: 10px"><span style="font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 2px; background: #0e628f; color: #ffffff">1c</span><span style="font-size: 18px; font-weight: 650">C · Reiter an der Runner-Spalte (Vorschlag)</span></div>
+      <div style="max-width: 1440px; font-size: 14px; line-height: 20px; color: #4f5d67">Reiter direkt über „Runner-Status“ und „Workflows“ – dort, wo die Runner-Daten stehen. Reiter zeigen Name und Zustand; Dienst-Plakette und Labels des gewählten Runners stehen wie heute in der Kopfzeile, das Live-Log trägt seinen Namen. Kostet 36 px in der linken Spalte, max. 3–4 Runner.</div>
+      <div style="width: 1440px; height: 900px; box-shadow: 0 2px 12px rgba(0,0,0,.12); background: #ffffff"><dc-import name="Main 0.8.0" zustand="job" runner="3" gewaehlt="1" auswahl="C" hint-size="1440px,900px"></dc-import></div>
+    </div>
+    <div id="1d" style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; gap: 10px"><span style="font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 2px; background: #4f5d67; color: #ffffff">1d</span><span style="font-size: 18px; font-weight: 650">Ein Runner · gilt für A, B und C</span></div>
+      <div style="max-width: 1440px; font-size: 14px; line-height: 20px; color: #4f5d67">Keine zusätzlichen Bedienelemente – identisch mit 0.4.0.</div>
+      <div style="width: 1440px; height: 900px; box-shadow: 0 2px 12px rgba(0,0,0,.12); background: #ffffff"><dc-import name="Main 0.8.0" zustand="job" runner="1" auswahl="B" hint-size="1440px,900px"></dc-import></div>
+    </div>
+  </div>
+</section>
+</x-dc>
+</body>
+</html>
