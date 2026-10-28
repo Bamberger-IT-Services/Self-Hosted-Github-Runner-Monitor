@@ -794,7 +794,7 @@
     else if (a === 'info-zu') schliesseInfo();
     else if (a === 'anleitung') { S.info = S.info === b.dataset.anleitung ? 'alle' : b.dataset.anleitung; renderInfo(); }
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
-    else if (a === 'sprache') { if (b.dataset.sprache !== I18N.wahl()) { I18N.setzeSprache(b.dataset.sprache); location.reload(); } }
+    else if (a === 'sprache') { if (b.dataset.sprache !== I18N.wahl()) { if (I18N.setzeSprache(b.dataset.sprache)) location.reload(); }  // Speicher gesperrt: Wahl nicht möglich, keine Änderung }
     else if (a === 'zeitraum') { S.zeitraum = VERLAUF.zeitraum(b.dataset.zeitraum); zeitraumSpeichern(S.zeitraum); renderZeitraum(); renderSystem(); }
     else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; renderWorkflows(); }
     else if (a === 'abmelden') { if (!DEMO) await RM.sende('/api/abmelden'); location.href = '/anmelden'; }

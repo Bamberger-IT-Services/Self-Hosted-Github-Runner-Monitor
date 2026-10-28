@@ -7,6 +7,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 ### Neu
 - Verlauf mit festen Zeitfenstern: Auslastung hat einen Zeitraum-Umschalter (30 s, 2, 5 oder 10 Min.);
   die Werte werden in Eimer mit festen Grenzen gruppiert, die Kurve wandert ruhig nach links (#89).
+- Info › Darstellung › Sprache: `Automatisch | Deutsch | English`. Automatisch folgt der ersten
+  Sprache des Browsers (`de…` → Deutsch, alles andere → Englisch); die Wahl wird je Browser unter
+  `runner-monitor.sprache` gemerkt, die bisherige Wahl übernommen (#90).
+  Hinweis: Wer bisher nichts gewählt hat und einen nicht deutschen Browser nutzt, sieht jetzt Englisch.
 
 ### Geändert
 - Fehler und Ideen gehen per E-Mail an Bamberger IT Services statt als GitHub-Issue: Info › „Fehler

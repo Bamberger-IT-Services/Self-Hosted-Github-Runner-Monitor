@@ -58,6 +58,11 @@ test('alter Schlüssel rm-sprache wird einmal übernommen', () => {
   assert.equal(I.wahlLesen(t), 'de');
 });
 
+test('Übernahme des alten Schlüssels klappt auch, wenn Schreiben scheitert', () => {
+  const nurLesen = { getItem: k => (k === 'rm-sprache' ? 'en' : null), setItem() { throw new Error('voll'); }, removeItem() { throw new Error('voll'); } };
+  assert.equal(I.wahlLesen(nurLesen), 'en');
+});
+
 test('Englisch: Platzhalter stimmen, Hinweistext vorhanden', () => {
   assert.equal(I.WAHLEN.join(), 'auto,de,en');
   const ph = x => (x.match(/\{(\w+)\}/g) || []).sort().join();

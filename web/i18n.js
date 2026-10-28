@@ -2,7 +2,7 @@
    (wie gettext), t() liefert die englische Fassung aus EN – fehlt sie, bleibt der deutsche Text.
    Platzhalter in geschweiften Klammern: t('Update auf {v} läuft', { v: '1.2.3' }).
    Gleiches Wort, andere Bedeutung: Zusatz nach „|“ (wird im Deutschen weggelassen), z. B.
-   t('Weiter|schritt') → „Weiter“ / „Next“, t('Weiter') → „Weiter“ / „Resume“.
+   t('Weiter|schritt') → „Weiter“ / „Next“, t('Weiter') → „Weiter“ / „Continue“.
    Vorgabe „Automatisch“: Sprache des Systems (de* → Deutsch, sonst Englisch); die Wahl gilt je Browser.
    Statische Texte im HTML tragen data-t (Inhalt), data-t-title, data-t-aria (aria-label). */
 'use strict';
@@ -20,13 +20,16 @@ const I18N = (() => {
       const w = speicher.getItem(SCHLUESSEL);
       if (WAHLEN.includes(w)) return w;
       const alt = speicher.getItem(ALTER_SCHLUESSEL);
-      if (SPRACHEN.includes(alt)) { speicher.setItem(SCHLUESSEL, alt); speicher.removeItem(ALTER_SCHLUESSEL); return alt; }
+      if (SPRACHEN.includes(alt)) {
+        try { speicher.setItem(SCHLUESSEL, alt); speicher.removeItem(ALTER_SCHLUESSEL); } catch (e) { /* nur lesbar: Wert gilt trotzdem */ }
+        return alt;
+      }
     } catch (e) { /* gesperrt oder privat: automatisch */ }
     return 'auto';
   }
   function wahlSpeichern(w, speicher = speicherStandard()) {
     if (!WAHLEN.includes(w)) return false;
-    try { speicher.setItem(SCHLUESSEL, w); return true; } catch (e) { return false; }   // gesperrt: nur diese Seite
+    try { speicher.setItem(SCHLUESSEL, w); return true; } catch (e) { return false; }   // gesperrt: nicht gespeichert (false)
   }
   function aufloesen(wahl, sprachen) {
     if (SPRACHEN.includes(wahl)) return wahl;
@@ -36,7 +39,7 @@ const I18N = (() => {
   const systemSprachen = () => (typeof navigator === 'undefined' ? [] : (navigator.languages && navigator.languages.length ? Array.from(navigator.languages) : [navigator.language]));
   const gewaehlt = wahlLesen();
   const aktuell = aufloesen(gewaehlt, systemSprachen());
-  function setzeSprache(w) { wahlSpeichern(w); }
+  const setzeSprache = w => wahlSpeichern(w);   // true = gespeichert, die Seite kann neu laden
   const ersetze = (text, werte) => (werte ? text.replace(/\{(\w+)\}/g, (m, k) => (k in werte ? String(werte[k]) : m)) : text);
   function t(text, werte) {
     const ziel = aktuell === 'en' && Object.prototype.hasOwnProperty.call(EN, text) ? EN[text] : text.replace(/\|[a-z-]+$/, '');
@@ -249,7 +252,7 @@ const I18N = (() => {
     "Der Monitor erkennt den Runner danach von selbst.": "The monitor then detects the runner on its own.",
     "Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.": "When the service is running but GitHub does not see the runner.",
     "Netz der VM prüfen:": "Check the VM’s network:",
-    "Dienst neu starten, damit er sich neu anmeldet:": "Restart the service so it signs in again:",
+    "Dienst neu starten, damit er sich neu anmeldet:": "Restart the service so it registers again:",
     "Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:": "If the runner was removed in GitHub (Organization › Settings › Actions › Runners), register it again:",
     "Warum die Verbindung fehlt, steht im Diagnoseprotokoll des Runners – siehe „Runner-Logs abrufen“.": "Why the connection is missing is in the runner’s diagnostic log – see “Get runner logs”.",
     "Runner-Logs abrufen (Diagnose)": "Get runner logs (diagnostics)",
