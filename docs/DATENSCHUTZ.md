@@ -17,8 +17,9 @@ Analyse, keine externen Schriften oder Skripte.
 
 Personenbezug: Benutzername und IP-Adressen der Fehlversuche; im Live-Log kann stehen, was
 Workflows ausgeben (z. B. Autorennamen von Commits). Nach außen gehen nur Anfragen an die
-GitHub-API mit dem hinterlegten Token. Der Knopf „Fehler melden“ öffnet GitHub im Browser mit
-Version, Runner-Version und Browserkennung – abgeschickt wird erst, was man selbst bestätigt.
+GitHub-API mit dem hinterlegten Token. Die Knöpfe „Fehler melden“ und „Idee vorschlagen“ öffnen das
+E-Mail-Programm mit Version, System, Runner und Browserkennung in der Vorlage – abgeschickt wird erst,
+was man selbst sendet; der Monitor selbst stellt dafür keine Verbindung her.
 
 Cookies: nur `rm_sitzung` (Anmeldung) und während der Einrichtung `rm_einrichtung` – beide
 technisch notwendig, kein Einwilligungsbanner nötig.

@@ -80,6 +80,7 @@ Abgleich mit Design 0.8.0 (Verlauf):
 | Bildschirm (0.8.0) | Code | Stand | Bemerkung |
 |---|---|---|---|
 | Auslastung: Zeitraum-Umschalter 30 s / 2 / 5 / 10 Min., feste Eimergrenzen, Netz-Maximum, Skala nach Spitze im Zeitraum, aria-label mit Zeitraum | `web/verlauf.js`, `web/dashboard.*`, `web/stil.css`, `web/i18n.js`, `tests/js/verlauf.test.mjs` | umgesetzt | #89; Gruppierung nicht mehr vom Listenende; Wahl in `localStorage["runner-monitor.zeitraum"]` |
+| Info › „Fehler gefunden oder Idee?“: keine GitHub-Issues mehr, `mailto:` an info@bamberger-it-services.de (Fehler melden, Idee vorschlagen) mit Betreff, Vorlage und automatischen Angaben, Hinweis ohne Tokens/Passwörter; „Fehler melden“ beim fehlgeschlagenen Update | `web/mail.js`, `web/dashboard.js`, `web/i18n.js`, `tests/js/mail.test.mjs` | umgesetzt | #98; Sprache der Vorlage folgt der Oberfläche; „Gewählt“ = der eine erkannte Runner, bis die Mehrfach-Runner-Ansicht (Design 0.8.0) da ist |
 
 Abgleich mit Design 0.3.0 (gilt weiter):
 

@@ -17,7 +17,7 @@ aufgeklappte Anleitung bleiben.
 | **Was tun, wenn …** | Schritt-für-Schritt-Anleitungen; jeder Befehl hat einen Knopf **Kopieren**: Token, GitHub nicht erreichbar, Dienst gestoppt, offline, **Runner-Logs abrufen**, Platte knapp, Verbindung zum Monitor, Monitor aktualisieren |
 | **GitHub-Verbindung** | Organisation, Token-Zustand, Rechte, Ablaufdatum, letzte und nächste Abfrage, API-Kontingent, Ort der Token-Datei – nur zum Anschauen. Ändern auf der VM: „Was tun, wenn …“ › „GitHub-Token einrichten oder erneuern“ (`sudo /opt/runner-monitor/aktuell/einrichten.sh token`) |
 | **Über diesen Monitor** | Version, Adresse, Dienst, Aktualisierungstakt, Ersteller und Link zum Repository |
-| **Fehler gefunden oder Idee?** | zeigt die technischen Angaben (Version, System, Runner, Browser) und öffnet ein vorbereitetes GitHub-Issue, in dem sie schon stehen. **Keine IPs, Namen oder Tokens hineinschreiben – das Repository ist öffentlich.** |
+| **Fehler gefunden oder Idee?** | zeigt die technischen Angaben (Version, System, Runner, Browser) und öffnet das E-Mail-Programm mit einer Nachricht an info@bamberger-it-services.de („Fehler melden“, „Idee vorschlagen“), in der Betreff, Vorlage und diese Angaben schon stehen. Gesendet wird erst, wenn Sie die Mail abschicken. **Keine Tokens oder Passwörter mitschicken, Log-Ausschnitte nur gekürzt einfügen.** Beim fehlgeschlagenen Update gibt es daneben einen Link „Fehler melden“ mit Platz für die Ausgabe von `journalctl -u runner-monitor-update -n 50`. |
 
 ## Runner-Logs abrufen
 
