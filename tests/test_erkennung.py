@@ -223,8 +223,28 @@ class GitHubTest(Basis):
         self.assertEqual((f["dienst"], f["grad"]), ("github", "wahrscheinlich"))
         self.assertIn("Server nicht geprüft (ohne Netz)", f["merkmale"])
 
+    def test_github_com_auch_ohne_netz_sicher(self):
+        """#109: github.com braucht keine Abfrage, ``--ohne-netz`` ändert die Einstufung nicht."""
+        unit = self.vm.github()
+        f = self.erkenne(aktiv={unit: True}, netz=False)["runner-vm-01"]
+        self.assertEqual((f["dienst"], f["grad"]), ("github", "sicher"))
+        self.assertNotIn("Server nicht geprüft (ohne Netz)", f["merkmale"])
+        self.assertEqual(self.q.abfragen, [])
+
 
 class ForgejoGiteaTest(Basis):
+    def test_fremde_runner_datei_im_arbeitsordner_kippt_die_anzeige_nicht(self):
+        """#109: die Registrierung aus der eigenen Konfiguration gilt, nicht die zuletzt gefundene."""
+        unit = self.vm.forgejo()
+        self.vm.datei("/etc/forgejo-runner/config.yml", "runner:\n  file: /var/lib/forgejo-runner/.runner\n")
+        self.vm.datei(f"/etc/systemd/system/{unit}", "[Service]\nExecStart=/usr/local/bin/forgejo-runner daemon "
+                      "--config /etc/forgejo-runner/config.yml\nWorkingDirectory=/home/admin\n")
+        self.vm.datei("/home/admin/.runner", json.dumps({"agentName": "fremd", "gitHubUrl": "https://github.com/beispiel-org"}))
+        (self.vm.w / "proc/1302/cwd").unlink()
+        (self.vm.w / "proc/1302/cwd").symlink_to("/home/admin")
+        f = self.erkenne(aktiv={unit: True}, netz=False)["runner-vm-02"]
+        self.assertEqual(f["dienst"], "forgejo")
+
     def test_forgejo_sicher(self):
         unit = self.vm.forgejo()
         f = self.erkenne(aktiv={unit: True}, antworten=FORGEJO_ANTWORT, journal=FORGEJO_JOURNAL)["runner-vm-02"]
@@ -793,39 +813,39 @@ class SammlerTest(unittest.TestCase):
         ende = time.monotonic() + frist
         while self.s._erkennung and self.s._erkennung[0].poll() is None and time.monotonic() < ende:
             time.sleep(0.05)
-        self.s.ein_takt(jetzt)
+        self.s.ein_takt(jetzt, mono=jetzt)
 
     def test_ergebnis_wird_geprueft_und_geschrieben(self):
         ergebnis = {"zeit": 1.0, "geprueft": [], "runner": [ErgebnisPruefungTest.FUND]}
         self.befehl(f"print({json.dumps(json.dumps(ergebnis))})")
-        self.s.ein_takt(1000.0)
+        self.s.ein_takt(1000.0, mono=1000.0)
         self.assertIsNotNone(self.s._erkennung)
         self.bis_fertig(1002.0)
         self.assertIsNone(self.s._erkennung)
         self.assertEqual(json.loads(self.datei.read_text())["runner"], [ErgebnisPruefungTest.FUND])
         self.assertEqual(self.datei.stat().st_mode & 0o777, 0o644)
-        self.s.ein_takt(1000.0 + 3600)
+        self.s.ein_takt(1000.0 + 3600, mono=1000.0 + 3600)
         self.assertIsNone(self.s._erkennung, "erst nach 6 Stunden wieder")
-        self.s.ein_takt(1000.0 + sammler.TAKT_ERKENNUNG)
+        self.s.ein_takt(1000.0 + sammler.TAKT_ERKENNUNG, mono=1000.0 + sammler.TAKT_ERKENNUNG)
         self.assertIsNotNone(self.s._erkennung)
 
     def test_haengende_erkennung_haelt_den_sammler_nicht_auf(self):
         self.befehl("import time; time.sleep(60)")
         beginn = time.monotonic()
-        self.s.ein_takt(1000.0)
-        self.s.ein_takt(1002.0)
+        self.s.ein_takt(1000.0, mono=1000.0)
+        self.s.ein_takt(1002.0, mono=1002.0)
         self.assertLess(time.monotonic() - beginn, 1.0)
         self.assertTrue((self.d / "lauf" / "docker.json").exists())
         prozess = self.s._erkennung[0]
         with self.assertLogs("runner_monitor.sammler", level="WARNING"):
-            self.s.ein_takt(1000.0 + sammler.ERKENNUNG_FRIST + 1)
+            self.s.ein_takt(1000.0 + sammler.ERKENNUNG_FRIST + 1, mono=1000.0 + sammler.ERKENNUNG_FRIST + 1)
         self.assertIsNotNone(prozess.poll(), "nach der Frist beendet")
         self.assertIsNone(self.s._erkennung)
         self.assertFalse(self.datei.exists())
 
     def test_ungueltige_ausgabe_wird_nicht_geschrieben(self):
         self.befehl("print('{\"runner\": \"kaputt\"}')")
-        self.s.ein_takt(1000.0)
+        self.s.ein_takt(1000.0, mono=1000.0)
         with self.assertLogs("runner_monitor.sammler", level="WARNING"):
             self.bis_fertig(1002.0)
         self.assertFalse(self.datei.exists())
@@ -833,14 +853,30 @@ class SammlerTest(unittest.TestCase):
     def test_start_scheitert(self):
         self.s.erkennung_befehl = lambda: ["/gibt/es/nicht"]
         with self.assertLogs("runner_monitor.sammler", level="WARNING"):
-            self.s.ein_takt(1000.0)
+            self.s.ein_takt(1000.0, mono=1000.0)
         self.assertIsNone(self.s._erkennung)
         self.assertTrue((self.d / "lauf" / "docker.json").exists())
+
+    def test_stderr_kommt_ins_journal_und_ist_begrenzt(self):
+        self.befehl("import sys; sys.stderr.write('Traceback X' + 'y' * 50000); sys.exit(1)")
+        self.s.ein_takt(1000.0, mono=1000.0)
+        with self.assertLogs("runner_monitor.sammler", level="WARNING") as log:
+            self.bis_fertig(1002.0)
+        text = "\n".join(log.output)
+        self.assertIn("Traceback X", text)
+        self.assertLess(len(text), sammler.MAX_STDERR + 500)
+
+    def test_takt_nutzt_die_monotone_uhr(self):
+        self.befehl("print('{}')")
+        with mock.patch.object(sammler.time, "monotonic", return_value=5.0), \
+                mock.patch.object(sammler.time, "time", side_effect=AssertionError("Wanduhr")):
+            self.s.erkennung()
+        self.assertEqual(self.s.naechste_erkennung, 5.0 + sammler.TAKT_ERKENNUNG)
 
     def test_ausnahme_haelt_den_sammler_nicht_an(self):
         self.s.erkennung = mock.Mock(side_effect=RuntimeError("x"))
         with self.assertLogs("runner_monitor.sammler", level="ERROR"):
-            self.s.ein_takt(1000.0)
+            self.s.ein_takt(1000.0, mono=1000.0)
         self.assertTrue((self.d / "lauf" / "docker.json").exists())
 
     def test_echter_aufruf_liefert_gueltiges_json(self):
@@ -849,7 +885,7 @@ class SammlerTest(unittest.TestCase):
         self.assertEqual(echt[:4], [sys.executable, "-m", "runner_monitor.erkennung", "--json"])
         self.assertIn(str(self.d / "etc" / "runner.json"), echt)
         self.s.erkennung_befehl = lambda: echt + ["--ohne-netz"]
-        self.s.ein_takt(1000.0)
+        self.s.ein_takt(1000.0, mono=1000.0)
         self.bis_fertig(1002.0, frist=50.0)
         self.assertIsInstance(json.loads(self.datei.read_text())["runner"], list)
 

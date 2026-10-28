@@ -90,9 +90,10 @@ auch andere als GitHub. Der Sammler (root) startet sie **beim Start und alle 6 S
 Takten (2 s) nach und beendet ihn nach 60 s – ein hängender DNS-Server oder ein tröpfelnder Server
 hält so weder GitHub- noch Docker-Abfrage auf. Die Ausgabe landet in einer temporären Datei, wird
 geprüft (`erkennung.pruefe_ergebnis`: Form, Werte, höchstens 2 MB, nur bekannte Felder) und erst
-dann nach `/run/runner-monitor/erkennung.json` geschrieben (0644, ohne Geheimnisse); ein
+dann nach `/run/runner-monitor/erkennung.json` geschrieben (0644, ohne Geheimnisse); Takt und Frist
+laufen mit `time.monotonic()`, die Fehlerausgabe (höchstens 2000 Zeichen) geht ins Journal; ein
 abgebrochener oder ungültiger Lauf lässt die alte Datei stehen. `einrichten.sh` zeigt dieselbe
-Erkennung in „System prüfen“ › „Runner auf dieser VM“ (`timeout 60 python3 -m
+Erkennung in „System prüfen“ › „Runner auf dieser VM“ (`timeout --foreground 60 python3 -m
 runner_monitor.erkennung --text`, Rückgabe 3 = kein Runner). Das Dashboard zeigt bis zu den
 Anbieter-Adaptern (#92, #93, #99) weiter nur den GitHub-Runner wie bisher.
 
@@ -171,7 +172,7 @@ ohne Zugangsdaten, Abfrage und Anker); die Textausgabe ersetzt Steuerzeichen. Di
 (nur Funde mit Unit) ist ein GET auf feste Pfade ohne Zugangsdaten und ohne Weiterleitungen, mit
 **harten** Fristen von 3 s je Anfrage und 10 s insgesamt, höchstens 8 Server: Sie läuft in einem
 eigenen Faden, der zur Frist zurückgelassen wird – das deckt auch DNS und tröpfelnde Antworten ab.
-Darüber liegt die Grenze des Prozesses (Sammler 60 s, `einrichten.sh` `timeout 60`). Fehler in einer
+Darüber liegt die Grenze des Prozesses (Sammler 60 s, `einrichten.sh` `timeout --foreground 60`). Fehler in einer
 Quelle beenden die Erkennung nie.
 
 `PrivateDevices=yes` für den Sammler wäre nach Prüfung möglich (Docker über `/run/docker.sock`,

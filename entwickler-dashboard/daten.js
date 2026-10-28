@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "29.10.2026 00:37",
+  stand: "29.10.2026 00:47",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -253,6 +253,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "29.10.2026 00:47", text: "#109 umgesetzt (PR offen): Review-Reste aus #107 – Sammler-Takt und -Frist mit time.monotonic(), stderr der Erkennung begrenzt ins Journal, einrichten.sh timeout --foreground, github.com auch ohne Netz sicher, Dienst aus der ersten Registrierung der Gruppe statt dienste[-1]. Offen: Version aus Runner.Listener.deps.json auf einer echten VM prüfen (Claude im Auftrag von Tobias)." },
     { datum: "29.10.2026 00:37", text: "#91 umgesetzt (PR offen): runner_monitor/erkennung.py erkennt GitHub-, Forgejo-, Gitea-, GitLab- und unbekannte Runner über systemd-Units, Prozesse, .runner/config.toml und eine Server-Probe ohne Zugangsdaten (Grad sicher/wahrscheinlich/unklar, Merkmale). einrichten.sh zeigt den Abschnitt „Runner auf dieser VM“ wie im Design; der Sammler sucht beim Start und alle 6 Std. (/run/runner-monitor/erkennung.json). runner.json nur gelesen. Review #107 eingearbeitet: Erkennung im Sammler als eigener Prozess mit 60 s Grenze, Server-Probe mit harter Frist (auch DNS), keine Symlinks außer Unit-Dateien, E-16 bis E-18 (Claude im Auftrag von Tobias)." },
     { datum: "29.10.2026 00:00", text: "#90 Sprache: Segment Automatisch | Deutsch | English in Info › Darstellung, Wahl in localStorage „runner-monitor.sprache“ (auto|de|en, alter Schlüssel rm-sprache einmalig übernommen), Automatisch folgt navigator.languages[0] (de* → Deutsch, sonst Englisch), Hinweistext nach Design 0.8.0; englische Texte der vorhandenen Oberfläche an das Wörterbuch des Designs angeglichen; Tests in tests/test_i18n.py und tests/js/i18n.test.mjs. E-14: deutscher Text bleibt Schlüssel in web/i18n.js, kein Umbau auf de.json/en.json." },
     { datum: "29.10.2026 00:00", text: "#98 umgesetzt: Fehler und Ideen per E-Mail statt GitHub-Issues (mailto: mit Vorlage und technischen Angaben, auch beim fehlgeschlagenen Update; Logik in web/mail.js, Test tests/js/mail.test.mjs). Handbuch, Datenschutz, README, CHANGELOG und Designabgleich angepasst. Review nachgezogen: Update-Fehler als Knopf neben „Erneut versuchen“, Briefumschlag-Symbol, Mailtext nach Main 0.8.0, Tokenfilter auch für 40-Hex. E-15: Issue-Vorlagen fehler.yml/idee.yml entfernt, config.yml mit E-Mail-Kontaktlink." },
