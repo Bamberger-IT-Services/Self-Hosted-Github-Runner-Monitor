@@ -95,8 +95,12 @@ runner_suchen() {
   local rc=0 farbe=""
   abschnitt "Runner auf dieser VM"
   if [ -t 1 ]; then farbe=--farbe; fi
-  (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 "$PYTHON" -m runner_monitor.erkennung --text --einrichtung ${farbe:+"$farbe"} \
-      --runner-verz "$RUNNER_VERZ" --zuordnung "$ETC/runner.json" --token-datei "$ETC/github-token") || rc=$?
+  # timeout: harte Grenze, falls DNS oder ein Server hängt
+  (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 timeout 60 \
+      "$PYTHON" -m runner_monitor.erkennung --text --einrichtung \
+      ${farbe:+"$farbe"} \
+      --runner-verz "$RUNNER_VERZ" --zuordnung "$ETC/runner.json" \
+      --token-datei "$ETC/github-token") || rc=$?
   case "$rc" in
     0) ;;
     3)
@@ -106,7 +110,7 @@ runner_suchen() {
       if frage "Jetzt einen Runner einrichten?"; then runner_einrichten
       else hin "→ Im Browser: „Von Hand zuordnen“ oder „Ohne Runner fortfahren“"; fi
       ;;
-    *) hinweis "Runner-Erkennung nicht möglich – der Monitor sucht nach dem Start selbst (alle 6 Std.)." ;;
+    *) hinweis "Runner-Erkennung nicht möglich – der Monitor sucht später selbst." ;;
   esac
 }
 

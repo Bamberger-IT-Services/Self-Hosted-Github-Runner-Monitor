@@ -15,11 +15,15 @@ Der Monitor findet selbst, welche CI-Runner auf der VM laufen, zu welchem Dienst
 Regeln (Sicherheitsbericht): Die Erkennung führt **nie** etwas aus, das in einem Fund steht (kein
 ``ExecStart``, kein Runner-Programm, keine Shell). Aufgerufen werden nur ``systemctl is-active`` und
 ``journalctl`` mit geprüftem Unit-Namen als eigenem Argument. Dateien werden nur gelesen, wenn sie
-reguläre Dateien unter einer Größengrenze sind, Registrierungen nur mit festen Dateinamen und ohne
-Symlinks. Tokens (``token`` in ``.runner``/``config.toml``) werden nie übernommen, ``.credentials``
-wird nie gelesen. Namen, Pfade und Adressen werden streng geprüft; die Textausgabe ersetzt
-Steuerzeichen, damit ein Fund das Terminal nicht verändern kann. Ein Fehler in einer Quelle beendet
-die Erkennung nie.
+reguläre Dateien unter einer Größengrenze sind, ohne Symlinks zu folgen (Ausnahme: Unit-Dateien in
+den root-eigenen systemd-Verzeichnissen), Registrierungen nur mit festen Dateinamen. Tokens
+(``token`` in ``.runner``/``config.toml``) werden nie übernommen, ``.credentials`` wird nie gelesen.
+Namen, Pfade und Adressen werden streng geprüft; die Textausgabe ersetzt Steuerzeichen, damit ein
+Fund das Terminal nicht verändern kann. Die Server-Probe gilt nur für Funde mit systemd-Unit (E-17)
+und hat harte Fristen. IDs werden zuerst an Funde mit Unit vergeben, Funde ohne Unit sind nie
+„angebunden“ (E-18). Adapter nehmen Server und Log-Pfad nur aus ``runner.json`` bzw. den
+Zugangsdaten, nie aus einem Fund – der Fund ist nur ein Vorschlag. Ein Fehler in einer Quelle
+beendet die Erkennung nie.
 
 Aufruf (z. B. aus ``einrichten.sh``)::
 
@@ -40,6 +44,7 @@ import stat
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 import unicodedata
 import urllib.error
@@ -207,22 +212,38 @@ class Quelle:
     def pfad(self, vm_pfad: str) -> Path:
         return self.wurzel / vm_pfad.lstrip("/")
 
-    def lies(self, vm_pfad: str, grenze: int, folgen: bool = True) -> bytes | None:
-        """Reguläre Datei bis ``grenze`` Bytes lesen. Nicht blockierend (FIFO), ohne Symlink, wenn
-        ``folgen`` falsch ist. Fehlt, zu groß oder keine reguläre Datei → None."""
-        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
-        if not folgen:
-            flags |= getattr(os, "O_NOFOLLOW", 0)
+    def lies(self, vm_pfad: str, grenze: int, folgen: bool = False) -> bytes | None:
+        """Reguläre Datei bis ``grenze`` Bytes lesen, sonst None.
+
+        Symlinks nur mit ``folgen=True`` – das gilt allein für Unit-Dateien in den root-eigenen
+        systemd-Verzeichnissen. Vor dem Öffnen prüft ``lstat``, dass es eine reguläre Datei ist
+        (keine FIFO, kein Gerät); geöffnet wird nicht blockierend, ohne Steuerterminal, und nach dem
+        Öffnen muss es dieselbe Datei sein."""
+        ziel = self.pfad(vm_pfad)
         try:
-            fd = os.open(self.pfad(vm_pfad), flags)
+            vorab = os.stat(ziel) if folgen else os.lstat(ziel)
+        except (OSError, ValueError):
+            return None
+        if not stat.S_ISREG(vorab.st_mode) or vorab.st_size > grenze:
+            return None
+        flags = (os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOCTTY", 0)
+                 | getattr(os, "O_CLOEXEC", 0) | (0 if folgen else getattr(os, "O_NOFOLLOW", 0)))
+        try:
+            fd = os.open(ziel, flags)
         except OSError:
             return None
         try:
             info = os.fstat(fd)
-            if not stat.S_ISREG(info.st_mode) or info.st_size > grenze:
+            if not stat.S_ISREG(info.st_mode) or (info.st_dev, info.st_ino) != (vorab.st_dev, vorab.st_ino):
                 return None
-            daten = os.read(fd, grenze + 1)
-            return None if len(daten) > grenze else daten
+            teile, gelesen = [], 0
+            while gelesen <= grenze:
+                stueck = os.read(fd, min(65536, grenze + 1 - gelesen))
+                if not stueck:
+                    break
+                teile.append(stueck)
+                gelesen += len(stueck)
+            return None if gelesen > grenze else b"".join(teile)
         except OSError:
             return None
         finally:
@@ -283,27 +304,52 @@ class Quelle:
         return lauf.stdout.splitlines()[-300:]
 
     def hole(self, url: str) -> tuple[int, bytes] | None:
-        """GET ohne Zugangsdaten und ohne Weiterleitungen, 3 s je Anfrage, 10 s für alle zusammen."""
+        """GET ohne Zugangsdaten und ohne Weiterleitungen: höchstens 3 s je Anfrage und 10 s für alle
+        zusammen – **harte** Grenzen, auch für die Namensauflösung (DNS) und einen Server, der die
+        Antwort tröpfeln lässt. Die Anfrage läuft dafür in einem eigenen Faden; ist er zur Frist nicht
+        fertig, gilt der Server als nicht erreichbar und der Faden wird zurückgelassen (daemon)."""
         rest = self.ende - time.monotonic()
         if not self.netz or rest <= 0.2 or not pruefe_url(url):
             return None
+        frist = min(self.zeitlimit, rest)
+        ergebnis: list = []
+        faden = threading.Thread(target=self._hole, args=(url, time.monotonic() + frist, ergebnis),
+                                 name="erkennung-probe", daemon=True)
+        faden.start()
+        faden.join(frist)
+        return ergebnis[0] if ergebnis and not faden.is_alive() else None
+
+    @staticmethod
+    def _hole(url: str, ende: float, ergebnis: list) -> None:
         anfrage = urllib.request.Request(url, headers={"User-Agent": "runner-monitor-erkennung",
                                                        "Accept": "application/json, text/html"})
         oeffner = urllib.request.build_opener(_KeineWeiterleitung)
         try:
-            with oeffner.open(anfrage, timeout=min(self.zeitlimit, rest)) as antwort:
-                return antwort.status, antwort.read(MAX_ANTWORT)
-        except urllib.error.HTTPError as fehler:
             try:
-                return fehler.code, fehler.read(MAX_ANTWORT)
-            except OSError:
-                return fehler.code, b""
-            finally:
-                fehler.close()
-        except (OSError, ValueError):
-            return None
-        except Exception:  # noqa: BLE001 – http.client kann Eigenes werfen; die Erkennung darf nie abbrechen
-            return None
+                with oeffner.open(anfrage, timeout=max(0.1, ende - time.monotonic())) as antwort:
+                    ergebnis.append((antwort.status, _lies_antwort(antwort, ende)))
+            except urllib.error.HTTPError as fehler:
+                try:
+                    ergebnis.append((fehler.code, _lies_antwort(fehler, ende)))
+                finally:
+                    fehler.close()
+        except Exception:  # noqa: BLE001 – Netz, DNS, TLS, http.client: alles heißt „nicht erreichbar“
+            ergebnis.clear()
+
+
+def _lies_antwort(antwort, ende: float) -> bytes:
+    """Antwort stückweise lesen, bis ``MAX_ANTWORT`` oder zur Frist (dann TimeoutError)."""
+    lese = getattr(antwort, "read1", None) or antwort.read
+    teile, gelesen = [], 0
+    while gelesen < MAX_ANTWORT:
+        if time.monotonic() > ende:
+            raise TimeoutError("Antwort zu langsam")
+        stueck = lese(min(8192, MAX_ANTWORT - gelesen))
+        if not stueck:
+            break
+        teile.append(stueck)
+        gelesen += len(stueck)
+    return b"".join(teile)
 
 
 class _KeineWeiterleitung(urllib.request.HTTPRedirectHandler):
@@ -365,7 +411,7 @@ def lies_units(q: Quelle) -> dict[str, Unit]:
         for name in q.eintraege(verz, grenze=5000):
             if name in units or not pruefe_unit(name):
                 continue
-            daten = q.lies(f"{verz}/{name}", MAX_UNIT)
+            daten = q.lies(f"{verz}/{name}", MAX_UNIT, folgen=True)  # oft Symlinks (systemctl link)
             if daten is None:
                 continue
             unit = Unit(name=name, datei=f"{verz}/{name}")
@@ -373,7 +419,7 @@ def lies_units(q: Quelle) -> dict[str, Unit]:
             for drop in (f"/etc/systemd/system/{name}.d", f"/run/systemd/system/{name}.d"):
                 for konf in q.eintraege(drop, grenze=50):
                     if konf.endswith(".conf"):
-                        extra = q.lies(f"{drop}/{konf}", MAX_UNIT)
+                        extra = q.lies(f"{drop}/{konf}", MAX_UNIT, folgen=True)
                         if extra is not None:
                             deute_unit(extra.decode("utf-8", "replace"), unit)
             units[name] = unit
@@ -382,7 +428,7 @@ def lies_units(q: Quelle) -> dict[str, Unit]:
             for name in q.eintraege(f"/etc/systemd/system/{wants}", grenze=2000):
                 if name in units:
                     units[name].aktiviert = True
-                elif "@" in name and (vorlage := re.sub(r"@[^.]*\.service$", "@.service", name)) in units:
+                elif "@" in name and (vorlage := name.partition("@")[0] + "@.service") in units:
                     # Instanz einer Vorlage, z. B. act_runner@1.service
                     kopie = Unit(**{**units[vorlage].__dict__, "name": name, "aktiviert": True})
                     units[name] = kopie
@@ -482,7 +528,7 @@ def lies_registrierung(q: Quelle, pfad: str) -> Registrierung | None:
     name = PurePosixPath(pfad).name
     if name not in (".runner", "config.toml"):
         return None  # nur feste Dateinamen – nie beliebige Dateien aus einer Befehlszeile
-    daten = q.lies(pfad, MAX_REGISTRIERUNG, folgen=False)
+    daten = q.lies(pfad, MAX_REGISTRIERUNG)
     if daten is None:
         return Registrierung(pfad, "kaputt") if q.gibt_es(pfad) else None
     return deute_runner_datei(pfad, daten) if name == ".runner" else deute_gitlab_konfig(pfad, daten)
@@ -760,15 +806,14 @@ def lies_zuordnung(pfad: Path | str | None) -> dict[str, dict]:
     "dienst": "github|forgejo|gitea|gitlab|unbekannt", "name": "…", "unit": "….service",
     "log": "/pfad" | null}}}`` – jedes Feld außer der ID ist freiwillig. Ungültige Einträge oder
     Felder werden verworfen; fehlt die Datei oder ist sie kaputt, gilt „keine Zuordnung“."""
-    if not pfad:
+    if not pfad or not str(pfad).startswith("/"):
+        return {}
+    roh = Quelle("/").lies(str(pfad), MAX_REGISTRIERUNG)  # wie alle Dateien: ohne Symlink, regulär, begrenzt
+    if roh is None:
         return {}
     try:
-        with open(pfad, "rb") as datei:
-            roh = datei.read(MAX_REGISTRIERUNG + 1)
-        if len(roh) > MAX_REGISTRIERUNG:
-            return {}
         daten = json.loads(roh.decode("utf-8"))
-    except (OSError, UnicodeDecodeError, ValueError):
+    except (UnicodeDecodeError, ValueError):
         return {}
     eintraege = daten.get("runner") if isinstance(daten, dict) else None
     if not isinstance(eintraege, dict):
@@ -865,7 +910,10 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
     bestaetigt = False
     server_version = None
     grund = None
-    if dienst != "unbekannt" and server:
+    if dienst != "unbekannt" and server and not unit:
+        grund = "Server nicht geprüft (kein systemd-Dienst)"  # E-17: keine Abfrage für Funde ohne Unit
+        merkmale.append(grund)
+    elif dienst != "unbekannt" and server:
         echt, server_version, text = probe(q, dienst, server, speicher)
         if text:
             merkmale.append(text)
@@ -908,7 +956,7 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
 
     faehig = dict(FAEHIG[dienst])
     if not unit:
-        faehig["status"] = faehig["logs"] = dienst == "github" and bool(runner_verz)
+        faehig["status"] = faehig["logs"] = False  # ohne Unit weder Dienst noch Journal
     return {
         "id": als_id(name),
         "name": name,
@@ -918,26 +966,32 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
         "grad": grad,
         "merkmale": merkmale,
         "einstufung": EINSTUFUNG[dienst],
-        "stand": "angebunden" if dienst == "github" and token_da else "offen",
+        "stand": "angebunden" if dienst == "github" and token_da and unit else "offen",  # E-18
         "unit": unit,
-        "log": f"{runner_verz}/_diag" if dienst == "github" and runner_verz else None,
+        "log": f"{runner_verz}/_diag" if dienst == "github" and runner_verz and unit else None,
         "faehig": faehig,
         "aktiv": aktiv,
         "_grund": grund,
     }
 
 
-def wende_zuordnung_an(funde: list[dict], zuordnung: dict[str, dict]) -> list[dict]:
-    """Zuordnung und Ignorieren aus ``runner.json`` übernehmen; von Hand angelegte Runner ergänzen."""
+def wende_zuordnung_an(funde: list[dict], zuordnung: dict[str, dict], q: Quelle | None = None) -> list[dict]:
+    """Zuordnung und Ignorieren aus ``runner.json`` übernehmen; von Hand angelegte Runner ergänzen.
+
+    Ein Fund ohne Unit (nur ``.runner`` in ``/home``, nur ein Prozess) wird nie „angebunden“ (E-18)."""
     gesehen = set()
     for fund in funde:
         eintrag = zuordnung.get(fund["id"])
         if not eintrag:
             continue
         gesehen.add(fund["id"])
+        if eintrag.get("unit") and eintrag["unit"] != fund["unit"]:
+            fund["aktiv"] = q.aktiv(eintrag["unit"]) if q else None  # andere Unit → deren Zustand
         for schluessel in ("name", "unit", "log", "stand"):
             if schluessel in eintrag:
                 fund[schluessel] = eintrag[schluessel]
+        if fund["stand"] == "angebunden" and not fund["unit"]:
+            fund["stand"] = "offen"
         if eintrag.get("dienst") and eintrag["dienst"] != fund["dienst"]:
             fund["dienst"] = eintrag["dienst"]
             fund["einstufung"] = EINSTUFUNG[fund["dienst"]]
@@ -951,7 +1005,7 @@ def wende_zuordnung_an(funde: list[dict], zuordnung: dict[str, dict]) -> list[di
             "id": rid, "name": eintrag.get("name", rid), "dienst": dienst, "server": None, "version": None,
             "grad": "unklar", "merkmale": ["von Hand zugeordnet"], "einstufung": EINSTUFUNG[dienst],
             "stand": eintrag.get("stand", "grund"), "unit": eintrag["unit"], "log": eintrag.get("log"),
-            "faehig": dict(FAEHIG[dienst]), "aktiv": None, "_grund": None,
+            "faehig": dict(FAEHIG[dienst]), "aktiv": q.aktiv(eintrag["unit"]) if q else None, "_grund": None,
         })
     return funde
 
@@ -975,15 +1029,46 @@ def erkenne(wurzel: Path | str = "/", runner_verz: Path | str | None = None, zuo
             funde.append(baue_fund(q, g, speicher, token_da))
         except Exception:  # noqa: BLE001 – ein seltsamer Fund darf die anderen nicht verdecken
             continue
-    funde.sort(key=lambda f: (DIENSTE.index(f["dienst"]), f["name"], f["unit"] is None, f["unit"] or "", f["server"] or ""))
+    # E-18: IDs zuerst an Funde mit Unit vergeben – ein nachgemachter Fund (z. B. ``.runner`` in
+    # ``/home``) bekommt so nie die ID eines echten Runners und damit nie dessen Zuordnung.
     vergeben: dict[str, int] = {}
-    for f in funde:  # eindeutige, stabile IDs
+    reihe = sorted(funde, key=lambda f: (f["unit"] is None, f["unit"] or "", DIENSTE.index(f["dienst"]), f["name"], f["server"] or ""))
+    for f in reihe:
         n = vergeben.get(f["id"], 0) + 1
         vergeben[f["id"]] = n
         if n > 1:
             f["id"] = f"{f['id'][:60]}-{n}"
-    funde = wende_zuordnung_an(funde, lies_zuordnung(zuordnung_datei))
+    funde.sort(key=lambda f: (DIENSTE.index(f["dienst"]), f["name"], f["unit"] is None, f["unit"] or "", f["id"]))
+    funde = wende_zuordnung_an(funde, lies_zuordnung(zuordnung_datei), q)
     return {"zeit": time.time(), "geprueft": GEPRUEFT, "runner": [{k: v for k, v in f.items() if not k.startswith("_")} | {"grund": f.get("_grund")} for f in funde]}
+
+
+MAX_ERGEBNIS = 2 * 1024 * 1024
+FUND_SCHLUESSEL = ("id", "name", "dienst", "server", "version", "grad", "merkmale", "einstufung", "stand",
+                   "unit", "log", "faehig", "aktiv", "grund")
+
+
+def pruefe_ergebnis(roh: bytes | None) -> dict | None:
+    """Ausgabe von ``--json`` prüfen, bevor der Sammler sie schreibt (Form, Werte, Größe), sonst None."""
+    if not roh or len(roh) > MAX_ERGEBNIS:
+        return None
+    try:
+        daten = json.loads(roh.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return None
+    funde = daten.get("runner") if isinstance(daten, dict) else None
+    if not isinstance(funde, list) or len(funde) > 200 or not isinstance(daten.get("zeit"), (int, float)):
+        return None
+    sauber = []
+    for f in funde:
+        if not isinstance(f, dict) or not isinstance(f.get("id"), str) or als_id(f["id"]) != f["id"]:
+            return None
+        if f.get("dienst") not in DIENSTE or f.get("grad") not in GRADE or f.get("stand") not in STAENDE:
+            return None
+        if not isinstance(f.get("merkmale"), list) or not isinstance(f.get("faehig"), dict):
+            return None
+        sauber.append({k: f.get(k) for k in FUND_SCHLUESSEL})
+    return {"zeit": daten["zeit"], "geprueft": GEPRUEFT, "runner": sauber}
 
 
 # ---------------------------------------------------------------- Textausgabe für einrichten.sh
@@ -1016,7 +1101,9 @@ def als_text(ergebnis: dict, farbe: bool = False, einrichtung: bool = False) -> 
         else:
             zeichen, art = {"sicher": ("✓", "32"), "wahrscheinlich": ("!", "33")}.get(grad, ("?", "33"))
             rechts = grad or "unklar"
-        version = (fund.get("version") or "").split(" / ")[0].removeprefix("Runner ") or None
+        # Spalte „Version“ wie im Design: bei GitHub die Runner-, sonst die Server-Version (ohne → „–“)
+        version = (fund.get("version") or "").split(" / ")[0]
+        version = None if version.startswith("Runner ") else version or None
         zeile = (f"  {f(art, zeichen)} " + f("1", _spalte(fund.get("name"), 15)) + _spalte(ANZEIGE.get(fund.get("dienst"), "unbekannt"), 10)
                  + _spalte(server_kurz(fund.get("server")), 26) + _spalte(version, 10) + f("32" if rechts == "sicher" else "33", rechts))
         zeilen.append(zeile)

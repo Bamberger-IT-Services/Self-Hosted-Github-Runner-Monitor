@@ -17,6 +17,7 @@ import logging
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import time
 from datetime import datetime
@@ -30,6 +31,8 @@ TAKT_DOCKER = 2
 TAKT_GITHUB = 30
 TAKT_RELEASE = 6 * 3600
 TAKT_ERKENNUNG = 6 * 3600  # Runner auf der VM erkennen: beim Start und alle 6 Stunden (#91)
+ERKENNUNG_FRIST = 60      # harte Grenze für einen Erkennungslauf (eigener Prozess)
+PAKET_WURZEL = Path(__file__).resolve().parent.parent
 AUTO_FENSTER = (3, 7)     # automatisches Update: ab 3 Uhr, spätestens bis 7 Uhr (#77)
 TAKT_NICHT_BEREIT = 120  # Release ohne Paket (Workflow lädt noch hoch): bald erneut fragen (#63)
 MANUELL_MIN_ABSTAND = 60  # „Jetzt prüfen“ schont das GitHub-Kontingent
@@ -104,6 +107,7 @@ class Sammler:
         self.naechste_github = 0.0
         self.naechste_release = 0.0
         self.naechste_erkennung = 0.0
+        self._erkennung: tuple | None = None  # (Prozess, Ausgabedatei, Startzeit) der laufenden Erkennung
         self.letzte_manuelle_pruefung = 0.0
         self._gh_speicher: dict = {}  # ETags und ruhige Repositories über die Durchläufe (Issue #15)
         self._gh_speicher_token: tuple[str, str] = ("", "")
@@ -182,12 +186,61 @@ class Sammler:
         schreibe_oeffentlich(self.k.lauf_verz / "release.json", daten)
         return daten
 
-    def erkennung(self) -> None:
-        """Runner auf der VM erkennen (#91) → ``erkennung.json``. Läuft als root, weil ``.runner`` von
-        Forgejo/Gitea und ``config.toml`` von GitLab meist nur für root lesbar sind; Tokens daraus
-        landen nie im Ergebnis (die Datei ist 0644)."""
-        daten = erkennung.erkenne(runner_verz=self.k.runner_verz, zuordnung_datei=self.k.zuordnung_datei,
-                                  token_datei=self.k.token_datei)
+    def erkennung_befehl(self) -> list[str]:
+        return [sys.executable, "-m", "runner_monitor.erkennung", "--json",
+                "--runner-verz", str(self.k.runner_verz), "--zuordnung", str(self.k.zuordnung_datei),
+                "--token-datei", str(self.k.token_datei)]
+
+    def erkennung(self, jetzt: float) -> None:
+        """Runner auf der VM erkennen (#91) → ``erkennung.json``, beim Start und alle 6 Stunden.
+
+        Läuft als root, weil ``.runner`` von Forgejo/Gitea und ``config.toml`` von GitLab meist nur
+        für root lesbar sind; Tokens daraus landen nie im Ergebnis (die Datei ist 0644).
+
+        Die Erkennung läuft als **eigener Prozess** und blockiert den Sammler nie: dieser Takt startet
+        ihn, die folgenden Takte schauen nach. Nach ``ERKENNUNG_FRIST`` Sekunden wird er beendet
+        (hängender DNS-Server, tröpfelnder Server, hängendes ``systemctl``). Die Ausgabe geht in eine
+        temporäre Datei (kein volles Pipe) und wird geprüft, bevor sie geschrieben wird."""
+        if self._erkennung is None:
+            if jetzt < self.naechste_erkennung:
+                return
+            self.naechste_erkennung = jetzt + TAKT_ERKENNUNG
+            ausgabe = tempfile.TemporaryFile()
+            try:
+                prozess = subprocess.Popen(
+                    self.erkennung_befehl(), stdin=subprocess.DEVNULL, stdout=ausgabe, stderr=subprocess.DEVNULL,
+                    cwd=PAKET_WURZEL, close_fds=True,
+                    env={"PATH": os.environ.get("PATH", "/usr/sbin:/usr/bin:/sbin:/bin"), "LANG": "C.UTF-8",
+                         "PYTHONPATH": str(PAKET_WURZEL), "PYTHONDONTWRITEBYTECODE": "1"})
+            except OSError as fehler:
+                ausgabe.close()
+                LOG.warning("Runner-Erkennung nicht gestartet: %s", fehler)
+                return
+            self._erkennung = (prozess, ausgabe, jetzt)
+            return
+        prozess, ausgabe, start = self._erkennung
+        if prozess.poll() is None:
+            if jetzt - start < ERKENNUNG_FRIST:
+                return
+            prozess.kill()
+            try:
+                prozess.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+            ausgabe.close()
+            self._erkennung = None
+            LOG.warning("Runner-Erkennung nach %s s abgebrochen – nächster Versuch in 6 Stunden", ERKENNUNG_FRIST)
+            return
+        self._erkennung = None
+        try:
+            ausgabe.seek(0)
+            roh = ausgabe.read(erkennung.MAX_ERGEBNIS + 1)
+        finally:
+            ausgabe.close()
+        daten = erkennung.pruefe_ergebnis(roh) if prozess.returncode == 0 else None
+        if daten is None:
+            LOG.warning("Runner-Erkennung ohne gültiges Ergebnis (Rückgabe %s)", prozess.returncode)
+            return
         schreibe_oeffentlich(self.k.lauf_verz / "erkennung.json", daten)
 
     @staticmethod
@@ -245,6 +298,10 @@ class Sammler:
     def ein_takt(self, jetzt: float) -> None:
         self.auftraege()
         schreibe_oeffentlich(self.k.lauf_verz / "docker.json", docker_container())
+        try:
+            self.erkennung(jetzt)
+        except Exception:  # noqa: BLE001 – die Erkennung darf GitHub und Docker nie aufhalten
+            LOG.exception("Fehler bei der Runner-Erkennung")
         if jetzt >= self.naechste_github:
             self.naechste_github = jetzt + TAKT_GITHUB
             self.github()
@@ -254,12 +311,6 @@ class Sammler:
             if github.vergleiche(daten.get("version", ""), VERSION) > 0 and not paket_bereit(daten):
                 self.naechste_release = jetzt + TAKT_NICHT_BEREIT
         self.auto_update()
-        if jetzt >= self.naechste_erkennung:
-            self.naechste_erkennung = jetzt + TAKT_ERKENNUNG
-            try:
-                self.erkennung()
-            except Exception:  # noqa: BLE001 – die Erkennung darf GitHub und Docker nie aufhalten
-                LOG.exception("Fehler bei der Runner-Erkennung")
 
     def laufe(self) -> None:  # pragma: no cover – Endlosschleife
         while True:

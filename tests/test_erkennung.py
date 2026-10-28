@@ -7,7 +7,11 @@ in den Dateien sind erkennbar falsch und dürfen nie in einem Ergebnis auftauche
 import io
 import json
 import os
+import socket
+import sys
 import tempfile
+import threading
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -199,9 +203,12 @@ class GitHubTest(Basis):
 
     def test_nur_registrierung_im_home(self):
         self.vm.datei("/home/admin/actions-runner/.runner", json.dumps({"agentName": "runner-vm-09", "gitHubUrl": "https://github.com/beispiel-org"}))
+        self.vm.datei("/etc/runner-monitor/github-token", "x")
         f = self.erkenne()["runner-vm-09"]
         self.assertEqual((f["dienst"], f["grad"], f["unit"]), ("github", "wahrscheinlich", None))
-        self.assertEqual(f["grund"], "kein Dienst und kein Prozess")
+        self.assertEqual(f["grund"], "Server nicht geprüft (kein systemd-Dienst)")
+        self.assertEqual((f["stand"], f["log"]), ("offen", None), "ohne Unit nie angebunden, kein Log-Pfad aus dem Fund (E-18)")
+        self.assertFalse(f["faehig"]["status"] or f["faehig"]["logs"])
 
     def test_eigener_runner_ordner(self):
         unit = self.vm.github(verz="/srv/ci/runner-a", name="runner-vm-07")
@@ -567,47 +574,284 @@ class AufrufTest(unittest.TestCase):
         erkennung.als_text(ergebnis, einrichtung=True)
 
 
+
+
+class SymlinkTest(Basis):
+    """Befund 2: als root wird außer Unit-Dateien keinem Symlink gefolgt (config.yml, deps.json, runner.json)."""
+
+    def test_config_yml_als_symlink(self):
+        unit = self.vm.forgejo()
+        konfig = self.vm.w / "etc/forgejo-runner/config.yml"
+        self.vm.datei("/root/fremd.yml", "runner:\n  file: /etc/geheim/.runner\n")
+        konfig.unlink()
+        konfig.symlink_to(self.vm.w / "root/fremd.yml")
+        self.vm.datei("/etc/geheim/.runner", json.dumps({"name": "geheim-name", "address": "https://git.example.org", "uuid": "x"}))
+        self.erkenne(aktiv={unit: True}, netz=False)
+        self.assertNotIn("/etc/geheim", json.dumps(self.ergebnis))
+        self.assertNotIn("geheim-name", json.dumps(self.ergebnis))
+
+    def test_deps_json_als_symlink(self):
+        unit = self.vm.github()
+        deps = self.vm.w / "opt/actions-runner/bin/Runner.Listener.deps.json"
+        self.vm.datei("/root/deps.json", json.dumps({"libraries": {"Runner.Listener/9.9.9": {}}}))
+        deps.unlink()
+        deps.symlink_to(self.vm.w / "root/deps.json")
+        f = self.erkenne(aktiv={unit: True})["runner-vm-01"]
+        self.assertIsNone(f["version"])
+
+    def test_runner_json_als_symlink(self):
+        ziel = self.vm.datei("/root/x.json", json.dumps({"runner": {"buildagent": {"stand": "ignoriert"}}}))
+        link = self.vm.w / "etc/runner-monitor/runner.json"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to(ziel)
+        self.assertEqual(erkennung.lies_zuordnung(link), {})
+        self.assertEqual(erkennung.lies_zuordnung("relativ/runner.json"), {})
+
+    def test_unit_datei_als_symlink_wird_gelesen(self):
+        self.vm.datei("/opt/units/forgejo-runner.service", "[Service]\nExecStart=/usr/local/bin/forgejo-runner daemon\n")
+        link = self.vm.w / "etc/systemd/system/forgejo-runner.service"
+        link.parent.mkdir(parents=True, exist_ok=True)
+        link.symlink_to("../../../opt/units/forgejo-runner.service")
+        funde = self.erkenne(netz=False)
+        self.assertEqual([f["unit"] for f in funde.values()], ["forgejo-runner.service"])
+
+    def test_lies_prueft_vor_dem_oeffnen(self):
+        q = erkennung.Quelle(self.vm.w)
+        self.vm.datei("/x/datei", b"abc")
+        (self.vm.w / "x/link").symlink_to(self.vm.w / "x/datei")
+        self.assertEqual(q.lies("/x/datei", 10), b"abc")
+        self.assertIsNone(q.lies("/x/link", 10))
+        self.assertEqual(q.lies("/x/link", 10, folgen=True), b"abc")
+        self.assertIsNone(q.lies("/x/datei", 2))     # zu groß
+        self.assertIsNone(q.lies("/x", 10))          # Verzeichnis
+        self.assertIsNone(q.lies("/fehlt", 10))
+        with mock.patch.object(erkennung.os, "open") as oeffne:
+            self.assertIsNone(q.lies("/x/link", 10))
+            oeffne.assert_not_called()
+
+
+class ProbeFristTest(unittest.TestCase):
+    """Befund 1: harte Grenzen auch für DNS und tröpfelnde Server."""
+
+    def test_troepfelnder_server(self):
+        lauscher = socket.socket()
+        lauscher.bind(("127.0.0.1", 0))
+        lauscher.listen(1)
+        port = lauscher.getsockname()[1]
+        halt = threading.Event()
+
+        def server():
+            try:
+                verbindung, _ = lauscher.accept()
+            except OSError:
+                return
+            with verbindung:
+                verbindung.recv(4096)
+                verbindung.sendall(b"HTTP/1.0 200 OK\r\nContent-Length: 100000\r\n\r\n")
+                while not halt.is_set():
+                    try:
+                        verbindung.sendall(b"x")
+                    except OSError:
+                        return
+                    halt.wait(0.1)
+
+        faden = threading.Thread(target=server, daemon=True)
+        faden.start()
+        try:
+            q = erkennung.Quelle("/", netz=True, frist=5.0, zeitlimit=1.0)
+            beginn = time.monotonic()
+            self.assertIsNone(q.hole(f"http://127.0.0.1:{port}/api/v1/version"))
+            self.assertLess(time.monotonic() - beginn, 2.0)
+        finally:
+            halt.set()
+            lauscher.close()
+            faden.join(3)
+
+    def test_dns_haengt(self):
+        halt = threading.Event()
+
+        def haengt(*_a, **_k):
+            halt.wait(10)
+            raise OSError("DNS")
+
+        q = erkennung.Quelle("/", netz=True, frist=5.0, zeitlimit=0.5)
+        try:
+            with mock.patch.object(socket, "getaddrinfo", side_effect=haengt):
+                beginn = time.monotonic()
+                self.assertIsNone(q.hole("https://git.example.org/api/v1/version"))
+                self.assertLess(time.monotonic() - beginn, 1.5)
+        finally:
+            halt.set()
+
+    def test_gesamtfrist_ueber_mehrere_anfragen(self):
+        q = erkennung.Quelle("/", netz=True, frist=0.6, zeitlimit=0.5)
+        halt = threading.Event()
+        try:
+            with mock.patch.object(socket, "getaddrinfo", side_effect=lambda *a, **k: (halt.wait(10), [])[1]):
+                beginn = time.monotonic()
+                for _ in range(10):
+                    self.assertIsNone(q.hole("https://git.example.org/api/v1/version"))
+                self.assertLess(time.monotonic() - beginn, 1.5)
+        finally:
+            halt.set()
+
+
+class EntscheidungenTest(Basis):
+    def test_e17_keine_probe_ohne_unit(self):
+        self.vm.datei("/home/admin/forgejo-runner/.runner", json.dumps({"name": "runner-vm-11", "address": "https://git.example.org", "uuid": "x"}))
+        f = self.erkenne(antworten=FORGEJO_ANTWORT)["runner-vm-11"]
+        self.assertEqual(self.q.abfragen, [])
+        self.assertEqual(f["grad"], "wahrscheinlich")
+        self.assertIn("Server nicht geprüft (kein systemd-Dienst)", f["merkmale"])
+
+    def test_e18_echter_runner_behaelt_id_und_zuordnung(self):
+        unit = self.vm.gitlab()
+        datei = self.vm.w / "etc/gitlab-runner/config.toml"
+        datei.write_text(datei.read_text().replace("runner-vm-04", "runner-vm-01"))
+        # nachgemacht: GitHub sortiert vor GitLab, darf aber die ID nicht bekommen
+        self.vm.datei("/home/admin/actions-runner/.runner", json.dumps({"agentName": "runner-vm-01", "gitHubUrl": "https://github.com/beispiel-org"}))
+        self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"runner": {
+            "runner-vm-01": {"stand": "angebunden"}, "runner-vm-01-2": {"stand": "angebunden"}}}))
+        funde = self.erkenne(aktiv={unit: True}, netz=False)
+        self.assertEqual(funde["runner-vm-01"]["unit"], unit)
+        self.assertEqual(funde["runner-vm-01"]["stand"], "angebunden")
+        self.assertIsNone(funde["runner-vm-01-2"]["unit"])
+        self.assertEqual(funde["runner-vm-01-2"]["stand"], "offen", "ohne Unit nie angebunden")
+        self.assertEqual([f["dienst"] for f in self.ergebnis["runner"]], ["github", "gitlab"], "Anzeige weiter nach Dienst")
+
+    def test_aktiv_der_zugeordneten_unit(self):
+        unit = self.vm.buildagent()
+        self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"runner": {
+            "buildagent": {"unit": "anderer.service"}, "handarbeit": {"unit": "hand.service"}}}))
+        funde = self.erkenne(aktiv={unit: True, "anderer.service": False, "hand.service": True})
+        self.assertEqual((funde["buildagent"]["unit"], funde["buildagent"]["aktiv"]), ("anderer.service", False))
+        self.assertTrue(funde["handarbeit"]["aktiv"])
+
+    def test_instanz_mit_punkt(self):
+        self.vm.unit("act_runner@.service", "[Service]\nExecStart=/usr/local/bin/act_runner daemon\n", aktiviert=False)
+        wants = self.vm.w / "etc/systemd/system/multi-user.target.wants"
+        wants.mkdir(parents=True, exist_ok=True)
+        (wants / "act_runner@runner-vm.a.service").symlink_to("/etc/systemd/system/act_runner@.service")
+        funde = self.erkenne(netz=False)
+        self.assertEqual([f["unit"] for f in funde.values()], ["act_runner@runner-vm.a.service"])
+
+    def test_versionsspalte_eindeutig(self):
+        fund = {"name": "runner-vm-02", "dienst": "forgejo", "server": "https://git.example.org", "version": "Runner 9.1",
+                "grad": "wahrscheinlich", "grund": "x", "merkmale": []}
+        zeile = erkennung.als_text({"runner": [fund]}).splitlines()[0]
+        self.assertNotIn("9.1", zeile)
+        self.assertIn("13.0", erkennung.als_text({"runner": [{**fund, "version": "13.0 / Runner 9.1"}]}))
+
+
+class ErgebnisPruefungTest(unittest.TestCase):
+    FUND = {"id": "runner-vm-01", "name": "runner-vm-01", "dienst": "github", "server": None, "version": None,
+            "grad": "sicher", "merkmale": [], "einstufung": "voll", "stand": "offen", "unit": None, "log": None,
+            "faehig": {}, "aktiv": None, "grund": None}
+
+    def test_gueltig(self):
+        roh = json.dumps({"zeit": 1.0, "geprueft": [], "runner": [{**self.FUND, "fremd": "weg"}]}).encode()
+        daten = erkennung.pruefe_ergebnis(roh)
+        self.assertEqual(daten["runner"], [self.FUND])
+
+    def test_ungueltig(self):
+        for roh in (None, b"", b"{", b"[]", b'{"zeit": 1, "runner": {}}', b"x" * (erkennung.MAX_ERGEBNIS + 1),
+                    json.dumps({"zeit": 1, "runner": [{**self.FUND, "id": "Böse ID"}]}).encode(),
+                    json.dumps({"zeit": 1, "runner": [{**self.FUND, "dienst": "drone"}]}).encode(),
+                    json.dumps({"runner": [self.FUND]}).encode()):
+            self.assertIsNone(erkennung.pruefe_ergebnis(roh), roh[:40] if roh else roh)
+
+
 class SammlerTest(unittest.TestCase):
-    def test_erkennung_beim_start_und_alle_6_stunden(self):
+    """Befund 1: die Erkennung läuft als eigener Prozess und hält den Sammler nie auf."""
+
+    def setUp(self):
         from runner_monitor import konfig
-        with tempfile.TemporaryDirectory() as verz:
-            d = Path(verz)
-            k = konfig.lade(datei=d / "fehlt.env", umgebung={"MONITOR_DATEN_VERZ": str(d / "daten"), "MONITOR_LAUF_VERZ": str(d / "lauf"),
-                                                             "MONITOR_TOKEN_DATEI": str(d / "etc" / "github-token")})
-            s = sammler.Sammler(k)
-            s.naechste_github = s.naechste_release = float("inf")
-            s.auftraege = s.auto_update = lambda: None
-            aufrufe = []
+        self._verz = tempfile.TemporaryDirectory()
+        self.d = Path(self._verz.name)
+        self.k = konfig.lade(datei=self.d / "fehlt.env", umgebung={
+            "MONITOR_DATEN_VERZ": str(self.d / "daten"), "MONITOR_LAUF_VERZ": str(self.d / "lauf"),
+            "MONITOR_TOKEN_DATEI": str(self.d / "etc" / "github-token")})
+        self.s = sammler.Sammler(self.k)
+        self.s.naechste_github = self.s.naechste_release = float("inf")
+        self.s.auftraege = self.s.auto_update = lambda: None
+        self._docker = mock.patch.object(sammler, "docker_container", return_value={})
+        self._docker.start()
+        self.datei = self.d / "lauf" / "erkennung.json"
 
-            def erkenne(**kw):
-                aufrufe.append(kw)
-                return {"zeit": 1.0, "geprueft": [], "runner": [{"id": "runner-vm-01"}]}
+    def tearDown(self):
+        self._docker.stop()
+        if self.s._erkennung:
+            self.s._erkennung[0].kill()
+            self.s._erkennung[0].wait()
+            self.s._erkennung[1].close()
+        self._verz.cleanup()
 
-            with mock.patch.object(sammler, "docker_container", return_value={}), mock.patch.object(sammler.erkennung, "erkenne", side_effect=erkenne):
-                s.ein_takt(1000.0)
-                s.ein_takt(1000.0 + 3600)
-                self.assertEqual(len(aufrufe), 1)
-                s.ein_takt(1000.0 + sammler.TAKT_ERKENNUNG)
-                self.assertEqual(len(aufrufe), 2)
-            self.assertEqual(aufrufe[0]["zuordnung_datei"], d / "etc" / "runner.json")
-            self.assertEqual(aufrufe[0]["runner_verz"], k.runner_verz)
-            datei = d / "lauf" / "erkennung.json"
-            self.assertEqual(json.loads(datei.read_text())["runner"], [{"id": "runner-vm-01"}])
-            self.assertEqual(datei.stat().st_mode & 0o777, 0o644)
+    def befehl(self, code):
+        self.s.erkennung_befehl = lambda: [sys.executable, "-c", code]
 
-    def test_fehler_der_erkennung_haelt_den_sammler_nicht_an(self):
-        from runner_monitor import konfig
-        with tempfile.TemporaryDirectory() as verz:
-            d = Path(verz)
-            k = konfig.lade(datei=d / "fehlt.env", umgebung={"MONITOR_DATEN_VERZ": str(d / "daten"), "MONITOR_LAUF_VERZ": str(d / "lauf")})
-            s = sammler.Sammler(k)
-            s.naechste_github = s.naechste_release = float("inf")
-            s.auftraege = s.auto_update = lambda: None
-            with mock.patch.object(sammler, "docker_container", return_value={}), \
-                 mock.patch.object(sammler.erkennung, "erkenne", side_effect=RuntimeError("x")), \
-                 self.assertLogs("runner_monitor.sammler", level="ERROR"):
-                s.ein_takt(1000.0)
-            self.assertTrue((d / "lauf" / "docker.json").exists())
+    def bis_fertig(self, jetzt, frist=30.0):
+        ende = time.monotonic() + frist
+        while self.s._erkennung and self.s._erkennung[0].poll() is None and time.monotonic() < ende:
+            time.sleep(0.05)
+        self.s.ein_takt(jetzt)
+
+    def test_ergebnis_wird_geprueft_und_geschrieben(self):
+        ergebnis = {"zeit": 1.0, "geprueft": [], "runner": [ErgebnisPruefungTest.FUND]}
+        self.befehl(f"print({json.dumps(json.dumps(ergebnis))})")
+        self.s.ein_takt(1000.0)
+        self.assertIsNotNone(self.s._erkennung)
+        self.bis_fertig(1002.0)
+        self.assertIsNone(self.s._erkennung)
+        self.assertEqual(json.loads(self.datei.read_text())["runner"], [ErgebnisPruefungTest.FUND])
+        self.assertEqual(self.datei.stat().st_mode & 0o777, 0o644)
+        self.s.ein_takt(1000.0 + 3600)
+        self.assertIsNone(self.s._erkennung, "erst nach 6 Stunden wieder")
+        self.s.ein_takt(1000.0 + sammler.TAKT_ERKENNUNG)
+        self.assertIsNotNone(self.s._erkennung)
+
+    def test_haengende_erkennung_haelt_den_sammler_nicht_auf(self):
+        self.befehl("import time; time.sleep(60)")
+        beginn = time.monotonic()
+        self.s.ein_takt(1000.0)
+        self.s.ein_takt(1002.0)
+        self.assertLess(time.monotonic() - beginn, 1.0)
+        self.assertTrue((self.d / "lauf" / "docker.json").exists())
+        prozess = self.s._erkennung[0]
+        with self.assertLogs("runner_monitor.sammler", level="WARNING"):
+            self.s.ein_takt(1000.0 + sammler.ERKENNUNG_FRIST + 1)
+        self.assertIsNotNone(prozess.poll(), "nach der Frist beendet")
+        self.assertIsNone(self.s._erkennung)
+        self.assertFalse(self.datei.exists())
+
+    def test_ungueltige_ausgabe_wird_nicht_geschrieben(self):
+        self.befehl("print('{\"runner\": \"kaputt\"}')")
+        self.s.ein_takt(1000.0)
+        with self.assertLogs("runner_monitor.sammler", level="WARNING"):
+            self.bis_fertig(1002.0)
+        self.assertFalse(self.datei.exists())
+
+    def test_start_scheitert(self):
+        self.s.erkennung_befehl = lambda: ["/gibt/es/nicht"]
+        with self.assertLogs("runner_monitor.sammler", level="WARNING"):
+            self.s.ein_takt(1000.0)
+        self.assertIsNone(self.s._erkennung)
+        self.assertTrue((self.d / "lauf" / "docker.json").exists())
+
+    def test_ausnahme_haelt_den_sammler_nicht_an(self):
+        self.s.erkennung = mock.Mock(side_effect=RuntimeError("x"))
+        with self.assertLogs("runner_monitor.sammler", level="ERROR"):
+            self.s.ein_takt(1000.0)
+        self.assertTrue((self.d / "lauf" / "docker.json").exists())
+
+    def test_echter_aufruf_liefert_gueltiges_json(self):
+        """Der echte Befehl (Modul, PYTHONPATH, cwd) läuft und liefert eine prüfbare Ausgabe."""
+        echt = self.s.erkennung_befehl()
+        self.assertEqual(echt[:4], [sys.executable, "-m", "runner_monitor.erkennung", "--json"])
+        self.assertIn(str(self.d / "etc" / "runner.json"), echt)
+        self.s.erkennung_befehl = lambda: echt + ["--ohne-netz"]
+        self.s.ein_takt(1000.0)
+        self.bis_fertig(1002.0, frist=50.0)
+        self.assertIsInstance(json.loads(self.datei.read_text())["runner"], list)
 
 
 if __name__ == "__main__":
