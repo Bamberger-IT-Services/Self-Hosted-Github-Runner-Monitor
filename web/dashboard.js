@@ -704,9 +704,9 @@
       else if (as.zustand === 'verschoben') upd += `<p class="info-notiz">${t('Letzte Nacht lief bis 7 Uhr durchgehend ein Job – nächster Versuch in der kommenden Nacht ab 3 Uhr.')}</p>`;
     }
 
-    const th = RM.thema(), sp = I18N.sprache();
+    const th = RM.thema(), sp = I18N.wahl();
     const modi = [['system', t('Automatisch')], ['hell', t('Hell')], ['dunkel', t('Dunkel')]].map(([v, n]) => `<button type="button" class="seg-knopf" data-aktion="thema" data-thema="${v}" aria-pressed="${th === v}">${n}</button>`).join('');
-    const sprachen = [['de', 'Deutsch'], ['en', 'English']].map(([v, n]) => `<button type="button" class="seg-knopf" data-aktion="sprache" data-sprache="${v}" aria-pressed="${sp === v}" lang="${v}">${n}</button>`).join('');
+    const sprachen = [['auto', t('Automatisch'), ''], ['de', 'Deutsch', ' lang="de"'], ['en', 'English', ' lang="en"']].map(([v, n, l]) => `<button type="button" class="seg-knopf" data-aktion="sprache" data-sprache="${v}" aria-pressed="${sp === v}"${l}>${n}</button>`).join('');
 
     const anl = anleitungen().map(a => {
       const offen = S.info === a.id;
@@ -737,7 +737,7 @@
     return {
       eyebrow: `${esc(st.vm || '')}${st.runner ? ' · ' + esc(st.runner) : ''}`,
       upd,
-      modi: `<div class="info-zeile"><span class="mut">${t('Modus')}</span><div class="segment" role="group" aria-label="${t('Hell oder dunkel')}">${modi}</div></div><div class="info-zeile"><span class="mut">${t('Sprache')}</span><div class="segment" role="group" aria-label="${t('Sprache')}">${sprachen}</div></div><p class="info-notiz">${t('„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.')}</p>`,
+      modi: `<div class="info-zeile"><span class="mut">${t('Modus')}</span><div class="segment" role="group" aria-label="${t('Hell oder dunkel')}">${modi}</div></div><p class="info-notiz">${t('„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.')}</p><div class="info-zeile sprach-zeile"><span class="mut">${t('Sprache')}</span><div class="segment" role="group" aria-label="${t('Sprache')}">${sprachen}</div></div><p class="info-notiz">${t('„Automatisch“ folgt der Sprache des Systems. Andere Sprachen als Deutsch zeigen Englisch. Die Wahl gilt nur für diesen Browser.')}</p>`,
       anl,
       gh,
       ueber: `<p class="info-text">${t('Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung mit Netzwerk, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.')}</p>${ueber}<p class="info-text umbruch">${t('Ersteller:')} Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>${t('Quellcode und Doku:')} <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
@@ -794,7 +794,7 @@
     else if (a === 'info-zu') schliesseInfo();
     else if (a === 'anleitung') { S.info = S.info === b.dataset.anleitung ? 'alle' : b.dataset.anleitung; renderInfo(); }
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
-    else if (a === 'sprache') { if (b.dataset.sprache !== I18N.sprache()) { I18N.setzeSprache(b.dataset.sprache); location.reload(); } }
+    else if (a === 'sprache') { if (b.dataset.sprache !== I18N.wahl()) { if (I18N.setzeSprache(b.dataset.sprache)) location.reload(); }  // Speicher gesperrt: Wahl nicht möglich, keine Änderung }
     else if (a === 'zeitraum') { S.zeitraum = VERLAUF.zeitraum(b.dataset.zeitraum); zeitraumSpeichern(S.zeitraum); renderZeitraum(); renderSystem(); }
     else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; renderWorkflows(); }
     else if (a === 'abmelden') { if (!DEMO) await RM.sende('/api/abmelden'); location.href = '/anmelden'; }

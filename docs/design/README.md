@@ -122,9 +122,14 @@ Geprüft mit Bildschirmfotos bei 1440 × 900 (Design und App nebeneinander), hel
 - **Sprachumschalter auf Anmeldung und Einrichtung** (#81, ohne Entwurf): ein Textknopf mit der
   jeweils anderen Sprache („English“/„Deutsch“) – auf der Anmeldeseite in der Fußzeile, in der
   Einrichtung rechts in der Kopfzeile.
-- **Sprache** (#80, ohne Entwurf): In Info › Darstellung steht unter „Modus“ eine zweite Zeile
-  „Sprache“ mit dem Segment „Deutsch | English“ im selben Stil. Englische Texte sind teils länger;
-  die Karten sind darauf geprüft (Bildschirmfotos im PR). Die Demo-Leiste bleibt deutsch.
+- **Sprache** (#80, #90; Design 0.8.0): In Info › Darstellung steht unter „Modus“ samt Hinweis eine
+  zweite Zeile „Sprache“ mit dem Segment „Automatisch | Deutsch | English“, darunter der Hinweis
+  aus dem Design. Gemerkt in `localStorage["runner-monitor.sprache"]` (`auto|de|en`; der alte
+  Schlüssel `rm-sprache` wird übernommen); „Automatisch“ folgt `navigator.languages[0]` (`de…` →
+  Deutsch, sonst Englisch). Abweichung vom Design (Entscheidung E-14): Texte bleiben in
+  `web/i18n.js` mit dem deutschen Text als Schlüssel statt `de.json`/`en.json`; die englischen
+  Texte der vorhandenen Oberfläche folgen dem Wörterbuch `i18n-0.8.0.js`. Die Demo-Leiste bleibt
+  deutsch.
 - **Nacht-Update vorgemerkt** (#77, ohne Entwurf): Unter „Automatisch aktualisieren“ steht bei
   Bedarf eine Notiz im Stil `info-notiz` („Update auf X vorgemerkt …“ bzw. „nächster Versuch in der
   kommenden Nacht“).

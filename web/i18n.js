@@ -2,22 +2,44 @@
    (wie gettext), t() liefert die englische Fassung aus EN – fehlt sie, bleibt der deutsche Text.
    Platzhalter in geschweiften Klammern: t('Update auf {v} läuft', { v: '1.2.3' }).
    Gleiches Wort, andere Bedeutung: Zusatz nach „|“ (wird im Deutschen weggelassen), z. B.
-   t('Weiter|schritt') → „Weiter“ / „Next“, t('Weiter') → „Weiter“ / „Resume“.
-   Vorgabe: Sprache des Browsers (de* → Deutsch, sonst Englisch); die Wahl gilt je Browser.
+   t('Weiter|schritt') → „Weiter“ / „Next“, t('Weiter') → „Weiter“ / „Continue“.
+   Vorgabe „Automatisch“: Sprache des Systems (de* → Deutsch, sonst Englisch); die Wahl gilt je Browser.
    Statische Texte im HTML tragen data-t (Inhalt), data-t-title, data-t-aria (aria-label). */
 'use strict';
 
 const I18N = (() => {
+  /* Wahl: auto | de | en, je Browser in localStorage["runner-monitor.sprache"] (#90). „auto“ folgt
+     navigator.languages[0]: beginnt mit „de“ → Deutsch, alles andere → Englisch. Seit 0.7.0 stand die
+     Wahl (de|en) unter „rm-sprache“ – sie wird einmal übernommen. */
   const SPRACHEN = ['de', 'en'];
-  function sprache() {
-    try { const s = localStorage.getItem('rm-sprache'); if (SPRACHEN.includes(s)) return s; } catch (e) { /* privat */ }
-    return /^de\b/i.test(navigator.language || 'de') ? 'de' : 'en';
+  const WAHLEN = ['auto', 'de', 'en'];
+  const SCHLUESSEL = 'runner-monitor.sprache', ALTER_SCHLUESSEL = 'rm-sprache';
+  const speicherStandard = () => { try { return typeof window === 'undefined' ? null : window.localStorage; } catch (e) { return null; } };  // kann gesperrt sein
+  function wahlLesen(speicher = speicherStandard()) {
+    try {
+      const w = speicher.getItem(SCHLUESSEL);
+      if (WAHLEN.includes(w)) return w;
+      const alt = speicher.getItem(ALTER_SCHLUESSEL);
+      if (SPRACHEN.includes(alt)) {
+        try { speicher.setItem(SCHLUESSEL, alt); speicher.removeItem(ALTER_SCHLUESSEL); } catch (e) { /* nur lesbar: Wert gilt trotzdem */ }
+        return alt;
+      }
+    } catch (e) { /* gesperrt oder privat: automatisch */ }
+    return 'auto';
   }
-  function setzeSprache(s) {
-    if (!SPRACHEN.includes(s)) return;
-    try { localStorage.setItem('rm-sprache', s); } catch (e) { /* privat: nur diese Seite */ }
+  function wahlSpeichern(w, speicher = speicherStandard()) {
+    if (!WAHLEN.includes(w)) return false;
+    try { speicher.setItem(SCHLUESSEL, w); return true; } catch (e) { return false; }   // gesperrt: nicht gespeichert (false)
   }
-  const aktuell = sprache();
+  function aufloesen(wahl, sprachen) {
+    if (SPRACHEN.includes(wahl)) return wahl;
+    const erste = Array.isArray(sprachen) && sprachen.length ? sprachen[0] : '';
+    return /^de(?:$|[-_])/i.test(String(erste || '')) ? 'de' : 'en';
+  }
+  const systemSprachen = () => (typeof navigator === 'undefined' ? [] : (navigator.languages && navigator.languages.length ? Array.from(navigator.languages) : [navigator.language]));
+  const gewaehlt = wahlLesen();
+  const aktuell = aufloesen(gewaehlt, systemSprachen());
+  const setzeSprache = w => wahlSpeichern(w);   // true = gespeichert, die Seite kann neu laden
   const ersetze = (text, werte) => (werte ? text.replace(/\{(\w+)\}/g, (m, k) => (k in werte ? String(werte[k]) : m)) : text);
   function t(text, werte) {
     const ziel = aktuell === 'en' && Object.prototype.hasOwnProperty.call(EN, text) ? EN[text] : text.replace(/\|[a-z-]+$/, '');
@@ -52,11 +74,11 @@ const I18N = (() => {
     "Prüfsumme prüfen": "Verify checksum",
     "SHA-256 stimmt": "SHA-256 matches",
     "Installieren": "Install",
-    "alte Version gesichert": "previous version kept",
+    "alte Version gesichert": "old version backed up",
     "Monitor neu starten": "Restart monitor",
     "kurz nicht erreichbar": "briefly unavailable",
-    "Funktion prüfen": "Check it works",
-    "Daten kommen an": "data is arriving",
+    "Funktion prüfen": "Check function",
+    "Daten kommen an": "data arriving",
     "Verbindung zum Monitor unterbrochen": "Connection to the monitor lost",
     "Stand {z} ({vor}) · neuer Versuch läuft": "As of {z} ({vor}) · retrying",
     "Details": "Details",
@@ -88,7 +110,7 @@ const I18N = (() => {
     "Tag": "day",
     "Tagen": "days",
     "am {d} – danach bleiben die Workflows leer": "on {d} – after that, workflows stay empty",
-    "Was ist neu?": "What's new?",
+    "Was ist neu?": "What’s new?",
     "Version {v} verfügbar": "Version {v} available",
     "installiert ist {v}": "installed: {v}",
     "Aktualisiert auf {v}": "Updated to {v}",
@@ -124,7 +146,7 @@ const I18N = (() => {
     "Wartet auf den nächsten Job. Neue Jobs starten automatisch.": "Waiting for the next job. New jobs start automatically.",
     "Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.": "The runner service is not running. New jobs stay queued at GitHub until it starts again.",
     "Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.": "A job used up all RAM – more RAM or swap helps.",
-    "Der Dienst läuft, aber GitHub sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.": "The service is running, but GitHub does not see the runner. No jobs are being delivered to it.",
+    "Der Dienst läuft, aber GitHub sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.": "The service is running, but GitHub does not see the runner. Jobs are not being delivered to it.",
     "Auf dieser VM ist kein GitHub-Runner eingerichtet. Das Einrichtungsskript kann ihn mit einrichten.": "No GitHub runner is set up on this VM. The setup script can set it up too.",
     "gestoppt seit {z} ({vor})": "stopped since {z} ({vor})",
     "aktiv seit {d}": "active for {d}",
@@ -153,12 +175,12 @@ const I18N = (() => {
     "{nr} von {von}": "{nr} of {von}",
     "Schritt {nr}": "Step {nr}",
     "Kein GitHub-Token eingerichtet": "No GitHub token set up",
-    "Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.": "Without a token this section stays empty. Runner status, usage and log keep working as usual.",
+    "Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.": "Without a token this area stays empty. Runner status, load and log keep working.",
     "Anleitung: Token einrichten ›": "Guide: set up token ›",
     "Abfrage aus": "Polling off",
     "laufen": "running",
-    "wartet": "waiting",
-    "warten": "waiting",
+    "wartet": "queued",
+    "warten": "queued",
     "Nichts läuft, nichts wartet": "Nothing running, nothing queued",
     "{n} weitere ruhig": "{n} more idle",
     "Alle {n} Repositories ruhig": "All {n} repositories idle",
@@ -195,9 +217,9 @@ const I18N = (() => {
     "Runner-Dienst: active (running)": "Runner service: active (running)",
     "Hinweis": "Note",
     "Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.": "The runner service is stopped – no output.",
-    "Kein Schritt läuft. GitHub stellt dem Runner gerade keine Jobs zu.": "No step running. GitHub is not delivering jobs to the runner right now.",
+    "Kein Schritt läuft. GitHub stellt dem Runner gerade keine Jobs zu.": "No step running. GitHub is not delivering jobs to the runner.",
     "Kein Schritt läuft. Die Ausgabe erscheint hier, sobald ein Job startet.": "No step running. Output appears here as soon as a job starts.",
-    "Weiter": "Resume",
+    "Weiter": "Continue",
     "Anhalten": "Pause",
     "neue Zeile": "new line",
     "neue Zeilen": "new lines",
@@ -206,18 +228,18 @@ const I18N = (() => {
     "GitHub-Token einrichten oder erneuern": "Set up or renew the GitHub token",
     "Wenn „Kein GitHub-Token“, „ohne Zugriff“ oder „Token läuft ab“ gemeldet wird. Schritt 1 bis 4 auf github.com, Schritt 5 und 6 auf der VM.": "When “No GitHub token”, “no access” or “token expires” is reported. Steps 1 to 4 on github.com, steps 5 and 6 on the VM.",
     "Auf github.com: Profilbild › Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.": "On github.com: profile picture › Settings › Developer settings › Personal access tokens › Fine-grained tokens › “Generate new token”.",
-    "Resource owner: die Organisation, nicht das eigene Konto. Repository access: All repositories. Ablauf zum Beispiel 1 Jahr.": "Resource owner: the organization, not your own account. Repository access: All repositories. Expiration e.g. 1 year.",
-    "Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status zusätzlich Organization › Self-hosted runners „Read-only“.": "Read-only permissions only: Repository › Actions “Read-only” (Metadata is added automatically). For the online status also Organization › Self-hosted runners “Read-only”.",
-    "Verlangt die Organisation eine Freigabe: Organisation › Settings › Personal access tokens › Pending requests. Vorher meldet der Monitor „ohne Zugriff“.": "If the organization requires approval: Organization › Settings › Personal access tokens › Pending requests. Until then the monitor reports “no access”.",
-    "Auf der VM eintragen, die Eingabe bleibt unsichtbar. Das Skript fragt auch nach der Organisation, Enter behält die bisherige:": "Enter it on the VM; the input stays hidden. The script also asks for the organization, Enter keeps the current one:",
+    "Resource owner: die Organisation, nicht das eigene Konto. Repository access: All repositories. Ablauf zum Beispiel 1 Jahr.": "Resource owner: the organization, not your own account. Repository access: All repositories. Expiry for example 1 year.",
+    "Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status zusätzlich Organization › Self-hosted runners „Read-only“.": "Read-only permissions: Repository › Actions “Read-only” (Metadata is added automatically). For the online status also Organization › Self-hosted runners “Read-only”.",
+    "Verlangt die Organisation eine Freigabe: Organisation › Settings › Personal access tokens › Pending requests. Vorher meldet der Monitor „ohne Zugriff“.": "If the organization requires approval: Organization › Settings › Personal access tokens › Pending requests. Until then the monitor shows “no access”.",
+    "Auf der VM eintragen, die Eingabe bleibt unsichtbar. Das Skript fragt auch nach der Organisation, Enter behält die bisherige:": "Enter it on the VM; the input stays hidden. The script also asks for the organization; Enter keeps the current one:",
     "Prüfen, ob GitHub das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):": "Check whether GitHub accepts the token (200 = OK, 401 = invalid, 403/404 = no access):",
     "Wenn die Abfrage der Workflows fehlschlägt. Die Karte zeigt dann den letzten Stand.": "When querying the workflows fails. The card then shows the last known data.",
-    "Zuerst den Status von GitHub prüfen: githubstatus.com.": "First check GitHub's status: githubstatus.com.",
+    "Zuerst den Status von GitHub prüfen: githubstatus.com.": "First check GitHub’s status: githubstatus.com.",
     "Von der VM aus testen, ob die API antwortet:": "Test from the VM whether the API responds:",
     "Antwort 401: Token ungültig oder abgelaufen, siehe „GitHub-Token einrichten oder erneuern“. Antwort 403: API-Kontingent erschöpft, die Abfrage setzt bis zum Reset aus.": "Response 401: token invalid or expired, see “Set up or renew the GitHub token”. Response 403: API rate limit exhausted, polling pauses until the reset.",
     "Keine Antwort: DNS, Firewall oder Proxy der VM prüfen. Letzte Meldungen des Sammlers:": "No response: check the VM's DNS, firewall or proxy. Latest messages from the collector:",
-    "Wenn der systemd-Dienst des Runners nicht läuft. Jobs bleiben dann in der Warteschlange.": "When the runner's systemd service is not running. Jobs then stay queued.",
-    "Status und letzte Meldungen ansehen:": "Show status and latest messages:",
+    "Wenn der systemd-Dienst des Runners nicht läuft. Jobs bleiben dann in der Warteschlange.": "When the runner’s systemd service is not running. Jobs then stay queued.",
+    "Status und letzte Meldungen ansehen:": "View status and latest messages:",
     "„oom-kill“: Ein Job hat den Arbeitsspeicher gesprengt. RAM und Swap ansehen – für Builds und Docker-Images mindestens 8 GB RAM plus Swap (docs/RUNNER.md):": "“oom-kill”: a job used up all RAM. Check RAM and swap – builds and Docker images need at least 8 GB RAM plus swap (docs/RUNNER.md):",
     "Dienst gegen Speichermangel einstellen (dann scheitert nur der Job) und fehlenden Swap anlegen:": "Configure the service for low memory (then only the job fails) and create missing swap:",
     "Dienst starten:": "Start the service:",
@@ -229,27 +251,27 @@ const I18N = (() => {
     "Runner auf der VM einrichten – das Skript fragt Organisation, Token und Labels ab:": "Set up the runner on the VM – the script asks for organization, token and labels:",
     "Der Monitor erkennt den Runner danach von selbst.": "The monitor then detects the runner on its own.",
     "Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.": "When the service is running but GitHub does not see the runner.",
-    "Netz der VM prüfen:": "Check the VM's network:",
-    "Dienst neu starten, damit er sich neu anmeldet:": "Restart the service so it signs in again:",
+    "Netz der VM prüfen:": "Check the VM’s network:",
+    "Dienst neu starten, damit er sich neu anmeldet:": "Restart the service so it registers again:",
     "Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:": "If the runner was removed in GitHub (Organization › Settings › Actions › Runners), register it again:",
-    "Warum die Verbindung fehlt, steht im Diagnoseprotokoll des Runners – siehe „Runner-Logs abrufen“.": "Why the connection is missing is in the runner's diagnostic log – see “Get runner logs”.",
+    "Warum die Verbindung fehlt, steht im Diagnoseprotokoll des Runners – siehe „Runner-Logs abrufen“.": "Why the connection is missing is in the runner’s diagnostic log – see “Get runner logs”.",
     "Runner-Logs abrufen (Diagnose)": "Get runner logs (diagnostics)",
     "Wenn der Runner-Dienst stoppt, abstürzt, offline ist oder Jobs nicht annimmt. Alle Befehle auf der VM ausführen.": "When the runner service stops, crashes, is offline or does not accept jobs. Run all commands on the VM.",
     "Dienst-Protokoll: Start, Stopp, Abstürze, Job-Start und -Ende. Die letzten 100 Zeilen:": "Service log: start, stop, crashes, job start and end. The last 100 lines:",
-    "Dasselbe live mitlesen (Strg+C beendet):": "Follow it live (Ctrl+C to stop):",
+    "Dasselbe live mitlesen (Strg+C beendet):": "Follow the same live (Ctrl+C stops):",
     "Diagnoseprotokoll des Runners: Anmeldung bei GitHub, Verbindungsfehler, Updates. Neueste Datei:": "Runner diagnostic log: GitHub sign-in, connection errors, updates. Newest file:",
-    "Protokoll des letzten Jobs (Worker), wenn ein Job abbricht oder hängt:": "Log of the last job (worker), if a job aborts or hangs:",
+    "Protokoll des letzten Jobs (Worker), wenn ein Job abbricht oder hängt:": "Log of the last job (worker) when a job aborts or hangs:",
     "Ausgabe der einzelnen Schritte, eine Datei je Schritt:": "Output of the individual steps, one file per step:",
-    "Logs abgeschlossener Jobs liegen bei GitHub: Repository › Actions › Lauf öffnen › Job › „Download log archive“.": "Logs of finished jobs are on GitHub: repository › Actions › open run › job › “Download log archive”.",
-    "Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:": "Everything bundled to pass on, e.g. for troubleshooting:",
+    "Logs abgeschlossener Jobs liegen bei GitHub: Repository › Actions › Lauf öffnen › Job › „Download log archive“.": "Logs of finished jobs are on GitHub: Repository › Actions › open run › Job › “Download log archive”.",
+    "Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:": "Everything bundled for sharing, e.g. for troubleshooting:",
     "Platte knapp": "Disk low",
     "Wenn auf „/“ weniger als 25 GB frei sind.": "When less than 25 GB are free on “/”.",
     "Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:": "The runner then cleans up before each job. Clean up now:",
-    "Wer belegt den Platz?": "What is using the space?",
+    "Wer belegt den Platz?": "What uses the space?",
     "Freien Platz an Proxmox zurückgeben:": "Return free space to Proxmox:",
-    "Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.": "If that is not enough in the long run, enlarge the VM's disk in Proxmox.",
+    "Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.": "If that is not enough in the long run, enlarge the VM’s disk in Proxmox.",
     "Wenn diese Seite keine Daten mehr von der VM bekommt. Sie zeigt dann den letzten Stand.": "When this page no longer receives data from the VM. It then shows the last known data.",
-    "Die Seite versucht es selbst weiter. Ist die VM im Netz erreichbar?": "The page keeps retrying on its own. Is the VM reachable on the network?",
+    "Die Seite versucht es selbst weiter. Ist die VM im Netz erreichbar?": "The page keeps retrying. Is the VM reachable on the network?",
     "Monitor-Dienst auf der VM neu starten:": "Restart the monitor service on the VM:",
     "Letzte Meldungen des Monitors:": "Latest messages from the monitor:",
     "Monitor aktualisieren": "Update the monitor",
@@ -257,9 +279,9 @@ const I18N = (() => {
     "Am einfachsten oben in „Updates“ auf „Jetzt aktualisieren“ klicken. Ein Hilfsdienst auf der VM lädt das offizielle Release, prüft die Prüfsumme, installiert es und startet den Monitor neu. Antwortet die neue Version nicht, stellt er die alte wieder her.": "Easiest: click “Update now” under “Updates” above. A helper service on the VM downloads the official release, verifies the checksum, installs it and restarts the monitor. If the new version does not respond, it restores the old one.",
     "Oder per SSH auf der VM:": "Or via SSH on the VM:",
     "Protokoll des letzten Updates:": "Log of the last update:",
-    "Zur vorherigen Version zurück:": "Go back to the previous version:",
+    "Zur vorherigen Version zurück:": "Back to the previous version:",
     "Frage GitHub nach neuen Versionen …": "Asking GitHub for new versions …",
-    "Gerade erst geprüft – Stand siehe oben.": "Just checked – see above.",
+    "Gerade erst geprüft – Stand siehe oben.": "Just checked – see status above.",
     "Version {v} ist verfügbar.": "Version {v} is available.",
     "Auf dem neuesten Stand.": "Up to date.",
     "Gesperrt, solange das Update läuft.": "Locked while the update is running.",
@@ -308,12 +330,12 @@ const I18N = (() => {
     "Actions, Metadata, Self-hosted runners – je Read-only": "Actions, Metadata, Self-hosted runners – each read-only",
     "Ablauf": "Expires",
     "{d} (in {n} {tage})": "{d} (in {n} {tage})",
-    "Letzte Abfrage": "Last query",
+    "Letzte Abfrage": "Last poll",
     "aus": "off",
     "{z} · erfolgreich": "{z} · successful",
     "fehlgeschlagen · letzte erfolgreiche {z}": "failed · last successful {z}",
-    "Nächste Abfrage": "Next query",
-    "API-Kontingent": "API rate limit",
+    "Nächste Abfrage": "Next poll",
+    "API-Kontingent": "API quota",
     "{a} von {b} frei, Reset {z}": "{a} of {b} left, reset {z}",
     "Token-Datei": "Token file",
     "Adresse": "Address",
@@ -324,6 +346,7 @@ const I18N = (() => {
     "Hell oder dunkel": "Light or dark",
     "Sprache": "Language",
     "„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.": "“Automatic” follows the system setting. The choice applies to this browser only.",
+    "„Automatisch“ folgt der Sprache des Systems. Andere Sprachen als Deutsch zeigen Englisch. Die Wahl gilt nur für diesen Browser.": "“Automatic” follows the system language. Languages other than German show English. The choice applies to this browser only.",
     "Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung mit Netzwerk, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.": "Live dashboard for the self-hosted GitHub Actions runner: runner status, usage including network, processes, disks, workflows per repository and live log. Errors and notes appear as a message in the middle of the header; “What to do?” leads to the matching guide.",
     "Ersteller:": "Made by:",
     "Quellcode und Doku:": "Source code and docs:",
@@ -361,7 +384,7 @@ const I18N = (() => {
     "Abmelden": "Sign out",
     "Schließen": "Close",
     "Updates": "Updates",
-    "Darstellung": "Appearance",
+    "Darstellung": "Display",
     "Was tun, wenn …": "What to do if …",
     "GitHub-Verbindung": "GitHub connection",
     "Über diesen Monitor": "About this monitor",
@@ -369,12 +392,12 @@ const I18N = (() => {
     "in {n} s (alle 30 s)": "in {n} s (every 30 s)",
     "Update konnte nicht gestartet werden.": "The update could not be started.",
     "Name der VM (Hostname)": "VM name (host name)",
-    "Darstellung: Automatisch, Hell oder Dunkel": "Appearance: automatic, light or dark",
+    "Darstellung: Automatisch, Hell oder Dunkel": "Display: automatic, light or dark",
     "Summe aller echten Netzwerkschnittstellen, ohne Docker und VPN": "Sum of all physical network interfaces, without Docker and VPN",
     "empfangen": "received",
     "gesendet": "sent",
     "Workflows je Repository": "Workflows per repository",
-    "Auslastung": "Usage",
+    "Auslastung": "Load",
     "CPU-Verlauf der letzten 10 Minuten": "CPU history for the last 10 minutes",
     "RAM-Verlauf der letzten 10 Minuten": "RAM history for the last 10 minutes",
     "Netzwerk": "Network",
@@ -403,11 +426,11 @@ const I18N = (() => {
     "CPU gesamt": "CPU total",
     "jetzt": "now",
     "Arbeitsspeicher": "Memory",
-    "Last": "Load",
-    "Kerne": "cores",
+    "Last": "Load avg",
+    "Kerne": "Cores",
     "Umbrechen": "Wrap",
     "Abschneiden": "Truncate",
-    "Zum Ende ↓": "To the end ↓",
+    "Zum Ende ↓": "Jump to end ↓",
     "Prozesse": "Processes",
     "Top 6 nach CPU": "Top 6 by CPU",
     "Benutzer": "User",
@@ -451,7 +474,7 @@ const I18N = (() => {
     "Der Code gilt 60 Minuten.": "The code is valid for 60 minutes.",
     "Schritt 2: Zugang schützen": "Step 2: protect access",
     "Zugang schützen": "Protect access",
-    "Der Monitor ist nur mit Benutzername und Passwort erreichbar. Damit melden Sie sich gleich nach der Einrichtung an. Auf Wunsch bleibt der Browser 30 Tage angemeldet.": "The monitor is only reachable with a user name and password. You sign in with them right after setup. If you like, the browser stays signed in for 30 days.",
+    "Der Monitor ist nur mit Benutzername und Passwort erreichbar. Damit melden Sie sich gleich nach der Einrichtung an. Auf Wunsch bleibt der Browser 30 Tage angemeldet.": "The monitor is only reachable with a user name and password. You sign in with them right after setup. Optionally the browser stays signed in for 30 days.",
     "Zugang {nutzer} ist angelegt. Ändern später mit {befehl}.": "Access {nutzer} has been created. Change it later with {befehl}.",
     "Mindestens 12 Zeichen.": "At least 12 characters.",
     "Passwort wiederholen": "Repeat password",
@@ -463,17 +486,17 @@ const I18N = (() => {
     "optional": "optional",
     "Mit einem nur lesenden Token zeigt der Monitor, welche Workflows je Repository laufen und warten, und ob GitHub den Runner sieht. Ohne Token funktioniert alles andere trotzdem.": "With a read-only token the monitor shows which workflows are running and queued per repository, and whether GitHub sees the runner. Without a token everything else still works.",
     "Aus der Runner-Konfiguration erkannt.": "Detected from the runner configuration.",
-    "Prüfe …": "Checking …",
-    "Erneut prüfen": "Check again",
-    "Verbindung prüfen": "Check connection",
+    "Prüfe …": "Testing …",
+    "Erneut prüfen": "Test again",
+    "Verbindung prüfen": "Test connection",
     "So erstellen Sie das Token": "How to create the token",
-    "Auf GitHub ein „Fine-grained token“ anlegen (Link unten).": "Create a “fine-grained token” on GitHub (link below).",
+    "Auf GitHub ein „Fine-grained token“ anlegen (Link unten).": "Create a “Fine-grained token” on GitHub (link below).",
     "Resource owner: die Organisation. Repository access: {alle}.": "Resource owner: the organization. Repository access: {alle}.",
     "Repository-Rechte: {a} und {m} jeweils „Read-only“.": "Repository permissions: {a} and {m}, each “Read-only”.",
     "Organisations-Recht: {r} „Read-only“, damit der Online-Status angezeigt wird.": "Organization permission: {r} “Read-only”, so the online status is shown.",
     "Ablauf z. B. 90 Tage. Der Monitor warnt 14 Tage vorher.": "Expiration e.g. 90 days. The monitor warns 14 days ahead.",
     "Token kopieren und links einfügen.": "Copy the token and paste it on the left.",
-    "Token-Seite auf GitHub öffnen ↗": "Open the token page on GitHub ↗",
+    "Token-Seite auf GitHub öffnen ↗": "Open token page on GitHub ↗",
     "Ohne GitHub fortfahren": "Continue without GitHub",
     "Später auf der VM nachholen:": "Do it later on the VM:",
     "Schritt 4: Fertig": "Step 4: done",
@@ -548,5 +571,7 @@ const I18N = (() => {
     "Self-hosted runners: lesen (Online-Status wird angezeigt)": "Self-hosted runners: read (online status is shown)"
   };
 
-  return { sprache: () => aktuell, setzeSprache, t, wendeAn, EN };
+  return { sprache: () => aktuell, wahl: () => gewaehlt, setzeSprache, wahlLesen, wahlSpeichern, aufloesen, WAHLEN, t, wendeAn, EN };
 })();
+
+if (typeof module !== 'undefined' && module.exports) module.exports = I18N;

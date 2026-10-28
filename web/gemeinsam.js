@@ -92,7 +92,7 @@ const RM = (() => {
     const andere = I18N.sprache() === 'de' ? 'en' : 'de';
     el.textContent = andere === 'en' ? 'English' : 'Deutsch';
     el.lang = andere;
-    el.addEventListener('click', () => { I18N.setzeSprache(andere); location.reload(); });
+    el.addEventListener('click', () => { if (I18N.setzeSprache(andere)) location.reload(); });
   }
 
   return { p2, ms, zahl, zeit, hm, tm, datum, wt, dauer, vor, seit, esc, mehrzahl, $, IC, thema, setzeThema, sende, t, serverText, sprachKnopf };
