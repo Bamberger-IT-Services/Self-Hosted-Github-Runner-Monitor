@@ -233,6 +233,26 @@ class GitHubTest(Basis):
 
 
 class ForgejoGiteaTest(Basis):
+    def pruefe_fremden_prozess(self, argv, cwd=None):
+        unit = self.vm.forgejo()
+        self.vm.datei("/home/evil/actions-runner/.runner", json.dumps({"agentName": "fremd", "gitHubUrl": "https://192.0.2.9/beispiel-org"}))
+        self.vm.datei("/tmp/x/config.toml", '[[runners]]\n  name = "fremd"\n  url = "https://192.0.2.9"\n  token = "x"\n')
+        self.vm.prozess(1999, argv, unit=unit, cwd=cwd)
+        funde = self.erkenne(aktiv={unit: True}, antworten=FORGEJO_ANTWORT, journal=FORGEJO_JOURNAL)
+        self.assertIsNone(funde.get("fremd", {}).get("unit"), "höchstens ein eigener Fund ohne Unit")
+        f = funde["runner-vm-02"]
+        self.assertEqual((f["dienst"], f["server"]), ("forgejo", "https://git.example.org"))
+        self.assertFalse([a for a in self.q.abfragen if "192.0.2." in a], self.q.abfragen)
+        self.assertNotEqual(f["grad"], "sicher", "Widerspruch senkt den Grad")
+        self.assertTrue(any("nicht übernommen" in m for m in f["merkmale"]))
+
+    def test_fremder_prozess_in_der_unit_mit_eigenem_argv0_und_runner_datei(self):
+        """#109 Review: ``exec -a`` und ein cwd mit eigener .runner übernehmen weder Name noch Server."""
+        self.pruefe_fremden_prozess(["/home/evil/actions-runner/bin/Runner.Listener", "run"], cwd="/home/evil/actions-runner")
+
+    def test_fremder_prozess_in_der_unit_mit_eigener_config(self):
+        self.pruefe_fremden_prozess(["/usr/bin/gitlab-runner", "run", "--config", "/tmp/x/config.toml"])
+
     def test_fremde_runner_datei_im_arbeitsordner_kippt_die_anzeige_nicht(self):
         """#109: die Registrierung aus der eigenen Konfiguration gilt, nicht die zuletzt gefundene."""
         unit = self.vm.forgejo()

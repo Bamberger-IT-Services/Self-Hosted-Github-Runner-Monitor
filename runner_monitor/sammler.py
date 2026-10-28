@@ -240,6 +240,9 @@ class Sammler:
         try:
             ausgabe.seek(0)
             roh = ausgabe.read(erkennung.MAX_ERGEBNIS + 1)
+        except BaseException:
+            fehler_ausgabe.close()
+            raise
         finally:
             ausgabe.close()
         daten = erkennung.pruefe_ergebnis(roh) if prozess.returncode == 0 else None

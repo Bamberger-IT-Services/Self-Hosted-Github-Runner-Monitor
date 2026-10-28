@@ -479,6 +479,7 @@ class Registrierung:
     server: str | None = None
     hinweis: str | None = None   # „forgejo“, wenn die Datei es selbst nennt
     anzahl: int = 1
+    nur_prozess: bool = False    # stammt nur aus einem Prozess der Unit-Gruppe, nicht aus der Unit selbst (#109)
 
 
 def deute_runner_datei(pfad: str, daten: bytes) -> Registrierung:
@@ -598,17 +599,21 @@ def stichwort(unit_name: str) -> str | None:
     return None
 
 
-def orte_der_gruppe(q: Quelle, g: Gruppe) -> list[str]:
-    """Wo neben Unit und Prozess eine Registrierung liegen kann."""
+def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None) -> list[str]:
+    """Wo neben Unit und Prozess eine Registrierung liegen kann.
+
+    ``aus_unit=True``: nur was die Unit-Datei vorgibt (``--config`` im ExecStart, Programmordner,
+    WorkingDirectory); ``False``: nur was Prozesse vorgeben (argv[0], ``--config``, cwd) – die kann
+    jeder Prozess in der cgroup der Unit frei wählen (``exec -a``). ``None``: beides."""
     verz: list[str] = []
     programmverz: list[str] = []   # Ordner des Programms: verlässlicher als das Arbeitsverzeichnis (#109)
     konfig: list[tuple[str, str | None]] = []
     befehle = []
-    if g.unit:
+    if g.unit and aus_unit is not False:
         if g.unit.arbeitsverz:
             verz.append(g.unit.arbeitsverz)
         befehle.append((g.unit.argv, g.unit.arbeitsverz))
-    for p in g.prozesse:
+    for p in g.prozesse if aus_unit is not True else []:
         if p.cwd and not p.container:
             verz.append(p.cwd)
         befehle.append((p.argv, p.cwd))
@@ -641,8 +646,8 @@ def orte_der_gruppe(q: Quelle, g: Gruppe) -> list[str]:
         elif (datei := konfig_runner_datei(q, pfad, basis)):
             dateien.append(datei)
     dateien += [f"{v}/.runner" for v in programmverz + verz if pruefe_pfad(v)]
-    if g.unit_name and dienst_aus(BEKANNT_UNIT, g.unit_name) == "gitlab" or any(
-            dienst_aus(BEKANNT_PROGRAMM, p.programm) == "gitlab" for p in g.prozesse):
+    if g.unit_name and aus_unit is not False and dienst_aus(BEKANNT_UNIT, g.unit_name) == "gitlab" or (
+            aus_unit is not True and any(dienst_aus(BEKANNT_PROGRAMM, p.programm) == "gitlab" for p in g.prozesse)):
         dateien.append("/etc/gitlab-runner/config.toml")
     return list(dict.fromkeys(d for d in (pruefe_pfad(x) for x in dateien) if d))
 
@@ -676,18 +681,24 @@ def sammle(q: Quelle, runner_verz: str | None = None) -> list[Gruppe]:
         gruppen[schluessel].prozesse.append(p)
 
     vergeben: set[str] = set()
-    for g in gruppen.values():
-        try:
-            orte = orte_der_gruppe(q, g)
-        except Exception:  # noqa: BLE001
-            orte = []
-        for pfad in orte:
-            if pfad in vergeben:
+    # Erst alles, was die Unit-Datei vorgibt, dann was nur Prozesse vorgeben (#109): bei Gruppen mit
+    # Unit-Datei zählt Letzteres nicht für Name, Server und Dienst.
+    for aus_unit in (True, False):
+        for g in gruppen.values():
+            if aus_unit and not g.unit:
                 continue
-            reg = lies_registrierung(q, pfad)
-            if reg:
-                vergeben.add(pfad)
-                g.registrierungen.append(reg)
+            try:
+                orte = orte_der_gruppe(q, g, aus_unit if g.unit else None)
+            except Exception:  # noqa: BLE001
+                orte = []
+            for pfad in orte:
+                if pfad in vergeben:
+                    continue
+                reg = lies_registrierung(q, pfad)
+                if reg:
+                    vergeben.add(pfad)
+                    reg.nur_prozess = bool(g.unit) and not aus_unit
+                    g.registrierungen.append(reg)
     try:
         orte = standard_orte(q, runner_verz)
     except Exception:  # noqa: BLE001
@@ -879,7 +890,13 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
 
     name = server = None
     runner_verz = None
+    fremd: list[str] = []   # Dienste aus Registrierungen, die nur ein Prozess der Unit nennt
     for reg in g.registrierungen:
+        if reg.nur_prozess:
+            merkmale.append(f"{reg.pfad} nur von einem Prozess genannt (nicht übernommen)")
+            if reg.art != "kaputt":
+                fremd.append("gitlab" if reg.art == "gitlab" else "github" if reg.art == "github" else reg.hinweis or "forgejo")
+            continue
         if reg.art == "kaputt":
             merkmale.append(f"{reg.pfad} nicht lesbar oder ungültig")
             continue
@@ -912,9 +929,9 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
     # Die erste Registrierung der Gruppe entscheidet (Reihenfolge: --config, Programmordner, Arbeitsordner);
     # eine fremde .runner im Arbeitsordner kippt die Anzeige so nicht (#109).
     dienst = aus_registrierung[0] if aus_registrierung else dienste[-1] if dienste else "unbekannt"
-    widerspruch = len(set(d if d not in ("forgejo", "gitea") else "act" for d in dienste)) > 1
+    widerspruch = len(set(d if d not in ("forgejo", "gitea") else "act" for d in dienste + fremd)) > 1
     if widerspruch:
-        merkmale.append("widersprüchliche Merkmale: " + ", ".join(ANZEIGE[d] for d in dict.fromkeys(dienste)))
+        merkmale.append("widersprüchliche Merkmale: " + ", ".join(ANZEIGE[d] for d in dict.fromkeys(dienste + fremd)))
 
     bestaetigt = False
     server_version = None
