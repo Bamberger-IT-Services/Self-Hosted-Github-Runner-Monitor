@@ -18,6 +18,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   (`/run/runner-monitor/erkennung.json`). Das Dashboard bleibt vorerst beim GitHub-Runner (#91).
 
 ### Geändert
+- Runner-Erkennung nachgeschärft (#109): Takt und Frist des Sammlers mit `time.monotonic()`; die
+  Fehlerausgabe (stderr, höchstens 2000 Zeichen) der Erkennung landet im Journal statt in `/dev/null`;
+  `einrichten.sh` ruft sie mit `timeout --foreground 60` auf (Strg+C wirkt sofort); github.com gilt
+  auch mit `--ohne-netz` als „sicher“; eine fremde `.runner` im Arbeitsordner kippt die Anzeige des
+  Dienstes nicht mehr (die erste Registrierung aus Konfiguration oder Programmordner entscheidet).
 - Fehler und Ideen gehen per E-Mail an Bamberger IT Services statt als GitHub-Issue: Info › „Fehler
   gefunden oder Idee?“ und der fehlgeschlagene Update öffnen das Mailprogramm mit Betreff, Vorlage und
   den technischen Angaben (Version, System, Runner, Browser); Vorlage in Deutsch oder Englisch nach

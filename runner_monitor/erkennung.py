@@ -479,6 +479,7 @@ class Registrierung:
     server: str | None = None
     hinweis: str | None = None   # „forgejo“, wenn die Datei es selbst nennt
     anzahl: int = 1
+    nur_prozess: bool = False    # stammt nur aus einem Prozess der Unit-Gruppe, nicht aus der Unit selbst (#109)
 
 
 def deute_runner_datei(pfad: str, daten: bytes) -> Registrierung:
@@ -598,16 +599,21 @@ def stichwort(unit_name: str) -> str | None:
     return None
 
 
-def orte_der_gruppe(q: Quelle, g: Gruppe) -> list[str]:
-    """Wo neben Unit und Prozess eine Registrierung liegen kann."""
+def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None) -> list[str]:
+    """Wo neben Unit und Prozess eine Registrierung liegen kann.
+
+    ``aus_unit=True``: nur was die Unit-Datei vorgibt (``--config`` im ExecStart, Programmordner,
+    WorkingDirectory); ``False``: nur was Prozesse vorgeben (argv[0], ``--config``, cwd) – die kann
+    jeder Prozess in der cgroup der Unit frei wählen (``exec -a``). ``None``: beides."""
     verz: list[str] = []
+    programmverz: list[str] = []   # Ordner des Programms: verlässlicher als das Arbeitsverzeichnis (#109)
     konfig: list[tuple[str, str | None]] = []
     befehle = []
-    if g.unit:
+    if g.unit and aus_unit is not False:
         if g.unit.arbeitsverz:
             verz.append(g.unit.arbeitsverz)
         befehle.append((g.unit.argv, g.unit.arbeitsverz))
-    for p in g.prozesse:
+    for p in g.prozesse if aus_unit is not True else []:
         if p.cwd and not p.container:
             verz.append(p.cwd)
         befehle.append((p.argv, p.cwd))
@@ -617,7 +623,7 @@ def orte_der_gruppe(q: Quelle, g: Gruppe) -> list[str]:
         programm = pruefe_pfad(argv[0])
         if programm:
             eltern = PurePosixPath(programm).parent
-            verz.append(str(eltern.parent if eltern.name.startswith("bin") else eltern))  # GitHub: bin/Runner.Listener
+            programmverz.append(str(eltern.parent if eltern.name.startswith("bin") else eltern))  # GitHub: bin/Runner.Listener
         for i, arg in enumerate(argv[1:], start=1):
             wert = None
             if arg in ("-c", "--config") and i + 1 < len(argv):
@@ -639,9 +645,9 @@ def orte_der_gruppe(q: Quelle, g: Gruppe) -> list[str]:
             dateien.append(pfad)
         elif (datei := konfig_runner_datei(q, pfad, basis)):
             dateien.append(datei)
-    dateien += [f"{v}/.runner" for v in verz if pruefe_pfad(v)]
-    if g.unit_name and dienst_aus(BEKANNT_UNIT, g.unit_name) == "gitlab" or any(
-            dienst_aus(BEKANNT_PROGRAMM, p.programm) == "gitlab" for p in g.prozesse):
+    dateien += [f"{v}/.runner" for v in programmverz + verz if pruefe_pfad(v)]
+    if g.unit_name and aus_unit is not False and dienst_aus(BEKANNT_UNIT, g.unit_name) == "gitlab" or (
+            aus_unit is not True and any(dienst_aus(BEKANNT_PROGRAMM, p.programm) == "gitlab" for p in g.prozesse)):
         dateien.append("/etc/gitlab-runner/config.toml")
     return list(dict.fromkeys(d for d in (pruefe_pfad(x) for x in dateien) if d))
 
@@ -675,18 +681,24 @@ def sammle(q: Quelle, runner_verz: str | None = None) -> list[Gruppe]:
         gruppen[schluessel].prozesse.append(p)
 
     vergeben: set[str] = set()
-    for g in gruppen.values():
-        try:
-            orte = orte_der_gruppe(q, g)
-        except Exception:  # noqa: BLE001
-            orte = []
-        for pfad in orte:
-            if pfad in vergeben:
+    # Erst alles, was die Unit-Datei vorgibt, dann was nur Prozesse vorgeben (#109): bei Gruppen mit
+    # Unit-Datei zählt Letzteres nicht für Name, Server und Dienst.
+    for aus_unit in (True, False):
+        for g in gruppen.values():
+            if aus_unit and not g.unit:
                 continue
-            reg = lies_registrierung(q, pfad)
-            if reg:
-                vergeben.add(pfad)
-                g.registrierungen.append(reg)
+            try:
+                orte = orte_der_gruppe(q, g, aus_unit if g.unit else None)
+            except Exception:  # noqa: BLE001
+                orte = []
+            for pfad in orte:
+                if pfad in vergeben:
+                    continue
+                reg = lies_registrierung(q, pfad)
+                if reg:
+                    vergeben.add(pfad)
+                    reg.nur_prozess = bool(g.unit) and not aus_unit
+                    g.registrierungen.append(reg)
     try:
         orte = standard_orte(q, runner_verz)
     except Exception:  # noqa: BLE001
@@ -709,7 +721,9 @@ def probe(q: Quelle, dienst: str, server: str, speicher: dict) -> tuple[str | No
     schluessel = (dienst in ("forgejo", "gitea") and "act" or dienst, server)
     if schluessel in speicher:
         return speicher[schluessel]
-    if not q.netz:
+    if dienst == "github" and (urllib.parse.urlsplit(server).hostname or "") == "github.com":
+        ergebnis = ("github", None, "")  # braucht keine Abfrage, also auch ohne Netz „sicher“
+    elif not q.netz:
         ergebnis = (None, None, "Server nicht geprüft (ohne Netz)")
     elif len(speicher) >= MAX_SERVER:
         ergebnis = (None, None, "Server nicht geprüft (zu viele Server)")
@@ -843,6 +857,7 @@ def lies_zuordnung(pfad: Path | str | None) -> dict[str, dict]:
 def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
     merkmale: list[str] = []
     dienste: list[str] = []   # aus starken Merkmalen, wichtigstes zuletzt
+    aus_registrierung: list[str] = []   # Teilmenge von ``dienste``, in Reihenfolge der Registrierungen
     unit = g.unit_name
     aktiv = q.aktiv(unit) if unit else None
     if g.prozesse and unit and aktiv is None:
@@ -875,7 +890,13 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
 
     name = server = None
     runner_verz = None
+    fremd: list[str] = []   # Dienste aus Registrierungen, die nur ein Prozess der Unit nennt
     for reg in g.registrierungen:
+        if reg.nur_prozess:
+            merkmale.append(f"{reg.pfad} nur von einem Prozess genannt (nicht übernommen)")
+            if reg.art != "kaputt":
+                fremd.append("gitlab" if reg.art == "gitlab" else "github" if reg.art == "github" else reg.hinweis or "forgejo")
+            continue
         if reg.art == "kaputt":
             merkmale.append(f"{reg.pfad} nicht lesbar oder ungültig")
             continue
@@ -883,14 +904,17 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
         server = server or reg.server
         if reg.art == "github":
             dienste.append("github")
+            aus_registrierung.append("github")
             runner_verz = runner_verz or str(PurePosixPath(reg.pfad).parent)
             merkmale.append(f"{reg.pfad} mit gitHubUrl" if reg.server else f"{reg.pfad} ohne gültige gitHubUrl")
         elif reg.art == "act":
             vorher = [d for d in dienste if d in ("forgejo", "gitea")]
             dienste.append(reg.hinweis or (vorher[-1] if vorher else "forgejo"))
+            aus_registrierung.append(dienste[-1])
             merkmale.append(f"{reg.pfad} mit address {reg.server}" if reg.server else f"{reg.pfad} ohne gültige address")
         elif reg.art == "gitlab":
             dienste.append("gitlab")
+            aus_registrierung.append("gitlab")
             merkmale.append(f"{reg.pfad} mit url {reg.server}" if reg.server else f"{reg.pfad} ohne gültige url")
             if reg.anzahl > 1:
                 merkmale.append(f"{reg.anzahl} Runner in {PurePosixPath(reg.pfad).name}")
@@ -902,10 +926,12 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
                 eltern = PurePosixPath(pfad).parent
                 runner_verz = str(eltern.parent if eltern.name.startswith("bin") else eltern)
 
-    dienst = dienste[-1] if dienste else "unbekannt"
-    widerspruch = len(set(d if d not in ("forgejo", "gitea") else "act" for d in dienste)) > 1
+    # Die erste Registrierung der Gruppe entscheidet (Reihenfolge: --config, Programmordner, Arbeitsordner);
+    # eine fremde .runner im Arbeitsordner kippt die Anzeige so nicht (#109).
+    dienst = aus_registrierung[0] if aus_registrierung else dienste[-1] if dienste else "unbekannt"
+    widerspruch = len(set(d if d not in ("forgejo", "gitea") else "act" for d in dienste + fremd)) > 1
     if widerspruch:
-        merkmale.append("widersprüchliche Merkmale: " + ", ".join(ANZEIGE[d] for d in dict.fromkeys(dienste)))
+        merkmale.append("widersprüchliche Merkmale: " + ", ".join(ANZEIGE[d] for d in dict.fromkeys(dienste + fremd)))
 
     bestaetigt = False
     server_version = None

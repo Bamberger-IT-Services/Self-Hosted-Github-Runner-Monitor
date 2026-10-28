@@ -95,8 +95,8 @@ runner_suchen() {
   local rc=0 farbe=""
   abschnitt "Runner auf dieser VM"
   if [ -t 1 ]; then farbe=--farbe; fi
-  # timeout: harte Grenze, falls DNS oder ein Server hängt
-  (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 timeout 60 \
+  # timeout: harte Grenze, falls DNS oder ein Server hängt (--foreground: Strg+C wirkt sofort)
+  (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 timeout --foreground 60 \
       "$PYTHON" -m runner_monitor.erkennung --text --einrichtung \
       ${farbe:+"$farbe"} \
       --runner-verz "$RUNNER_VERZ" --zuordnung "$ETC/runner.json" \
