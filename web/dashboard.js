@@ -664,7 +664,7 @@
     const mailAngaben = {
       version: u.installiert || st.monitorVersion || '', system: st.system || '', browser: navigator.userAgent,
       runner: st.runner ? [{ name: st.runner, dienst: 'GitHub', version: st.version || '' }] : [],
-      gewaehlt: st.runner ? { name: st.runner, zustand: dz === 'aktiv' ? t('Dienst aktiv') : dz === 'fehlt' ? t('Kein Dienst') : dz ? t('Dienst gestoppt') : '' } : null,
+      gewaehlt: st.runner && dz && dz !== 'fehlt' ? { name: st.runner, zustand: dz === 'gestoppt' ? t('Gestoppt') : st.github && st.github.zustand === 'offline' ? t('Offline') : st.job ? t('Job') : t('Bereit') } : null,
     };
     const kv = (liste) => `<dl class="kv">${liste.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`).join('')}</dl>`;
 
@@ -685,11 +685,18 @@
       }).join('') + (us.zustand === 'fehler' ? `<li><span class="ok">${IC.ok(16)}</span><span>${t('Version {v} wiederhergestellt', { v: esc(u.installiert) })}</span><span class="upd-zusatz">${t('läuft wieder')}</span></li>` : '');
       upd += `<ol class="upd-schritte" aria-live="polite">${zeilen}</ol>`;
     }
-    if (us.zustand === 'fehler') upd += `<div class="hinweis fehler">${IC.x(15)}<div>${t('Update fehlgeschlagen')} <span>– ${t('{m}. Version {v} wurde automatisch wiederhergestellt. Details:', { m: esc(us.meldung || t('die neue Version hat nach dem Neustart nicht geantwortet')), v: esc(u.installiert) })} <code class="inl">journalctl -u runner-monitor-update -n 50</code> <a class="verweis" href="${esc(MAIL.updateFehler({ ...mailAngaben, neu: us.version || (u.neueste && u.neueste.version) || '', meldung: us.meldung }, t))}">${t('Fehler melden')}</a></span></div></div>`;
+    if (us.zustand === 'fehler') upd += `<div class="hinweis fehler">${IC.x(15)}<div>${t('Update fehlgeschlagen')} <span>– ${t('{m}. Version {v} wurde automatisch wiederhergestellt. Details:', { m: esc(us.meldung || t('die neue Version hat nach dem Neustart nicht geantwortet')), v: esc(u.installiert) })} <code class="inl">journalctl -u runner-monitor-update -n 50</code></span></div></div>`;
     if (us.zustand === 'erfolg' && jetzt - ms(us.zeit) < 3600000) upd += `<div class="hinweis ok">${IC.ok(15)}<div>${t('Aktualisiert auf {v}', { v: esc(u.installiert) })} <span>– ${t('um {z}. Dienst läuft, alle Daten kommen an.', { z: hm(us.zeit) })}</span></div></div>`;
     const bereit = !u.neueste || u.neueste.bereit !== false;  // Paket hängt schon am Release (#63)
     if (neu && !bereit && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><p class="info-notiz">${t('Version {v} wird gerade bereitgestellt – das Paket ist in ein bis zwei Minuten da. Der Monitor prüft von selbst erneut.', { v: esc(u.neueste.version) })}</p></div>`;
-    else if (neu && us.zustand !== 'laeuft') upd += `<div class="upd-aktion"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${us.zustand === 'fehler' ? t('Erneut versuchen') : t('Jetzt auf {v} aktualisieren', { v: esc(u.neueste.version) })}</button><p class="info-notiz">${t('Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.')}</p></div>`;
+    else if (neu && us.zustand !== 'laeuft') {
+      const fehl = us.zustand === 'fehler';
+      const hinweisZeit = `<p class="info-notiz">${t('Dauert etwa eine Minute. Der Monitor ist dabei kurz nicht erreichbar, der Runner und laufende Jobs arbeiten weiter.')}</p>`;
+      const melden = fehl ? `<a class="knopf" href="${esc(MAIL.updateFehler({ ...mailAngaben, alt: u.installiert, neu: us.version || u.neueste.version, meldung: us.meldung || t('die neue Version hat nach dem Neustart nicht geantwortet') }, t))}">${t('Fehler melden')}</a>` : '';
+      upd += `<div class="upd-aktion${fehl ? ' zeile' : ''}"><button type="button" class="knopf primaer gross" data-aktion="update-starten">${IC.herunter()}${fehl ? t('Erneut versuchen') : t('Jetzt auf {v} aktualisieren', { v: esc(u.neueste.version) })}</button>${fehl ? melden + '</div>' + hinweisZeit : hinweisZeit + '</div>'}`;
+    } else if (us.zustand === 'fehler') {
+      upd += `<div class="upd-aktion zeile"><a class="knopf" href="${esc(MAIL.updateFehler({ ...mailAngaben, alt: u.installiert, neu: us.version || '', meldung: us.meldung || t('die neue Version hat nach dem Neustart nicht geantwortet') }, t))}">${t('Fehler melden')}</a></div>`;
+    }
     upd += `<label class="upd-auto"><input type="checkbox" data-aktion="update-auto" ${u.auto ? 'checked' : ''}>${t('Automatisch aktualisieren – nachts ab 3 Uhr, sobald kein Job läuft')}</label>`;
     const as = u.autoStand || {};
     if (u.auto && neu && us.zustand !== 'laeuft' && as.version === u.neueste.version) {
@@ -739,7 +746,7 @@
         ['System', esc(st.system || '–')],
         ['Runner', st.version ? `actions-runner ${esc(st.version)}` : '–'],
         ['Browser', t('wird automatisch ergänzt')],
-      ])}<div class="knopf-reihe"><a class="knopf" href="${esc(MAIL.fehler(mailAngaben, t))}">${IC.kaefer()}${t('Fehler melden')}</a><a class="knopf" href="${esc(MAIL.idee(mailAngaben, t))}">${t('Idee vorschlagen')}</a></div><p class="info-notiz">${t('Vor dem Absenden prüfen: Keine Tokens oder Passwörter mitschicken. Log-Ausschnitte nur gekürzt einfügen.')}</p>`,
+      ])}<div class="knopf-reihe"><a class="knopf" href="${esc(MAIL.fehler(mailAngaben, t))}">${IC.brief()}${t('Fehler melden')}</a><a class="knopf" href="${esc(MAIL.idee(mailAngaben, t))}">${t('Idee vorschlagen')}</a></div><p class="info-notiz">${t('Vor dem Absenden prüfen: Keine Tokens oder Passwörter mitschicken. Log-Ausschnitte nur gekürzt einfügen.')}</p>`,
     };
   }
 

@@ -8,7 +8,7 @@ const M = createRequire(import.meta.url)('../../web/mail.js');
 
 // t() wie in der Oberfläche: Platzhalter ersetzen, Text sonst unverändert (Deutsch)
 const t = (text, w) => (w ? text.replace(/\{(\w+)\}/g, (m, k) => (k in w ? String(w[k]) : m)) : text);
-const tEn = (text, w) => t({ 'Was ist passiert?': 'What happened?', 'Runner-Monitor {v} – Fehler': 'Runner Monitor {v} – bug' }[text] || text, w);
+const tEn = (text, w) => t({ 'Was ist passiert?': 'What happened?', 'Runner-Monitor {v} – Fehler': 'Runner-Monitor {v} – bug report', '[entfernt]': '[removed]' }[text] || text, w);
 
 const angaben = {
   version: '0.8.0', system: 'Ubuntu 24.04.1 LTS, Python 3.12', browser: 'Mozilla/5.0 (X11; Linux x86_64) Test/1.0',
@@ -44,7 +44,7 @@ test('Kodierung: Umlaute und Sonderzeichen überstehen den Weg durch die Adresse
 
 test('Sprache folgt t()', () => {
   const { betreff, text } = teile(M.fehler(angaben, tEn));
-  assert.equal(betreff, 'Runner Monitor 0.8.0 – bug');
+  assert.equal(betreff, 'Runner-Monitor 0.8.0 – bug report');
   assert.ok(text.includes('What happened?'));
 });
 
@@ -55,21 +55,28 @@ test('Idee: Betreff, Abschnitte, Version', () => {
 });
 
 test('Update-Fehler: Betreff mit neuer Version, Platz für das Journal', () => {
-  const { betreff, text } = teile(M.updateFehler({ ...angaben, neu: '0.8.1', meldung: 'Neustart ohne Antwort' }, t));
+  const { betreff, text } = teile(M.updateFehler({ ...angaben, alt: '0.8.0', neu: '0.8.1', meldung: 'Neustart ohne Antwort' }, t));
   assert.equal(betreff, 'Runner-Monitor – Update auf 0.8.1 fehlgeschlagen');
   assert.ok(text.includes('journalctl -u runner-monitor-update -n 50'));
   assert.ok(text.includes('Meldung: Neustart ohne Antwort'));
-  assert.ok(text.includes('0.8.1'));
+  assert.ok(text.includes('das Update von 0.8.0 auf 0.8.1 ist fehlgeschlagen, 0.8.0 wurde wiederhergestellt.'));
+  assert.ok(!text.includes('Bitte keine Tokens'));
 });
 
 test('Keine Tokens im Text', () => {
   const geheim = 'ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2M3n4';
   const pat = 'github_pat_' + '11ABCDEFG0abcdefghijkl_mnopqrstuv';
-  const a = { ...angaben, system: `x ${geheim}`, browser: pat, runner: [{ name: 'r', dienst: 'GitHub', version: geheim }] };
+  const hex = 'a'.repeat(20) + '0123456789'.repeat(2);
+  const a = { ...angaben, system: `x ${geheim} ${hex}`, browser: pat, runner: [{ name: 'r', dienst: 'GitHub', version: geheim }] };
   for (const url of [M.fehler(a, t), M.idee(a, t), M.updateFehler({ ...a, neu: '1', meldung: `Token ${pat}` }, t)]) {
     const roh = decodeURIComponent(url);
-    assert.ok(!roh.includes(geheim) && !roh.includes(pat) && !roh.includes('ghp_') && !roh.includes('github_pat_'));
+    assert.ok(!roh.includes(geheim) && !roh.includes(pat) && !roh.includes(hex) && !roh.includes('ghp_') && !roh.includes('github_pat_'));
   }
+});
+
+test('Ersatzmarke für Tokens ist übersetzbar', () => {
+  const { text } = teile(M.fehler({ ...angaben, system: 'ghp_' + 'A1b2C3d4E5f6G7h8I9j0K1l2' }, tEn));
+  assert.ok(text.includes('System: [removed]'));
 });
 
 test('Länge der Adresse bleibt vertretbar, auch mit langem userAgent', () => {
