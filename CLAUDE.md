@@ -57,6 +57,7 @@ Projektanweisung etwas anderes sagt. **Keine Lizenz** (E-11): keine LICENSE-Date
 ```bash
 MONITOR_ENTWICKLUNG=1 MONITOR_DATEN_VERZ=./daten MONITOR_LAUF_VERZ=./lauf python3 -m runner_monitor   # → :8090/?demo
 python3 -m unittest discover -s tests -t .
+node --test tests/js/*.test.mjs   # Glob nötig, nur das Verzeichnis scheitert
 shellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh werkzeuge/zap-baseline.sh
 node werkzeuge/bilder.mjs     # Bildschirmfotos fürs Handbuch (nicht als root)
 werkzeuge/paket.sh            # Release-Paket nach dist/

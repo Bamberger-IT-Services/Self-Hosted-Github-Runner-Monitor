@@ -41,6 +41,8 @@ jobs:
           node-version: 22
       - name: JavaScript-Syntax
         run: for f in web/*.js; do node --check "$f"; done
+      - name: JavaScript-Tests (Verlauf)
+        run: node --test tests/js/*.test.mjs
       - name: Keine Inline-Skripte oder style-Attribute (CSP)
         run: |
           ! grep -nE '<script>|<script [^>]*>[^<]|style="' web/*.html
