@@ -22,6 +22,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   `GET /api/zustand` liefert die Momentaufnahme mit den bisherigen Bereichen und zusätzlich `vm`,
   `runner[]` und `meldungen[]` (mit Runner-ID); `/events` schickt zusätzlich `runner` und `meldungen`.
   Die Oberfläche nutzt die neuen Felder ab #94 (#92, E-19, ADR-0006).
+- Dashboard für mehrere Runner: Über „Runner-Status“ stehen Reiter (Name, Zustandspunkt und Zustand als
+  Text), ab vier Runnern drei Reiter und „+N“ mit einer Liste der übrigen, per Tastatur bedienbar. Runner-Status,
+  Jobs je Repository und Live-Log gehören zum gewählten Runner, Auslastung, Prozesse und Platten zur VM. Die Kopfzeile
+  zeigt Name und Dienst-Plakette des gewählten Runners, das Live-Log seinen Namen; Meldungen nennen den
+  Runner („runner-vm-02: Dienst gestoppt“) und führen mit „Anzeigen“ zu einem anderen Runner. Die Wahl wird
+  je Browser unter `runner-monitor.runner` (Runner-ID) gemerkt. Mit einem Runner bleibt die Ansicht wie
+  bisher. Die Karte „Workflows“ heißt jetzt „Jobs je Repository“. Runner ohne Jobs (Grundüberwachung) zeigen
+  vorerst nur den Dienst; die ausführliche Darstellung folgt mit #95. Demo: `?demo&runner=1` bis `5` (#94).
 - Zugangsdaten je Runner in `/etc/runner-monitor/zugang/<runner>.token` (nur root), gesetzt mit
   `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (#92).
 - GitLab-Adapter: Status, aktueller Job, letzte Jobs und laufende Jobs je Projekt eines GitLab-Runners

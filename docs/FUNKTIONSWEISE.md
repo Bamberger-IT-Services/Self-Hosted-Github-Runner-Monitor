@@ -95,8 +95,8 @@ laufen mit `time.monotonic()`, die Fehlerausgabe (höchstens 2000 Zeichen) geht 
 abgebrochener oder ungültiger Lauf lässt die alte Datei stehen. `einrichten.sh` zeigt dieselbe
 Erkennung in „System prüfen“ › „Runner auf dieser VM“ (`timeout --foreground 60 python3 -m
 runner_monitor.erkennung --text`, Rückgabe 3 = kein Runner). Seit den Anbieter-Adaptern (#92) stehen
-alle nicht ignorierten Funde in `runner[]` (siehe „Anbieter-Adapter“); die Oberfläche zeigt bis #94
-weiter nur den GitHub-Runner wie bisher.
+alle nicht ignorierten Funde in `runner[]` (siehe „Anbieter-Adapter“); das Dashboard zeigt sie seit
+#94 als Reiter (siehe „Mehrere Runner im Dashboard“).
 
 | Quelle | Was gelesen wird | Merkmal (Beispiel) |
 |---|---|---|
@@ -301,7 +301,8 @@ Momentaufnahme nur als ersten Schwall von `/events`; jetzt auch als ein JSON-Obj
 
 Die bisherigen Bereiche bleiben **unverändert**, die Oberfläche nutzt sie weiter, bis #94 sie auf
 `vm`/`runner[]`/`meldungen[]` umstellt; danach kann das Altformat in einem eigenen Issue entfallen.
-Das Live-Log bleibt allein in `/events`. Über `/events` kommen zusätzlich die Ereignisse `runner`
+Das Live-Log bleibt allein in `/events`. Seit #94 baut das Dashboard daraus seine Ansicht (Abschnitt
+„Mehrere Runner im Dashboard“); fehlt `runner` (Altformat), zeigt es `status` und `workflows` wie bisher. Über `/events` kommen zusätzlich die Ereignisse `runner`
 (die Liste) und `meldungen`, nur wenn sie sich ändern; `vm` gibt es nur in `/api/zustand`, weil
 `system`, `prozesse`, `platten` und `container` schon einzeln kommen.
 
@@ -357,6 +358,38 @@ Schwere `fehler` → `warn` → `neutral` sortiert):
 
 Meldungen zur Verbindung und zu Updates des Monitors bleiben bis #94 allein im Browser.
 
+### Mehrere Runner im Dashboard (#94, Design 0.8.0 Variante C)
+
+Die Oberfläche liest `runner[]` und `meldungen[]` (Ereignisse `runner`, `meldungen`) und zeigt je VM
+einen Satz Bereiche für alle (Auslastung, Prozesse, Platten) und je gewähltem Runner die Karten
+„Runner-Status“, „Jobs je Repository“ und das Live-Log. Fehlt `runner` oder ist die Liste leer
+(Altformat, ältere Server), bleibt sie bei `status` und `workflows` wie bisher.
+
+- **Reiter** (`web/dashboard.js`, Logik in `web/runner.js`, geprüft mit `tests/js/runner.test.mjs`) stehen
+  über „Runner-Status“: gleich breite Spalten, Zustandspunkt, Name, Zustand als Text (`Job läuft`, `Bereit`,
+  `Gestoppt`, `Offline`, `Dienst aktiv`). Ab 4 Runnern stehen drei Reiter (Index 0, 1 und der gewählte, sonst 2)
+  und „+N“ (64 px) mit den Punkten der übrigen; der Klick öffnet eine Liste (320 px) mit Punkt, Name,
+  Dienst-Plakette und Zustand. Bedienung per Tastatur: Pfeile links/rechts, Pos1/Ende (die Wahl folgt dem
+  Fokus), Enter, Leertaste oder Pfeil nach unten auf „+N“ öffnen die Liste und setzen den Fokus auf die erste
+  Option (Pfeile, Enter wählt), Esc schließt sie und gibt den Fokus an „+N“ zurück, Tab aus der Liste schließt
+  sie ebenfalls. Mit einem Runner gibt es keine Reiter.
+- **Wahl** je Browser in `localStorage["runner-monitor.runner"]` (Runner-ID). Gibt es den Runner nicht
+  mehr (oder kommt `runner` erst nach `status`), gilt vorläufig der erste, die gemerkte Wahl bleibt
+  gespeichert und greift wieder; ist der Speicher gesperrt, gilt die Wahl nur für die Sitzung. Info und
+  Fehler-Mail nennen alle Runner mit Dienst und Version.
+- **Kopfzeile:** Name des gewählten Runners, bei mehreren Runnern die Dienst-Plakette (`GitHub`, `Forgejo`,
+  `Gitea`, `GitLab`, `unbekannt`) als erstes Label; im Live-Log steht der Runner-Name neben dem Titel.
+- **Meldungen** aus `meldungen[]` (`gestoppt`, `fehlt`, `offline`, `abfrage`, `token`) nennen bei mehreren
+  Runnern den Runner im Titel; betrifft eine Meldung einen anderen als den gewählten Runner, wechselt der
+  Knopf „Anzeigen“ zu ihm. Platte, Verbindung und Updates des Monitors entstehen weiter im Browser.
+- **Runner ohne Jobs** (Grundüberwachung, `faehig.jobs = false`) zeigen vorerst Zustand „Dienst aktiv“ oder
+  „Gestoppt“ mit einem kurzen Hinweis und „Jobs nicht verfügbar“; die ausführliche Darstellung (Neustarts,
+  Journal, „Schritte nicht verfügbar“) folgt mit #95.
+- **Live-Log:** `/events` liefert die Ausgabe nur für den Runner mit Seiten-Log (`log.art = seiten`, GitHub).
+  Wählt man einen anderen, steht dort ein Hinweis; das Journal je Runner folgt mit #95.
+- **Demo:** `?demo&runner=N` mit N = 1 bis 5 (GitHub-Job, Forgejo und unbekannter Runner in
+  Grundüberwachung, Gitea bereit, GitLab offline).
+
 ### Zugangsdaten je Runner und Übernahme des Tokens (E-19)
 
 | Pfad | Besitzer, Rechte | Inhalt |
@@ -399,7 +432,7 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | `update` | `installiert`, `neueste{version, veroeffentlicht, notizen[], aenderungen[{version, url, neu[], einmalig}], …}` (`aenderungen`: alle Releases nach der installierten bis zur neuesten, aus den Abschnitten „Was ist neu“ und „Einmalig nach dem Update“ der Release-Notiz), `status{zustand: laeuft\|fehler\|erfolg, schritt, meldung}`, `auto` |
 | `container` | `[{name, image, zustand, seit}]` |
 | `log` | `neu` (Ansicht leeren), `ereignisse[{art, zeit, repo, workflow, name, ergebnis, dauer}]`, `zeilen[{art: zeile\|schritt, zeit, text \| nr, von, name}]` (gebündelt, bis 1500 je Nachricht) |
-| `runner` | seit #92: Liste der Runner wie `runner[]` in `/api/zustand` (siehe „Anbieter-Adapter“), nur bei Änderung; die Oberfläche nutzt sie ab #94 |
+| `runner` | seit #92: Liste der Runner wie `runner[]` in `/api/zustand` (siehe „Anbieter-Adapter“), nur bei Änderung; das Dashboard nutzt sie seit #94 |
 | `meldungen` | seit #92: Liste wie `meldungen[]` in `/api/zustand`, nur bei Änderung |
 
 Zeiten sind Unix-Sekunden. Alle 15 s kommt ein Kommentar `: lebt`, damit Proxys die Verbindung
@@ -519,8 +552,8 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 - Nichts verändern: kein Neustart des Runners, kein Abbrechen von Jobs (nur anschauen).
 - Kein HTTPS von sich aus – gedacht für das lokale Netz. Wer von außen zugreifen will, setzt
   einen Reverse-Proxy mit TLS davor ([Sicherheitsbericht](sicherheit/bericht.md), S-01).
-- Ein Runner je VM im Dashboard (der erste gefundene `actions.runner.*`-Dienst). Die Erkennung findet
-  schon alle Runner, `/api/zustand` liefert sie in `runner[]`; mehrere im Dashboard kommen mit #94.
+- Das Dashboard zeigt alle Runner der VM als Reiter (ab #94); das Live-Log kommt bis zu den Adaptern für
+  Forgejo und GitLab (#93, #99) nur für den GitHub-Runner, für die anderen steht dort ein Hinweis.
 
 ## Quellcode
 
@@ -538,5 +571,5 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/zugang.py` | Passwörter, Sitzungen, Sperren, Einrichtungscode |
 | `runner_monitor/sammler.py` | root-Sammler (GitHub, Docker, Releases, Aufträge) |
 | `runner_monitor/aktualisierer.py` | root-Update-Hilfsdienst |
-| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
+| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `runner.js` (Reiter, „+N“, gemerkte Wahl, Ansicht eines Runners), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
 | `einrichten.sh` | Installation, Wartung, Entfernen |
