@@ -88,8 +88,22 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Hinweis: Ein Token, das bisher ohne Server in `zugang/` lag, wird beim ersten Lauf mit Server neu
   abgefragt und das alte verworfen. Eine im Browser noch nicht übernommene Auswahl „Grundüberwachung“ kann
   den aufgehobenen Stand wieder setzen.
+- Info & Hilfe nach Design 0.8.0: Blatt 890 px mit zwei Spalten (links Runner, Verbindungen, Was tun, wenn …; rechts
+  Updates, Darstellung, Über diesen Monitor, Fehler oder Idee). „Runner“ listet alle Runner mit Dienst, Einstufung,
+  Server, Sicherheitsgrad, Unit und letzter Erkennung, mit „Neu erkennen“, „Zuordnung ändern“, „Ignorieren“ / „Wieder
+  anzeigen“ und der Hinweisleiste bei einem neuen Fund (über die vorhandenen Endpunkte, nur angemeldet); „Zugangsdaten
+  ändern“ zeigt nur den Befehl `einrichten.sh zugang <runner>`, nie ein Token-Feld (E-18, E-22). „Verbindungen“ ersetzt
+  „GitHub-Verbindung“ und zeigt je angebundenem Dienst nur, was der Zustand hergibt. „Was tun, wenn …“ ist
+  anbieterneutral (Zugangsdaten für GitHub, Forgejo/Gitea und GitLab, Dienst nicht erreichbar, Runner offline beim
+  Dienst, gestoppt, Logs) und nennt die Unit des gewählten Runners (#97).
+- „Was tun?“, Kartenfuß und leerer Zustand gelten für den Dienst des Runners (Forgejo, Gitea, GitLab statt GitHub). Bei
+  einem Ausfall zeigt die Karte das Alter des letzten guten Stands; nach 10 Minuten steht „Zustand unbekannt“ statt eines
+  Jobs, der stundenlang „läuft“ (#123).
 
 ### Behoben
+- Dienst gestartet/gestoppt erkennt der Monitor im Journal des GitHub-Runners nur noch an Meldungen von
+  systemd selbst (`_COMM=systemd` und `_PID=1`), nicht mehr am `SYSLOG_IDENTIFIER`, den ein Job setzen
+  kann; ein Job kann so keinen „Dienst gestoppt“ mehr vortäuschen (#119, S-JOURNAL-01).
 - Reiter und Karte zeigen für einen Runner ohne systemd-Dienst beide „Kein Dienst“ (der Reiter zeigte
   „Unbekannt“) (#95, Review #114).
 - GitLab: Ein Job mit `status` als Liste oder Objekt ließ die ganze Runde als „unerwartete Antwort“
@@ -109,6 +123,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   (Grundüberwachung), bis der Adapter an einem echten Server geprüft ist. „Verbindung prüfen“ nennt bei
   GitLab den Dienst und keine Organisation; der Hinweis im Schritt „Anbinden“ beschreibt, dass der Befehl
   Server, Organisation (nicht bei GitLab) und Token abfragt (#126, E-20, E-23, E-27).
+- Handbuch, Funktionsweise und Bildschirmfotos auf Design 0.8.0: Kapitel zu mehreren Runnern (Reiter, „+N“,
+  Grundüberwachung), Zeitraum der Auslastung, Sprache, Info › Runner und Verbindungen, Fehler/Idee per E-Mail
+  und `einrichten.sh zugang <runner>`; neue Bilder (`dashboard-mehrere-runner`, `dashboard-grundueberwachung`,
+  `info-runner`, `dashboard-englisch`), alle übrigen neu aufgenommen (`node werkzeuge/bilder.mjs`, nur Demo-Daten);
+  `docs/design/README.md` vollständig auf 0.8.0 abgeglichen (#101).
 - CI: Prüfungen laufen auch bei Pull Requests nach `develop` und bei Push auf `develop`/`main`;
   shellcheck wird bei Bedarf nachinstalliert, davor `bash -n` (#108).
 - Ein Token nimmt die Weboberfläche nur noch in der Einrichtung an (gültiger Einrichtungscode), nicht mehr

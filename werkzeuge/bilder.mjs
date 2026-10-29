@@ -49,8 +49,8 @@ const dienste = [
 await new Promise(r => setTimeout(r, 1500));
 
 const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
-async function seite({ breite = 1440, hoehe = 900, dunkel = false } = {}) {
-  const ctx = await browser.newContext({ viewport: { width: breite, height: hoehe }, colorScheme: dunkel ? 'dark' : 'light', locale: 'de-DE', timezoneId: 'Europe/Berlin' });
+async function seite({ breite = 1440, hoehe = 900, dunkel = false, sprache = 'de-DE' } = {}) {
+  const ctx = await browser.newContext({ viewport: { width: breite, height: hoehe }, colorScheme: dunkel ? 'dark' : 'light', locale: sprache, timezoneId: 'Europe/Berlin' });
   return ctx.newPage();
 }
 const D = 'http://127.0.0.1:18091/?demo&leiste=0', E = 'http://127.0.0.1:18092';
@@ -61,6 +61,14 @@ try {
   let p = await seite();
   await p.goto(D); await p.waitForTimeout(5000); await bild(p, 'dashboard-job.png');
   await p.click('#k-info'); await p.waitForTimeout(600); await bild(p, 'info-hilfe.png');
+  // Design 0.8.0: mehrere Runner (Reiter), Zeitfenster der Auslastung, Grundüberwachung, Info › Runner, Englisch
+  p = await seite();
+  await p.goto(`${D}&runner=3&gewaehlt=1`); await p.waitForTimeout(4000);
+  await p.click('[data-zeitraum="120"]'); await p.waitForTimeout(800); await bild(p, 'dashboard-mehrere-runner.png');
+  await p.goto(`${D}&runner=3&gewaehlt=3`); await p.waitForTimeout(3500); await bild(p, 'dashboard-grundueberwachung.png');
+  await p.click('#k-info'); await p.waitForTimeout(600); await bild(p, 'info-runner.png');
+  p = await seite({ sprache: 'en-US' });
+  await p.goto(`${D}&runner=3&gewaehlt=1`); await p.waitForTimeout(3500); await bild(p, 'dashboard-englisch.png');
   p = await seite({ dunkel: true });
   await p.goto(`${D}&zustand=volllast&kerne=16`); await p.waitForTimeout(4000); await bild(p, 'dashboard-volllast-dunkel.png');
   p = await seite();
