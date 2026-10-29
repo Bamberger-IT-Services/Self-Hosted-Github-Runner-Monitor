@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "29.10.2026 02:37",
+  stand: "29.10.2026 02:41",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -258,6 +258,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "29.10.2026 02:41", text: "#108 umgesetzt (PR offen): .github/workflows/ci.yml läuft bei PRs nach develop und main sowie bei Push auf beide (ubuntu-latest, nie der eigene Runner); shellcheck wird bei Bedarf per apt-get nachinstalliert, davor bash -n. Forgejo liest .forgejo/workflows zuerst, sonst .github/workflows (Datei bleibt dort, eine Quelle). Auf Forgejo bisher keine Action-Läufe; ob ein Actions-Runner existiert, ließ sich ohne Admin-Zugriff nicht lesen – Entscheidung bei Tobias." },
     { datum: "29.10.2026 02:37", text: "Review #117 (#95) eingearbeitet: Journal-Folger verschickt höchstens eine Nachricht je Takt (0,3 s), auch bei einer Flut, und hält zwischen zwei Takten höchstens 200 Zeilen (Rest als Lücke gezählt, Test mit Flut-Attrappe); Anfangsstand 200 Zeilen; Doku: 40-Hex-Maskierung trifft auch Commit-SHAs, Grundüberwachung zeigt auch Journale nur per Stichwort gefundener Units (S-JOURNAL-01); Neustarts-Wortlaut als E-24 entschieden." },
     { datum: "29.10.2026 02:23", text: "#95 umgesetzt (PR offen): Grundüberwachung und „teilweise“ ehrlich zeigen. Runner ohne Jobs: „Dienst aktiv/gestoppt“, „Nur Grundüberwachung …“, kv Dienst (Unit · aktiv seit), Neustarts (NRestarts) und Letzter Stopp (InactiveEnterTimestamp), ohne „Online bei …“ und „Letzte Jobs“; „Jobs nicht verfügbar“ mit „Runner zuordnen ›“; Live-Log = Journal der Unit über /events?journal=<runner-id> (runner_monitor/journal.py: ein journalctl je Unit, höchstens 4, Grenzen je Zeile und Nachricht, Token-Filter, sauberes Beenden, Neustart ab Cursor; Unit nur aus runner[] des Servers, nur angemeldet, S-JOURNAL-01). Teilweise: „Schritte nicht verfügbar“, keine Trenner, kein Schritt-Chip. Steuerung nur über faehig (Tests in Python und node). Reiter ohne Unit jetzt „Kein Dienst“ wie die Karte (Review #114). Demo ?gewaehlt=N und ?faehig=teilweise. Wortlaut „Neustarts“ als E-24 entschieden (Review #117); offen: Prüfung von journalctl auf einer echten VM." },
     { datum: "29.10.2026 01:43", text: "Review #113 (GitLab-Adapter) eingearbeitet: FAEHIG[gitlab] wieder Grundüberwachung bis zur Anbindung (E-20); Token nur über https, http nur mit http_erlaubt in runner.json und ohne Proxy (E-21); Antworten Feld für Feld geprüft (Typen, NaN/Infinity, expires_at, id/tag_list/duration), unerwartete Antwort = Fehler; http.client-Fehler als nicht erreichbar; harte Gesamtfrist je Anfrage (Daemon-Faden, Test mit tröpfelndem Server); pausierte Runner gelten als offline; Doku zu Rollen, Instanz-Runnern, Version in /managers." },
