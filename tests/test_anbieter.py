@@ -344,8 +344,8 @@ class TokenTest(unittest.TestCase):
     def test_liste_aus_der_erkennung(self):
         datei = self.d / "erkennung.json"
         datei.write_text(json.dumps({"zeit": 1, "runner": [
-            {"id": "runner-vm-02", "name": "runner-vm-02\x1b[31m", "dienst": "forgejo", "grad": "sicher", "stand": "offen", "merkmale": [], "faehig": {}},
-            {"id": "alt", "name": "alt", "dienst": "gitea", "grad": "sicher", "stand": "ignoriert", "merkmale": [], "faehig": {}}]}))
+            {"id": "runner-vm-02", "name": "runner-vm-02\x1b[31m", "dienst": "forgejo", "grad": "sicher", "stand": "offen", "einstufung": "teil", "merkmale": [], "faehig": {}},
+            {"id": "alt", "name": "alt", "dienst": "gitea", "grad": "sicher", "stand": "ignoriert", "einstufung": "teil", "merkmale": [], "faehig": {}}]}))
         aus = io.StringIO()
         with redirect_stdout(aus):
             self.assertEqual(zugangsdaten.main(["liste", "--erkennung", str(datei)]), 0)

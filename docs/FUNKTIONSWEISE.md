@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 29.10.2026 · Version 0.7.0 (Runner-Erkennung und Anbieter-Adapter aus 0.8.0 in Arbeit)**
+**Stand: 29.10.2026 · Version 0.7.0 (Runner-Erkennung, Anbieter-Adapter und Einrichtung aus 0.8.0 in Arbeit)**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -51,7 +51,8 @@ Drei systemd-Dienste, alle in Python 3 nur mit der Standardbibliothek ([ADR-0001
 ohne Rechte und kann weder das GitHub-Token lesen noch Software installieren. Was root-Rechte
 braucht, erledigen die beiden root-Dienste – sie nehmen von der Oberfläche nur eng umrissene
 Aufträge an (ein Token zum Ablegen, eine Versionsnummer zum Aktualisieren, `release-pruefen` für
-„Jetzt prüfen“ – der Sammler fragt dann sofort, höchstens einmal je Minute) und prüfen sie selbst.
+„Jetzt prüfen“ – der Sammler fragt dann sofort, höchstens einmal je Minute; seit #96 Zuordnung und Ignorieren
+für `runner.json`, „Neu erkennen“ und „Verbindung prüfen“) und prüfen sie selbst.
 
 ## Woher die Daten kommen
 
@@ -147,8 +148,9 @@ Fund ist nur ein Vorschlag für die Einrichtung.
 Server-Version; ist nur die Runner-Version bekannt, steht dort „–“ (sie bleibt im JSON).
 
 **Zuordnung und Ignorieren** stehen dauerhaft in `/etc/runner-monitor/runner.json`
-(root:runner-monitor, 0640). Gelesen wird sie schon (`erkennung.lies_zuordnung`), schreiben wird
-sie der Sammler auf Auftrag der Oberfläche (POST-Endpunkt mit #96/#97):
+(root:runner-monitor, 0640). Gelesen wird sie mit `erkennung.lies_zuordnung`; schreiben darf sie nur der
+Sammler, auf Auftrag der Einrichtung (seit #96, siehe „Einrichtung im Browser: Runner, Anbinden, Fertig“; Info ›
+Runner folgt mit #97) oder von Hand auf der VM:
 
 ```json
 { "version": 1,
@@ -529,6 +531,55 @@ Ereignis `runner` an bzw. um.
 Ereignis `journal`: `{unit, neu?, zeilen[{zeit, text} | {zeit, art: "luecke", n}], ereignisse[{zeit, art}], hinweis?}`
 – `neu` leert die Ansicht (erst der Stand, dann neue Zeilen).
 
+### Einrichtung im Browser: Runner, Anbinden, Fertig (#96, E-22)
+
+Die Einrichtung hat seit Design 0.8.0 fünf Schritte: **Code → Zugang → Runner → Anbinden → Fertig**
+(`web/einrichtung.js`, reine Logik in `web/einrichtung-runner.js`, geprüft mit
+`tests/js/einrichtung.test.mjs`; Backend `runner_monitor/einrichtung.py`, Endpunkte in `server.py`).
+
+| Endpunkt | Wer darf | Was geschieht |
+|---|---|---|
+| `GET /api/einrichtung/runner` | gültiger Einrichtungscode (Cookie `rm_einrichtung`) oder angemeldet | Funde aus `erkennung.json` (noch einmal geprüft, höchstens 50) mit der Zuordnung aus `runner.json` und einem noch nicht abgeholten Auftrag; ohne Pfade der Erkennung (`log`); `primaer` markiert den GitHub-Runner aus `MONITOR_RUNNER_VERZ`; dazu `github` (Organisation, letzte Abfrage, Ergebnisliste aus `github.json`) |
+| `POST /api/einrichtung/runner/zuordnung` | wie oben, dazu `Origin` = Host und JSON (CSRF) | `{"runner": [{id, stand, dienst?, name?, unit?, log?}]}`, höchstens 20 Einträge → Auftrag `auftraege/runner-zuordnung` (0600); würde der offene Auftrag größer als 64 KB (die Lesegrenze des Sammlers), antwortet der Server mit 400 statt ihn später still zu verwerfen |
+| `POST /api/einrichtung/runner/erkennen` | wie oben | Auftrag `erkennung-neu` → der Sammler erkennt sofort neu (höchstens alle 10 s, läuft gerade eine Erkennung: gleich danach) |
+| `POST /api/einrichtung/runner/pruefen` | wie oben | `{"id"}`: beim GitHub-Runner Auftrag `verbindung-pruefen` → der Sammler fragt GitHub sofort mit dem auf der VM hinterlegten Token ab (höchstens alle 10 s), die Oberfläche liest das Ergebnis aus `github.json`; bei einem angebundenen Forgejo-/Gitea-Runner (#93: Adapter, Unit, Server und Organisation in `runner.json`) ebenso, Ergebnis aus `anbieter.json`; fehlen Server oder Organisation, sofort „Server und Organisation fehlen in runner.json“; Runner ohne Adapter: „noch nicht verfügbar“ (ehrlich, nicht grün). Ist der Einrichtungscode abgelaufen, verweist die 401-Antwort auf `einrichten.sh zugang <runner>` |
+| `POST /api/einrichtung/github/pruefen`, `…/speichern` | **nur** gültiger Einrichtungscode (nicht mehr angemeldet) | wie seit 0.4.0: Prüfung im Webserver nur gegen `api.github.com`, Token als Auftrag `github-token` für den Sammler |
+
+**Prüfung einer Zuordnung** (`einrichtung.pruefe_eintrag`, im Webserver **und** noch einmal im Sammler):
+`id` wie aus der Erkennung (`a-z 0-9 . _ -`, höchstens 64 Zeichen); `stand` muss da sein: `grund`,
+`ignoriert` oder `null` (= wie erkannt, das Feld entfällt); `dienst` aus `github|forgejo|gitea|gitlab|unbekannt`;
+`name` wie ein Anzeigename der Erkennung; `unit` ein `.service`-Name, keine Systemdienste (`ssh`, `cron`,
+`systemd-*`, `getty@*`, `runner-monitor*` …) und **nur aus einer Positivliste** – Unit eines Funds oder vorhandene Unit-Datei in den root-eigenen systemd-Verzeichnissen (bei `name@x.service` auch `name@.service`), im Webserver (400) und im Sammler (Eintrag verworfen); `log` nur eine `*.log`-Datei unter `/var/log`, `/opt` oder `/srv`,
+ohne versteckte Bestandteile und nicht in Ordnern des Monitors. `null` oder leer entfernt ein Feld. **Jedes andere
+Feld** (`server`, `org`, `http_erlaubt`, Token …) ist ein Fehler – das gehört auf die VM.
+
+**Schreiben von `runner.json`** (nur der Sammler, root): Auftrag streng lesen (regulär, ohne Symlink, höchstens
+64 KB), danach löschen; ungültige Einträge verwerfen; `runner.json` mit **allen** vorhandenen Feldern lesen
+(auch solchen, die die Oberfläche nicht kennt, etwa `http_erlaubt`) und nur die Felder der Oberfläche ändern;
+höchstens 100 Runner und 64 KB; ist die Datei kaputt oder ein Symlink, wird nichts geschrieben (Journal). Atomar
+über eine temporäre Datei im selben Ordner, `fsync`, `0640`, Besitzer root, Gruppe die des Ordners
+(`root:runner-monitor`); der Ordner muss ein echtes Verzeichnis von root sein. Danach erkennt der Sammler neu,
+damit `erkennung.json` (und damit das Dashboard) Ignorieren und Zuordnung übernimmt. Auch der Auftrag
+`github-token` wird seit #96 so streng gelesen (vorher folgte er einem Symlink).
+
+**Wahl je Fund im Schritt „Runner“:** *vollständig unterstützt* → „Übernehmen“ (an: Stand wie erkannt, aus:
+`ignoriert`); *erkannt, noch nicht unterstützt* → `grund` oder `ignoriert` (Vorgabe Grundüberwachung);
+*unbekannt* → offen, „Zuordnen“ (`grund` mit Dienst, Name, Unit, Log) oder `ignoriert`. Gespeichert wird mit
+„Weiter“ und nur, was sich gegenüber `runner.json` ändert. „Von Hand zuordnen“ (ohne Fund) legt einen Eintrag
+mit Unit an; seine ID entsteht aus Name bzw. Unit wie in der Erkennung.
+
+**Schritt „Anbinden“:** ein Block je übernommenem, vollständig unterstütztem Runner; mit nur einem Runner ohne
+Rahmen und mit „{Dienst} anbinden“ / „Ohne Anbindung fortfahren“ wie in 0.4.0. Nur der GitHub-Runner des
+Monitors hat Felder für Organisation und Token; alle anderen zeigen den Server als Vorschlag der Erkennung (nur
+zum Lesen) und den Befehl `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (E-22). Ein
+übersprungener Runner wird nicht gespeichert – er bleibt „noch nicht angebunden“ und lässt sich später auf der
+VM anbinden. Der Link zur Token-Seite eines Forgejo-/Gitea-/GitLab-Servers erscheint nur bei Grad „sicher“ (Unit
+vorhanden, Server hat geantwortet) und nur für `https://`. Das Token steht nie im Zustand der Seite, nur im
+Feld, und wird nach dem Speichern geleert.
+
+**Schritt „Fertig“:** Zugang, Firewall und „Runner auf <vm>“ mit Stand je Runner (angebunden mit Organisation
+und Ablauf des Tokens, Grundüberwachung, ignoriert); offene Funde fehlen wie im Entwurf.
+
 ### Zugangsdaten je Runner und Übernahme des Tokens (E-19)
 
 | Pfad | Besitzer, Rechte | Inhalt |
@@ -552,7 +603,8 @@ Ereignis `journal`: `{unit, neu?, zeilen[{zeit, text} | {zeit, art: "luecke", n}
   ältere Kopie weiter. Ältere Versionen (`einrichten.sh zurueck`) und der Update-Hilfsdienst
   (`gh attestation verify`) lesen nur den alten Ort.
 - Im Dashboard lassen sich Zugangsdaten weder ansehen noch ändern (nur auf der VM, Design › Info ›
-  „Zugangsdaten ändern“); nur die Ersteinrichtung im Browser legt wie bisher das GitHub-Token als
+  „Zugangsdaten ändern“); nur die Ersteinrichtung im Browser (gültiger Einrichtungscode, nicht mit einer
+  Anmeldung, #96/E-22) legt wie bisher das Token des GitHub-Runners als
   Auftrag für den Sammler ab. Tokens landen nie in `/run/runner-monitor`, `/api/zustand` oder `/events`.
 
 ## Vom Server in den Browser
@@ -639,7 +691,7 @@ dieselben Daten ohne Server (Entwicklung, Bildschirmfotos).
   die Anmeldeseite (VM-Name unter dem Titel, Version im Fuß).
 - **Ersteinrichtung:** Das Skript legt einen Einrichtungscode `XXXX-XXXX` an (60 min gültig,
   10 Versuche, nur als SHA-256 gespeichert). Wer ihn im Browser eingibt, darf einmalig den
-  Zugang anlegen. Abgeschlossen ist die Einrichtung erst mit „Zum Monitor anmelden“ in Schritt 4; danach ist `/einrichtung` gesperrt.
+  Zugang anlegen. Abgeschlossen ist die Einrichtung erst mit „Zum Monitor anmelden“ in Schritt 5; danach ist `/einrichtung` gesperrt.
 - **Passwort:** 12 bis 128 Zeichen, keine Zusammensetzungsregeln. Gesperrt sind die 10 000 häufigsten
   Passwörter (`runner_monitor/daten/haeufige-passwoerter.txt`, SecLists, MIT), dieselben mit
   angehängten Ziffern oder Zeichen und der Benutzername. Gespeichert als scrypt-Hash (N = 2¹⁵, r = 8, p = 1).
@@ -714,6 +766,7 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/server.py` | HTTP, Anmeldung, Einrichtung, SSE, `GET /api/zustand` |
 | `runner_monitor/zugang.py` | Passwörter, Sitzungen, Sperren, Einrichtungscode |
 | `runner_monitor/sammler.py` | root-Sammler (GitHub, Forgejo/Gitea, Docker, Releases, Aufträge) |
+| `runner_monitor/einrichtung.py` | Runner-Schritte der Einrichtung: Prüfung einer Zuordnung, Aufträge, Schreiben von `runner.json` (Sammler), Funde und Ergebnis „Verbindung prüfen“ für die Oberfläche |
 | `runner_monitor/aktualisierer.py` | root-Update-Hilfsdienst |
-| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `runner.js` (Reiter, „+N“, gemerkte Wahl, Ansicht eines Runners nach Fähigkeiten, Log-Quelle und Journal-Ziel), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
+| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `einrichtung-runner.js` (Wahl je Fund, Zusammenfassung, Einträge für `runner.json`), `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `runner.js` (Reiter, „+N“, gemerkte Wahl, Ansicht eines Runners nach Fähigkeiten, Log-Quelle und Journal-Ziel), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
 | `einrichten.sh` | Installation, Wartung, Entfernen |

@@ -46,6 +46,12 @@ def server_meldungen() -> list[str]:
     texte += re.findall(r'meldung\("([^"]+)"', s)
     texte += re.findall(r'"(?:fehler|text)": "([^"]+)"', s)
     texte += re.findall(r'"(?:falsch|abgelaufen|fehlt)": "([^"]+)"', s)
+    texte += re.findall(r'^ABGELAUFEN = "([^"]+)"', s, re.M)
+    # Runner-Schritte der Einrichtung (#96): Prüfergebnisse und Eingabefehler
+    e = (WURZEL / "runner_monitor" / "einrichtung.py").read_text(encoding="utf-8")
+    texte += re.findall(r'meldung\("([^"]+)"', e)
+    texte += re.findall(r'"text": "([^"]+)"', e)
+    texte += re.findall(r'EingabeFehler\("([^"]+)"\)', e)
     z = (WURZEL / "runner_monitor" / "zugang.py").read_text(encoding="utf-8")
     texte += re.findall(r'ZugangFehler\("([^"]+)"\)', z)
     texte += re.findall(r'return "(Dieses[^"]+)"', z)

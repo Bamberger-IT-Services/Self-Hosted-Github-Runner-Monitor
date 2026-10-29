@@ -81,16 +81,43 @@ Fast geschafft. Schließen Sie die Einrichtung im Browser ab:
 
 ![Schritt 1: Einrichtungscode](handbuch/bilder/einrichtung-1-code.png)
 
-1. **Code:** den angezeigten Code eingeben. Oben steht, was das Skript erledigt hat.
+1. **Code:** den angezeigten Code eingeben. Oben steht, was das Skript erledigt hat und wie viele
+   Runner es gefunden hat.
 2. **Zugang schützen:** Benutzername und Passwort (mindestens 12 Zeichen; ein Satz aus mehreren
    Wörtern ist gut). Es gibt genau einen Zugang.
-3. **GitHub anbinden (optional):** Organisation und ein **Fine-grained Token**, siehe unten.
-   „Verbindung prüfen“ zeigt, welche Rechte ankommen; „Weiter“ prüft und speichert. „Ohne GitHub
-   fortfahren“ geht auch – dann bleibt die Karte „Workflows“ leer, alles andere läuft.
-4. **Alles eingerichtet** → „Zum Monitor anmelden“. Erst dieser Knopf schließt die Einrichtung ab;
-   bis dahin führt „Zurück“ noch in die vorigen Schritte.
+3. **Runner:** die Funde der Runner-Erkennung, je Fund mit Dienst (`GitHub`, `Forgejo`, `Gitea`,
+   `GitLab`, `unbekannt`), Sicherheitsgrad (sicher, wahrscheinlich, unklar), Server, Version, Einstufung und
+   aufklappbarer Begründung. Je nach Einstufung:
+   - *vollständig unterstützt* (heute GitHub): Schalter „Übernehmen“ – die Zugangsdaten folgen im nächsten
+     Schritt; aus = ignoriert.
+   - *erkannt, noch nicht unterstützt*: „Grundüberwachung“ (Dienst, Auslastung, Log, Neustarts) oder „Ignorieren“.
+   - *unbekannt*: „Zuordnen“ (Dienst, Anzeigename, systemd-Unit, Log-Pfad; leer = Journal der Unit) oder
+     „Ignorieren“. Als Log-Pfad ist nur eine `*.log`-Datei unter `/var/log`, `/opt` oder `/srv` erlaubt.
 
-![Schritt 3: GitHub verbinden](handbuch/bilder/einrichtung-3-github.png)
+   „Neu erkennen“ lässt den Sammler sofort neu suchen (höchstens alle 10 s). Ohne Fund gibt es drei Wege:
+   Runner einrichten (`sudo /opt/runner-monitor/aktuell/einrichten.sh runner`, danach „Neu erkennen“), von
+   Hand zuordnen oder „Nur VM überwachen“. Mit „Weiter“ landet die Wahl in `/etc/runner-monitor/runner.json`
+   (der Sammler schreibt sie, der Webserver darf das nicht).
+4. **Anbinden (optional):** je übernommenem Runner ein Block. Für den GitHub-Runner des Monitors wie bisher
+   Organisation und **Fine-grained Token** (siehe unten); „Verbindung prüfen“ zeigt, welche Rechte ankommen
+   (ohne eingegebenes Token prüft der Sammler das auf der VM hinterlegte), „Weiter“ prüft und speichert. Für
+   alle anderen Runner (Forgejo, Gitea, GitLab, weitere GitHub-Runner) tragen Sie Zugangsdaten **auf der VM**
+   ein – der Block zeigt den Befehl `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (E-22). Der Befehl
+   legt bisher **nur das Token** ab; Server und Organisation eines Forgejo-/Gitea-Runners gehören in
+   `/etc/runner-monitor/runner.json` (siehe „Forgejo- oder Gitea-Runner anbinden“; Abfrage im Skript folgt mit #120).
+   „Verbindung prüfen“ fragt dann über den Sammler mit genau diesen Angaben.
+   Jeder Runner lässt sich mit „Überspringen – nur Grundüberwachung“ auslassen; mit nur einem Runner heißt der
+   Knopf „Ohne Anbindung fortfahren“. Ohne übernommenen Runner geht es von Schritt 3 direkt zu 5.
+5. **Alles eingerichtet:** Zugang, Firewall und je Runner der Stand (angebunden, Grundüberwachung,
+   ignoriert) → „Zum Monitor anmelden“. Erst dieser Knopf schließt die Einrichtung ab; bis dahin führt
+   „Zurück“ noch in die vorigen Schritte. Danach nimmt die Oberfläche kein Token mehr an – auch nicht
+   angemeldet; Zugangsdaten nur noch auf der VM.
+
+Ab 390 px Breite (Telefon) zeigt der Stepper nur den aktiven Schritt, alles steht untereinander.
+
+![Schritt 3: Runner](handbuch/bilder/einrichtung-3-runner.png)
+
+![Schritt 4: Anbinden](handbuch/bilder/einrichtung-4-anbinden.png)
 
 ### GitHub-Token erstellen
 
@@ -123,8 +150,9 @@ Organisation › Settings › Personal access tokens › **Pending requests**.
 ### GitLab anbinden
 
 Gilt für einen erkannten GitLab-Runner (`gitlab-runner.service`, `config.toml`); der Adapter ist da
-([Funktionsweise](FUNKTIONSWEISE.md#gitlab-adapter-99)), die Eingabe in der Weboberfläche (Schritt
-„Anbinden“) folgt mit #96. Bis dahin legt man die Zugangsdaten auf der VM ab.
+([Funktionsweise](FUNKTIONSWEISE.md#gitlab-adapter-99)). Zugangsdaten für GitLab (und Forgejo/Gitea) nimmt
+die Weboberfläche bewusst nicht an (E-22): Sie gehören auf die VM. Bis der Sammler GitLab abfragt, erscheint
+der Runner im Schritt „Runner“ als „erkannt, noch nicht unterstützt“ mit Grundüberwachung.
 
 1. **Token erstellen:** GitLab › Gruppe (oder Projekt) › Settings › **Access tokens** › „Add new token“ –
    Rolle **Maintainer** (bei Gruppen-Runnern ggf. **Owner**), Bereich **`read_api`** (nur lesen), Ablaufdatum z. B. 90 Tage (der Monitor warnt

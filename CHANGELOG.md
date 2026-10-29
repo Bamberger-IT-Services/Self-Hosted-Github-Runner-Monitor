@@ -57,6 +57,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   `/run/runner-monitor/anbieter.json`. Die API-Prüfung steht als Tabelle „Fähigkeiten je Anbieter“ in
   `docs/FUNKTIONSWEISE.md`, die Anleitung in `docs/EINRICHTUNG.md`. Gitea ist nach der
   OpenAPI-Beschreibung umgesetzt und noch nicht an einer laufenden Instanz geprüft (#93).
+- Einrichtung im Browser in fünf Schritten (Design 0.8.0): **Code → Zugang → Runner → Anbinden → Fertig**.
+  Im Schritt „Runner“ stehen alle gefundenen Runner mit Dienst, Sicherheitsgrad, Begründung und Stand; je
+  Fund übernehmen, Grundüberwachung, zuordnen (Dienst, Anzeigename, Unit, Log-Pfad) oder ignorieren, dazu
+  „Neu erkennen“ und ohne Fund drei Wege (Runner einrichten, von Hand zuordnen, nur die VM überwachen). Die
+  Wahl speichert der Sammler in `/etc/runner-monitor/runner.json`. „Anbinden“ zeigt je übernommenem Runner
+  einen Block; der GitHub-Runner wie bisher mit Organisation und Token (mit nur einem Runner sieht der Schritt
+  aus wie in 0.7), alle anderen mit dem Befehl `einrichten.sh zugang <runner>` (E-22). „Fertig“ fasst den
+  Stand je Runner zusammen. Ab 390 px bedienbar (#96).
+- „Verbindung prüfen“ ohne eingegebenes Token prüft das auf der VM hinterlegte GitHub-Token über den
+  Sammler; bei einem angebundenen Forgejo-/Gitea-Runner (Server und Organisation in `runner.json`) ebenso (#96).
 
 ### Behoben
 - Reiter und Karte zeigen für einen Runner ohne systemd-Dienst beide „Kein Dienst“ (der Reiter zeigte
@@ -72,6 +82,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 ### Geändert
 - CI: Prüfungen laufen auch bei Pull Requests nach `develop` und bei Push auf `develop`/`main`;
   shellcheck wird bei Bedarf nachinstalliert, davor `bash -n` (#108).
+- Ein Token nimmt die Weboberfläche nur noch in der Einrichtung an (gültiger Einrichtungscode), nicht mehr
+  mit einer Anmeldung; danach nur auf der VM mit `einrichten.sh zugang <runner>` bzw. `einrichten.sh token`.
+  Aufträge der Oberfläche (auch `github-token`) liest der Sammler nur noch als reguläre Datei ohne Symlink
+  (#96, E-22, Sicherheitsbericht S-EINR-01).
 - Runner-Erkennung nachgeschärft (#109): Takt und Frist des Sammlers mit `time.monotonic()`; die
   Fehlerausgabe (stderr, höchstens 2000 Zeichen) der Erkennung landet im Journal statt in `/dev/null`;
   `einrichten.sh` ruft sie mit `timeout --foreground 60` auf (Strg+C wirkt sofort); github.com gilt
