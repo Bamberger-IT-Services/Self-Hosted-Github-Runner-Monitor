@@ -481,7 +481,7 @@ class ReviewTest(ServerBasis):
     """Nachträge aus dem Review: Forgejo-Prüfung über anbieter.json, 401-Text, Größe, Units, Einstufung."""
 
     def forgejo(self, server=True):
-        schreibe_erkennung(self.k, [fund("runner-vm-01"), fund("runner-vm-02", "forgejo", "teil", server="https://git.example.org")])
+        schreibe_erkennung(self.k, [fund("runner-vm-01"), fund("runner-vm-02", "forgejo", server="https://git.example.org")])
         self.k.zuordnung_datei.parent.mkdir(parents=True, exist_ok=True)
         eintrag = {"server": "https://git.example.org", "org": "beispiel-org"} if server else {"name": "runner-vm-02"}
         self.k.zuordnung_datei.write_text(json.dumps({"runner": {"runner-vm-02": eintrag}}))
@@ -517,6 +517,18 @@ class ReviewTest(ServerBasis):
         self.assertIn("Server und Organisation fehlen", d["ergebnisse"][0]["text"])
         self.assertFalse((self.k.auftraege_verz / einrichtung.AUFTRAG_PRUEFEN).exists())
 
+    def test_pruefen_gitlab_ohne_server(self):
+        """#126: GitLab braucht keine Organisation – ohne Server nennt die Prüfung nur den Server."""
+        schreibe_erkennung(self.k, [fund("runner-vm-01"), fund("buildagent", "gitlab", server="https://gitlab.example.org")])
+        self.code()
+        r, d = self.anfrage("GET", "/api/einrichtung/runner")
+        self.assertEqual({f["id"]: f["anbindung"] for f in d["runner"]}["buildagent"], "ohne-server")
+        r, d = self.anfrage("POST", "/api/einrichtung/runner/pruefen", {"id": "buildagent"})
+        self.assertEqual(r.status, 200)
+        self.assertEqual(d["ergebnisse"][0]["text"], "Server fehlt in /etc/runner-monitor/runner.json – siehe Anleitung zu einrichten.sh zugang.")
+        self.assertNotIn("Organisation", d["ergebnisse"][0]["text"])
+        self.assertFalse((self.k.auftraege_verz / einrichtung.AUFTRAG_PRUEFEN).exists())
+
     def test_verbindung_anbieter_fehler(self):
         for art, teil in (("kein-token", "kein Token"), ("nicht-erreichbar", "nicht erreichbar"), ("token-ungueltig", "ungültig")):
             e = einrichtung.verbindung_anbieter({"abfrage": art, "abgefragt": 1.0, "org": "o"})
@@ -525,6 +537,27 @@ class ReviewTest(ServerBasis):
         self.assertFalse(einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0}, seit=5.0)["fertig"])
         # neu angebunden (#115, E-25): noch keine Runde – „läuft“, nicht „fehlgeschlagen“
         self.assertEqual(einrichtung.verbindung_anbieter({"abfrage": "ausstehend", "abgefragt": None}), {"fertig": False, "ok": False, "ergebnisse": []})
+
+    def test_verbindung_anbieter_gitlab(self):
+        """#126: GitLab nennt den Dienst, kennt keine Organisation und keine Repository-Zahl."""
+        ok = einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0, "org": "", "repos": [],
+                                              "runner": {"zustand": "online"}}, dienst="gitlab")
+        self.assertTrue(ok["ok"])
+        texte = [z["text"] for z in ok["ergebnisse"]]
+        self.assertEqual(texte[:2], ["Server erreichbar · GitLab", "Token gültig"])
+        self.assertTrue(all("Organisation" not in t and "Repositories" not in t for t in texte))
+        self.assertIn("Runner beim Server gefunden", texte[2])
+        nicht = einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0, "org": "", "runner": {"zustand": "unbekannt"}}, dienst="gitlab")
+        self.assertTrue(nicht["ergebnisse"][2]["warn"])
+        self.assertIn("nicht gefunden oder nicht eindeutig", nicht["ergebnisse"][2]["text"])
+        self.assertNotIn("Organisations-Recht", nicht["ergebnisse"][2]["text"])
+        # keine leere Organisation in der Fehlermeldung
+        rechte = einrichtung.verbindung_anbieter({"abfrage": "keine-rechte", "abgefragt": 1.0, "org": ""}, dienst="gitlab")
+        self.assertEqual(rechte["ergebnisse"][0]["text"], "Token ohne Zugriff.")
+        # Forgejo unverändert
+        fj = einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0, "org": "beispiel-org", "art": "forgejo", "repos": [1, 2]}, dienst="forgejo")
+        self.assertEqual(fj["ergebnisse"][0]["text"], "Server erreichbar · Forgejo")
+        self.assertIn("Organisation beispiel-org gefunden, 2 Repositories", fj["ergebnisse"][1]["text"])
 
     def test_abgelaufener_code_verweist_auf_die_vm(self):
         self.code()

@@ -206,11 +206,14 @@ class ForgejoAbfrageTest(unittest.TestCase):
 
 class EinstufungTest(unittest.TestCase):
     def test_tabelle_verspricht_nie_mehr_als_ausgeliefert(self):
-        """E-23: Forgejo/Gitea ausgeliefert als Grundüberwachung bis #96/#115; die Adapter können mehr."""
+        """E-23 (#126): Forgejo „voll“ mit Jobs und Schritten; Gitea bleibt Grundüberwachung bis zur Prüfung an
+        einem echten Server. Die Tabelle verspricht nie mehr als die Adapter-Klasse."""
+        self.assertEqual(erkennung.EINSTUFUNG["forgejo"], "voll")
+        self.assertTrue(erkennung.FAEHIG["forgejo"]["jobs"] and erkennung.FAEHIG["forgejo"]["schritte"])
+        self.assertEqual(erkennung.EINSTUFUNG["gitea"], "teil")
+        self.assertFalse(erkennung.FAEHIG["gitea"]["jobs"])
+        self.assertFalse(erkennung.FAEHIG["gitea"]["schritte"])
         for dienst in ("forgejo", "gitea"):
-            self.assertEqual(erkennung.EINSTUFUNG[dienst], "teil", dienst)
-            self.assertFalse(erkennung.FAEHIG[dienst]["jobs"], dienst)
-            self.assertFalse(erkennung.FAEHIG[dienst]["schritte"], dienst)
             klasse = anbieter.klasse_fuer(dienst)
             self.assertTrue(klasse.FAEHIG["jobs"] and klasse.FAEHIG["schritte"], dienst)
             for f, wert in erkennung.FAEHIG[dienst].items():
@@ -715,7 +718,7 @@ class SammlerZustandTest(unittest.TestCase):
         fj02 = liste["runner-vm-02"]
         self.assertEqual(set(fj02), EINTRAG_SCHLUESSEL)
         self.assertEqual((fj02["server"], fj02["org"], fj02["stand"], fj02["einstufung"]),
-                         ("https://git.example.org", "beispiel-org", "angebunden", "teil"))
+                         ("https://git.example.org", "beispiel-org", "angebunden", "voll"))
         self.assertEqual(fj02["faehig"], fj.Forgejo.FAEHIG)  # von Hand angebunden: was der Adapter liefert
         self.assertEqual(fj02["status"]["zustand"], "job")
         self.assertEqual(fj02["status"]["beimDienst"], {"zustand": "online", "seit": None})

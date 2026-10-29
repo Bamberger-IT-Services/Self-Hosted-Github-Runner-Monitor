@@ -41,14 +41,16 @@ def registriere_runner(d: Path, name: str = "runner-vm-01") -> None:
 
 class FaehigkeitenTest(unittest.TestCase):
     def test_tabelle_passt_zur_erkennung(self):
-        """Die ausgelieferte Tabelle (``erkennung.FAEHIG``) verspricht nie mehr, als der Adapter kann; sie
-        darf weniger versprechen, solange der Sammler den Adapter nicht aufruft (E-20). Mit Adapter gleich: GitHub."""
+        """Die ausgelieferte Tabelle (``erkennung.FAEHIG``) verspricht nie mehr, als der Adapter kann. Seit #126
+        ist sie für GitHub, Forgejo und GitLab gleich dem Adapter; Gitea bleibt Grundüberwachung (E-23)."""
         adapter = anbieter.faehigkeiten_tabelle()
         for dienst, f in erkennung.FAEHIG.items():
             for faehigkeit, wert in f.items():
                 self.assertTrue(adapter[dienst][faehigkeit] or not wert, f"{dienst}.{faehigkeit}")
         self.assertEqual(adapter["github"], erkennung.FAEHIG["github"])
-        self.assertEqual(erkennung.FAEHIG["gitlab"]["jobs"], False)  # bis zur Anbindung im Sammler (#94)
+        for dienst in ("forgejo", "gitlab"):  # angebunden und im Sammler (#96, #115): volle Fähigkeiten (E-20, E-23)
+            self.assertEqual(adapter[dienst], erkennung.FAEHIG[dienst], dienst)
+        self.assertFalse(erkennung.FAEHIG["gitea"]["jobs"])  # Gitea erst nach Prüfung an einem echten Server
 
     def test_tabelle_vollstaendig(self):
         tabelle = anbieter.faehigkeiten_tabelle()
@@ -499,7 +501,7 @@ class RunnerListeTest(unittest.TestCase):
         self.assertEqual(gh["jobsJeRepository"], self.z.bereiche["workflows"])
         self.assertEqual(gh["letzteJobs"], [])
         # Forgejo ohne Server/Organisation in runner.json: Grundüberwachung, Server und Log nie aus dem Fund (E-18)
-        self.assertEqual((fj["status"]["zustand"], fj["server"], fj["einstufung"]), ("gestoppt", None, "teil"))
+        self.assertEqual((fj["status"]["zustand"], fj["server"], fj["einstufung"]), ("gestoppt", None, "voll"))
         self.assertEqual(fj["faehig"], {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False})
         self.assertEqual(fj["log"], {"art": "journal", "unit": "forgejo-runner.service"})
         self.assertIsNone(fj["jobsJeRepository"])

@@ -60,19 +60,18 @@ STAENDE = ("angebunden", "grund", "ignoriert", "offen")
 GEPRUEFT = ["systemd-Units", "Prozesse", ".runner-Dateien", "Server-API"]
 
 # Was der Monitor in dieser Version je Dienst liefern kann (README › „Nicht verfügbar“ ehrlich zeigen).
-# Forgejo, Gitea und GitLab sind erkannt, ausgeliefert aber als Grundüberwachung (Dienst und Journal).
-# Ihre Adapter können mehr (Forgejo/Gitea #93: Jobs und Schritte; GitLab #99: Jobs ohne Schritte); die
-# Tabelle hebt erst an, wenn die Einrichtung sie anbindet (#96); der Sammler ruft alle drei seit #115
-# regulär auf. Gitea zusätzlich erst nach Prüfung an einem echten Server (E-20, E-23). Ein von Hand in
-# runner.json angebundener Forgejo-/Gitea-/GitLab-Runner meldet in runner[] die Fähigkeiten seines Adapters.
+# Forgejo (#93: Jobs und Schritte) und GitLab (#99: Jobs ohne Schritte) gelten seit #126 als „voll“, weil
+# der Sammler ihre Adapter regulär aufruft (#115) und die Einrichtung sie anbindet (#96, #120; E-20, E-23).
+# Gitea bleibt Grundüberwachung („teil“), bis der Adapter an einem echten Server geprüft ist. Ein von Hand
+# in runner.json angebundener Gitea-Runner meldet in runner[] trotzdem die Fähigkeiten seines Adapters.
 FAEHIG = {
     "github": {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False},
-    "forgejo": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
+    "forgejo": {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False},
     "gitea": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
-    "gitlab": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
+    "gitlab": {"status": True, "jobs": True, "schritte": False, "logs": True, "updates": False},
     "unbekannt": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
 }
-EINSTUFUNG = {"github": "voll", "forgejo": "teil", "gitea": "teil", "gitlab": "teil", "unbekannt": "unbekannt"}
+EINSTUFUNG = {"github": "voll", "forgejo": "voll", "gitea": "teil", "gitlab": "voll", "unbekannt": "unbekannt"}
 EINSTUFUNGEN = ("voll", "teil", "unbekannt")  # alle erlaubten Werte (pruefe_ergebnis, #96)
 
 UNIT_VERZEICHNISSE = ("/etc/systemd/system", "/run/systemd/system", "/usr/local/lib/systemd/system",

@@ -320,8 +320,9 @@ class AdapterTest(Basis):
     def test_faehigkeiten_ehrlich(self):
         f = anbieter.faehigkeiten_tabelle()["gitlab"]
         self.assertEqual(f, {"status": True, "jobs": True, "schritte": False, "logs": True, "updates": False})
-        # ausgeliefert wird bis zur Anbindung im Sammler die Grundüberwachung (E-20)
-        self.assertEqual(erkennung.FAEHIG["gitlab"], {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False})
+        # seit #126 liefert die Tabelle, was der Adapter kann; Einstufung „voll“ (E-20)
+        self.assertEqual(erkennung.FAEHIG["gitlab"], f)
+        self.assertEqual(erkennung.EINSTUFUNG["gitlab"], "voll")
         self.assertIs(anbieter.klasse_fuer("gitlab"), gitlab.GitLab)
 
     def test_eintrag_ohne_schritte_mit_jobs(self):

@@ -272,10 +272,10 @@ class ForgejoGiteaTest(Basis):
         self.assertEqual(f["server"], "https://git.example.org")
         self.assertEqual(f["version"], "13.0 / Runner 9.1")
         self.assertEqual(f["grad"], "sicher")
-        self.assertEqual(f["einstufung"], "teil")  # bis zur Anbindung (#96/#115, E-23)
+        self.assertEqual(f["einstufung"], "voll")  # seit #126 (E-23)
         self.assertEqual(f["unit"], "forgejo-runner.service")
         self.assertIsNone(f["log"])
-        self.assertFalse(f["faehig"]["jobs"])
+        self.assertTrue(f["faehig"]["jobs"])
         self.assertTrue(f["faehig"]["logs"])
         self.assertEqual(f["merkmale"], ["systemd-Unit forgejo-runner.service", "Prozess forgejo-runner daemon",
                                          "/var/lib/forgejo-runner/.runner mit address https://git.example.org",
@@ -556,7 +556,7 @@ class ZuordnungTest(Basis):
         funde = self.erkenne(aktiv=aktiv, netz=False)
         self.assertEqual(funde["buildagent"]["stand"], "grund")
         self.assertEqual(funde["buildagent"]["dienst"], "gitlab")
-        self.assertEqual(funde["buildagent"]["einstufung"], "teil")
+        self.assertEqual(funde["buildagent"]["einstufung"], "voll")  # GitLab seit #126 (E-20)
         self.assertEqual(funde["buildagent"]["log"], "/var/log/buildagent/agent.log")
         self.assertIn("von Hand zugeordnet: GitLab", funde["buildagent"]["merkmale"])
         self.assertEqual(funde["runner-vm-02"]["stand"], "ignoriert")
