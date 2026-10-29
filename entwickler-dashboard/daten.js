@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "29.10.2026 06:56",
+  stand: "29.10.2026 19:29",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -262,6 +262,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "29.10.2026 19:29", text: "#130 umgesetzt (PR offen): Restrisiko vorgetäuschter Job-Meldungen in S-JOURNAL-01 dokumentiert, Formulierung zu _PID/_COMM in runner.py-Kommentar und Bericht korrigiert; kein Code-Verhalten geändert." },
     { datum: "29.10.2026 06:56", text: "Review PR #129 (#126) eingearbeitet, develop (#101, #119, #124) eingemergt: „Verbindung prüfen“ bei GitLab ohne Server sagt „Server fehlt …“ statt „Server und Organisation fehlen“; Hinweis im Schritt „Anbinden“ für einen weiteren GitHub-Runner wieder allgemein statt GitLab-Text; E-27 und FUNKTIONSWEISE ehrlich begründet (GitLab nach Doku und gegen nachgestellte Server getestet, Gitea nur nach OpenAPI; Unsicherheiten bleiben offene Prüfpunkte), E-27 bitte bestätigen; Design-Abgleich, Handbuch und EINRICHTUNG auf Forgejo/GitLab „voll“; Demo und Testdaten: Forgejo-Runner mit Einstufung voll. Offen: Doku-Links auf github.com (eigenes Issue)." },
     { datum: "29.10.2026 06:45", text: "#126 umgesetzt (PR offen): erkennung.FAEHIG/EINSTUFUNG für Forgejo (voll: Status, Jobs, Schritte, Logs) und GitLab (voll ohne Schritte) angehoben, Gitea bleibt teil bis zur Prüfung an einem echten Server (E-27). einrichtung.verbindung_anbieter kennt GitLab (Dienst „GitLab“, keine Organisation, Runner-Fund mit Warnung, „Token ohne Zugriff.“ ohne leere Organisation); Hinweis in web/einrichtung.js nach #120 angepasst (Befehl fragt Server, Organisation, Token ab; GitLab ohne Organisation, Link zur Anleitung), de/en. Tests in test_anbieter, test_erkennung, test_forgejo, test_gitlab, test_einrichtung_runner mitgezogen. Doku: FUNKTIONSWEISE, EINRICHTUNG, Design-Abgleich, CHANGELOG, DECISIONS. Offen: Gitea an einem echten Server prüfen; GitLab-Unsicherheiten (Rollen für /runners, project.name) bestätigen." },
     { datum: "29.10.2026 06:35", text: "#119 umgesetzt (PR offen): runner.deute_journalzeile wertet Dienst gestartet/gestoppt nur bei _COMM=systemd und _PID=1 aus (nicht mehr SYSLOG_IDENTIFIER); journal.deute reicht beides durch; Test mit gefälschter Kennung, Doku, Sicherheitsbericht S-JOURNAL-01, CHANGELOG." },

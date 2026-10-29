@@ -101,6 +101,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Jobs, der stundenlang „läuft“ (#123).
 
 ### Behoben
+- Sicherheitsbericht S-JOURNAL-01: Restrisiko dokumentiert, dass ein Job „Running job“, „completed with result“ und
+  Verbindungsmeldungen im Runner-Journal vortäuschen kann (nur Anzeige); `_PID` kommt aus Kernel-Absenderdaten,
+  `_COMM` allein ist nicht vertrauenswürdig. Kein geändertes Verhalten (#130).
 - Dienst gestartet/gestoppt erkennt der Monitor im Journal des GitHub-Runners nur noch an Meldungen von
   systemd selbst (`_COMM=systemd` und `_PID=1`), nicht mehr am `SYSLOG_IDENTIFIER`, den ein Job setzen
   kann; ein Job kann so keinen „Dienst gestoppt“ mehr vortäuschen (#119, S-JOURNAL-01).

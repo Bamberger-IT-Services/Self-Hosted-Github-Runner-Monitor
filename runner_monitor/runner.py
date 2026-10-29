@@ -176,8 +176,10 @@ def deute_journalzeile(eintrag: dict) -> JobEreignis | None:
         return JobEreignis(zeit, "start", t.group("name"))
     if (t := LAUF_ENDE.search(nachricht)):
         return JobEreignis(zeit, "ende", t.group("name"), ERGEBNIS.get(t.group("ergebnis").lower(), "abgebrochen"))
-    # Nur echte Meldungen von systemd: _COMM und _PID setzt journald selbst, SYSLOG_IDENTIFIER dagegen der
-    # Absender – ein Job könnte sonst „Dienst gestoppt“ vortäuschen (#119, S-JOURNAL-01).
+    # Nur echte Meldungen von systemd: _PID setzt journald aus den Kernel-Absenderdaten, _COMM allein ist nicht
+    # vertrauenswürdig (ein Prozess kann seinen Namen ändern); SYSLOG_IDENTIFIER setzt der Absender. Ein Job
+    # könnte sonst „Dienst gestoppt“ vortäuschen (#119, S-JOURNAL-01). Job-Meldungen (Running job, completed)
+    # lassen sich per logger/systemd-cat weiter vortäuschen: nur Anzeige, Restrisiko in S-JOURNAL-01 (#130).
     if eintrag.get("_COMM") == "systemd" and str(eintrag.get("_PID", "")) == "1":
         if nachricht.startswith("Started"):
             return JobEreignis(zeit, "dienst-gestartet")
