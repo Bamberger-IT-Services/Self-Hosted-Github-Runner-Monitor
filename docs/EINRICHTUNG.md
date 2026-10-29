@@ -1,6 +1,6 @@
 # Erstinstallation auf der VM
 
-**Stand: 29.10.2026 · Version 0.8.0**
+**Stand: 29.10.2026 · Version 0.8.1**
 
 Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 `beispiel-org` durch die eigenen Werte ersetzen.
@@ -15,7 +15,7 @@ Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 ## 1. Herunterladen und entpacken
 
 ```bash
-V=0.8.0
+V=0.8.1
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz.sha256
 sha256sum -c runner-monitor-$V.tar.gz.sha256     # muss „OK“ melden
@@ -274,7 +274,7 @@ leitet der Server z. B. von `http` auf `https` um, die `https`-Adresse eintragen
 ```bash
 sudo ./einrichten.sh status                       # Dienste und Version
 journalctl -u runner-monitor -u runner-monitor-sammler -n 30
-curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.8.0", "vm": "runner-vm"}
+curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.8.1", "vm": "runner-vm"}
 ```
 
 ## Einstellungen

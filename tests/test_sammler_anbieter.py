@@ -348,7 +348,7 @@ class GitLabImSammlerTest(Basis):
         self.k.zuordnung_datei.write_text(json.dumps({"version": 1, "runner": {"runner-vm-03": {"server": self.gl.url, "http_erlaubt": True}}}))
         s.anbieter_abfragen()
         self.assertEqual(self.datei()["runner-vm-03"]["abfrage"], "ok")
-        zugangsdaten.schreibe(self.k.zugang_verz, "runner-vm-03", "glpat-anderes-token-0000000")
+        zugangsdaten.schreibe(self.k.zugang_verz, "runner-vm-03", "test-gitlab-anderes-token")
         self.gl.antworten = {"/api/v4/personal_access_tokens/self": (401, {}), "/api/v4/runners": (401, {})}
         s.anbieter_abfragen()
         erg = self.datei()["runner-vm-03"]

@@ -4,8 +4,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.8.1] – 29.10.2026
+
 ### Behoben
-- CI „pruefen“ auf Forgejo grün (#133). Der Forgejo-Runner (act-Image) unterscheidet sich von GitHubs
+- Release-Paket auf GitHub: Der Release-Workflow brach bei 0.8.0 vor dem Paketbau ab, weil
+  `test_platte_ohne_runner` die echte Platte des Build-Rechners maß. Für 0.8.0 gibt es deshalb kein
+  Paket auf GitHub; 0.8.1 ist inhaltlich 0.8.0 plus diese Korrekturen.
+- gitleaks über die ganze Historie: Fehlalarm für ein erfundenes Test-Token (`.gitleaksignore`,
+  Testwert ohne `glpat-`-Präfix).
+- CI „pruefen“ für den Forgejo-Runner angepasst (#133; auf GitHub grün, auf Forgejo noch offen). Der Forgejo-Runner (act-Image) unterscheidet sich von GitHubs
   Rechnern: Schritte laufen als root, bash mit `pipefail`, ohne shellcheck und ohne UTF-8-Locale.
   `test_platte_ohne_runner` maß die echte Platte des Testrechners (grün nur, wenn dort < 25 GB frei
   sind) und misst jetzt nicht mehr; der Flut-Test des Journal-Folgers las `_neu` ohne Sperre und sah
