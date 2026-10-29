@@ -10,7 +10,7 @@ window.RM_DEMO = (() => {
   let INST = '0.0.0', NEU = '0.1.0';
   const naechste = (v) => { const t = v.split('.').map(Number); return `${t[0] || 0}.${(t[1] || 0) + 1}.0`; };
   let grund = '';  // ?grund=oom-kill: Ursache des gestoppten Dienstes (#68)
-  let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600, schritteLokal = false;
+  let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600, schritteLokal = false, updQuelle = 'github';
   let cpuSchnitt = 40, job = null, schrittNr = 1, zeilenImSchritt = 0, updSchritt = 0;
   const START = jetzt() - 3 * 86400 - 4 * 3600;
   const REPOS = [
@@ -70,7 +70,11 @@ window.RM_DEMO = (() => {
       ] };
     const st = upd === 'laeuft' ? { zustand: 'laeuft', schritt: Math.min(5, 1 + Math.floor(updSchritt / 4)), version: NEU, zeit: t - updSchritt }
       : upd === 'fehler' ? { zustand: 'fehler', schritt: 5, version: NEU, zeit: t - 300, meldung: 'die neue Version hat nach dem Neustart nicht geantwortet' } : {};
-    return { installiert: INST, neueste, status: st, auto: false };
+    // Update-Quelle (#138): ?quelle=forgejo zeigt Forgejo per http im LAN (Platzhalter-Adresse)
+    const quelle = updQuelle === 'forgejo'
+      ? { art: 'forgejo', name: 'Forgejo', adresse: 'http://192.0.2.10:3000', http: true, releases: 'http://192.0.2.10:3000/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases' }
+      : { art: 'github', name: 'GitHub', adresse: 'https://github.com', http: false, releases: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases' };
+    return { installiert: INST, neueste, status: st, auto: false, quelle };
   };
   const platten = () => {
     const frei = zustand === 'platte' ? 18.4 * GB : 61.2 * GB;
@@ -334,6 +338,7 @@ window.RM_DEMO = (() => {
     const p = new URLSearchParams(location.search);
     zustand = p.get('zustand') || zustand; grund = p.get('grund') || ''; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
+    if (p.get('quelle') === 'forgejo') updQuelle = 'forgejo';
     const rn = parseInt(p.get('runner'), 10); if (rn >= 1 && rn <= 5) runnerAnzahl = rn;
     if (p.get('faehig') === 'teilweise') faehigWahl = 'teilweise';
     forgejoAngebunden = p.get('forgejo') === 'angebunden';

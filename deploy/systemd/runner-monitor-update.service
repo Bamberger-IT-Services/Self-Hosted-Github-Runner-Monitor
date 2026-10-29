@@ -1,5 +1,6 @@
-# Runner-Monitor – Update-Hilfsdienst (root, ADR-0004). Lädt nur das offizielle Release,
-# prüft die SHA-256-Prüfsumme, installiert versioniert und stellt bei Fehlern die alte Version wieder her.
+# Runner-Monitor – Update-Hilfsdienst (root, ADR-0004). Lädt nur das offizielle Release von der
+# eingestellten Quelle (GitHub oder Forgejo, ADR-0007), prüft Prüfsumme und Herkunft, installiert
+# versioniert und stellt bei Fehlern die alte Version wieder her.
 [Unit]
 Description=Runner-Monitor: Update installieren
 Documentation=https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/UPDATE.md

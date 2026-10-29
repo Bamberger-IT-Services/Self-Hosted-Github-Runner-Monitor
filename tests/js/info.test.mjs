@@ -284,3 +284,17 @@ test('Texte nennen Zugangsdaten nur als Befehl: nirgends ein Token-Feld oder Tok
   const alle = JSON.stringify(INFO.anleitungen(ctx(), t));
   assert.doesNotMatch(alle, /ghp_|github_pat_|glpat-/);
 });
+
+test('Update-Quelle (#138): GitHub als Vorgabe, Forgejo mit Adresse, http als Hinweis', () => {
+  assert.deepEqual(INFO.updateQuelle(undefined, t), { name: 'GitHub', text: 'GitHub', http: false, releases: null });
+  const gh = INFO.updateQuelle({ art: 'github', adresse: 'https://github.com', http: false, releases: 'https://github.com/beispiel-org/runner-monitor/releases' }, t);
+  assert.equal(gh.text, 'GitHub');
+  assert.equal(gh.releases, 'https://github.com/beispiel-org/runner-monitor/releases');
+  const fj = INFO.updateQuelle({ art: 'forgejo', adresse: 'https://git.example.org', http: false, releases: 'https://git.example.org/beispiel-org/runner-monitor/releases' }, t);
+  assert.deepEqual(fj, { name: 'Forgejo', text: 'Forgejo · git.example.org', http: false, releases: 'https://git.example.org/beispiel-org/runner-monitor/releases' });
+  const lan = INFO.updateQuelle({ art: 'forgejo', adresse: 'http://192.0.2.10:3000', http: true }, t);
+  assert.equal(lan.text, 'Forgejo · 192.0.2.10:3000 · unverschlüsselt (http)');
+  assert.equal(lan.http, true);
+  // nur http(s)-Adressen als Link
+  assert.equal(INFO.updateQuelle({ art: 'forgejo', adresse: 'https://git.example.org', releases: 'javascript:alert(1)' }, t).releases, null);
+});

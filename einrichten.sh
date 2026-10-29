@@ -8,7 +8,8 @@
 #   sudo ./einrichten.sh token           # GitHub-Token eintragen oder erneuern
 #   sudo ./einrichten.sh zugang <runner> # Zugangsdaten eines Runners (Forgejo/Gitea/GitLab: mit Server) eintragen (ohne: Liste)
 #   sudo ./einrichten.sh runner          # GitHub-Runner auf dieser VM einrichten (--umziehen: neu anmelden)
-#   sudo ./einrichten.sh aktualisieren   # neueste Version von GitHub installieren
+#   sudo ./einrichten.sh aktualisieren   # neueste Version aus der Update-Quelle installieren
+#   sudo ./einrichten.sh quelle          # Update-Quelle wählen: GitHub (Vorgabe) oder Forgejo
 #   sudo ./einrichten.sh zurueck         # zur vorherigen Version zurück
 #   sudo ./einrichten.sh status          # Dienste und Version anzeigen
 #   sudo ./einrichten.sh entfernen       # Dienste entfernen (Daten bleiben, außer mit --alles)
@@ -512,8 +513,68 @@ aktualisieren() {
 
 zurueck() { (cd "$BASIS/aktuell" && "$PYTHON" -m runner_monitor.aktualisierer --zurueck); }
 
+# Update-Quelle (#138, ADR-0007): GitHub (Vorgabe) oder ein Forgejo-Server ohne Anmeldung. Prüfen und
+# Schreiben macht runner_monitor.quelle mit den Regeln der Konfiguration – das Skript fragt nur ab.
+quelle_helfer() { (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 "$PYTHON" -m runner_monitor.quelle "$@" 2>/dev/null); }
+
+quelle_anzeigen() {
+  local info q b
+  info="$(quelle_helfer zeige --konfig "$ETC/konfig.env")" || info=""
+  q="$(wert_aus "$info" quelle)"; b="$(wert_aus "$info" basis)"
+  if [ "$q" = forgejo ]; then printf 'Forgejo (%s)\n' "$b"; else echo "GitHub"; fi
+}
+
+quelle() {
+  local info q_alt b_alt eingabe s rc wahl ausgabe repo http=()
+  [ -f "$ETC/konfig.env" ] || fehler "Der Monitor ist noch nicht eingerichtet ($ETC/konfig.env fehlt): sudo $0"
+  info="$(quelle_helfer zeige --konfig "$ETC/konfig.env")" || info=""
+  q_alt="$(wert_aus "$info" quelle)"; b_alt="$(wert_aus "$info" basis)"
+  abschnitt "Update-Quelle"
+  hin "Bisher: $(quelle_anzeigen)"
+  [ -z "$(wert_aus "$info" fehler)" ] || hinweis "konfig.env: $(wert_aus "$info" fehler)"
+  hin "GitHub ist die Vorgabe. Forgejo nur, wenn die Releases dort ohne Anmeldung lesbar sind."
+  hin "Die Herkunft prüft der Monitor in beiden Fällen gegen die GitHub-Attestierung (docs/UPDATE.md)."
+  read -r -p "  Quelle: 1 = GitHub, 2 = Forgejo [Enter: $([ "$q_alt" = forgejo ] && echo 2 || echo 1)]: " wahl </dev/tty || fehler "Abgebrochen – nichts geändert."
+  wahl="${wahl:-$([ "$q_alt" = forgejo ] && echo 2 || echo 1)}"
+  case "$wahl" in
+    1)
+      ausgabe="$(quelle_helfer setze --konfig "$ETC/konfig.env" --quelle github)" || fehler "Nicht gespeichert – siehe oben."
+      zeilen_ausgeben "$ausgabe"
+      ;;
+    2)
+      while true; do
+        read -r -p "  Forgejo-Adresse (ohne /api/v1)${b_alt:+ [Enter: $b_alt]}: " eingabe </dev/tty || fehler "Abgebrochen – nichts geändert."
+        s="${eingabe:-$b_alt}"
+        rc=0; s="$(quelle_helfer pruefe-adresse -- "$s")" || rc=$?
+        if [ "$rc" = 0 ]; then http=(); break; fi
+        if [ "$rc" = 4 ]; then
+          hinweis "Mit http:// kann jemand im Netz Versionsangabe, Archiv und Prüfsumme austauschen."
+          hin "Schutz bleibt dann nur die GitHub-Attestierung (GitHub-CLI und Token auf der VM, besser MONITOR_UPDATE_HERKUNFT=pflicht)."
+          if frage "Trotzdem http:// erlauben (MONITOR_UPDATE_HTTP_ERLAUBT=1)?"; then http=(--http-erlaubt); break; fi
+          hin "Dann bitte die https://-Adresse angeben."
+        else
+          hinweis "${s:-Keine gültige Adresse.}"
+        fi
+      done
+      abschnitt "Forgejo prüfen"
+      repo="$(grep -E '^MONITOR_RELEASE_REPO=' "$ETC/konfig.env" 2>/dev/null | cut -d= -f2 | tr -d "\"'" || true)"
+      repo="${repo:-Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor}"
+      rc=0; ausgabe="$(cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 timeout --foreground 60 "$PYTHON" -m runner_monitor.quelle \
+        abfrage --basis "$s" "${http[@]}" --repo "$repo" 2>/dev/null)" || rc=$?
+      zeilen_ausgeben "$ausgabe"
+      if [ "$rc" != 0 ]; then frage "Forgejo antwortet nicht wie erwartet. Trotzdem speichern?" || fehler "Nichts geändert."; fi
+      ausgabe="$(quelle_helfer setze --konfig "$ETC/konfig.env" --quelle forgejo --basis "$s" "${http[@]}")" || { zeilen_ausgeben "$ausgabe"; fehler "Nicht gespeichert."; }
+      zeilen_ausgeben "$ausgabe"
+      ;;
+    *) fehler "Bitte 1 oder 2 – nichts geändert." ;;
+  esac
+  systemctl try-restart runner-monitor-sammler.service runner-monitor.service 2>/dev/null || true
+  ok "übernommen – der Sammler fragt die neue Quelle beim Start, Info › Updates zeigt sie"
+}
+
 status() {
   echo "Version: $(readlink "$BASIS/aktuell" 2>/dev/null | xargs -r basename || echo 'nicht installiert')"
+  echo "Update-Quelle: $(quelle_anzeigen)"
   systemctl --no-pager --lines=0 status runner-monitor.service runner-monitor-sammler.service runner-monitor-update.path 2>/dev/null | grep -E '●|Active:' || true
   echo "Adresse: http://$(eigene_ip):$PORT"
 }
@@ -542,8 +603,9 @@ case "${1:-installieren}" in
   runner) runner_einrichten "${2:-}" ;;
   aktualisieren) aktualisieren ;;
   zurueck) zurueck ;;
+  quelle) quelle ;;
   status) status ;;
   entfernen) entfernen "${2:-}" ;;
-  -h|--help|hilfe) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h|--help|hilfe) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) fehler "Unbekannter Befehl: $1 (Hilfe: $0 hilfe)" ;;
 esac

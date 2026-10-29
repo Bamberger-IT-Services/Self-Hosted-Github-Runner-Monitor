@@ -144,6 +144,11 @@ def neueste_version(klient: Klient, repo: str) -> dict:
         daten = klient.hole(f"/repos/{repo}/releases/latest").daten
     except GitHubFehler as fehler:
         return {"geprueft": time.time(), "fehler": str(fehler), "version": ""}
+    return deute_release(daten)
+
+
+def deute_release(daten: object) -> dict:
+    """Antwort von ``releases/latest`` auswerten – GitHub und Forgejo liefern dieselben Felder (#138)."""
     if not isinstance(daten, dict):
         return {"geprueft": time.time(), "fehler": "unerwartete Antwort", "version": ""}
     tag = daten.get("tag_name", "")
@@ -159,6 +164,7 @@ def neueste_version(klient: Klient, repo: str) -> dict:
     return {
         "geprueft": time.time(),
         "version": version,
+        "tag": tag,
         "veroeffentlicht": iso_zu_unix(daten.get("published_at")),
         "url": daten.get("html_url", ""),
         "archiv": archiv,
@@ -207,6 +213,11 @@ def aenderungen(klient: Klient, repo: str, installiert: str, neueste: str) -> li
         daten = klient.hole(f"/repos/{repo}/releases", {"per_page": 30}).daten
     except GitHubFehler:
         return []
+    return aenderungen_aus(daten, installiert, neueste)
+
+
+def aenderungen_aus(daten: object, installiert: str, neueste: str) -> list[dict]:
+    """Liste der Releases (GitHub oder Forgejo, #138) auf die Versionen nach ``installiert`` kürzen."""
     liste = []
     for rel in daten if isinstance(daten, list) else []:
         if not isinstance(rel, dict) or rel.get("draft") or rel.get("prerelease"):
