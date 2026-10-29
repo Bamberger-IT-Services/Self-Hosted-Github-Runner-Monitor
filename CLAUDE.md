@@ -22,8 +22,9 @@ Sitzungen, die Issues abarbeiten, laufen auf **Sonnet**. Vor jedem Issue nennt C
 - `architekt` (Opus, hoch): Aktualisierer und Herkunftsprüfung, `einrichten.sh` und Runner-Einrichtung, Anmeldung, Tokens, Sicherheitsbericht, Release – dazu Fehler mit unklarer Ursache und das Review größerer PRs vor dem Merge.
 Im Zweifel die höhere Stufe; nach dem zweiten Fehlversuch hochstufen, nie stillschweigend herunter.
 
-**Aufgaben** stehen als Issues in diesem Repo auf Forgejo (Anweisung 08, das GitHub-Project
-entfällt): nächstes Issue = offen, ohne `agent:`-Label und ohne `blocked`, höchste Priorität
+**Aufgaben** stehen als Issues in diesem Repo auf Forgejo (Anweisung 08) und alle im Projekt-Board
+„Roadmap“, gepflegt mit `forgejo-board.js` aus den Anweisungen (`werkzeuge/`, 08 › Projekt-Board):
+`abgleich` zu Sitzungsbeginn, nach neuen Issues und nach dem Merge, beim Start `setze … 'arbeit'`. Nächstes Issue = offen, ohne `agent:`-Label und ohne `blocked`, höchste Priorität
 zuerst; vor dem Start `agent:claude`; Branch `feature/<nr>-<kurzname>` bzw. `fix/<nr>-<kurzname>`
 von `develop`, PR nach `develop` mit `Closes #<nr>`.
 Bereichslabels: `area:monitor`, `area:einrichtung`, `area:runner`, `area:docs`.
