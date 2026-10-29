@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 29.10.2026 · Version 0.7.0 (Runner-Erkennung, Anbieter-Adapter und Einrichtung aus 0.8.0 in Arbeit)**
+**Stand: 29.10.2026 · Version 0.8.0 (in Arbeit)**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -575,6 +575,68 @@ einen Satz Bereiche für alle (Auslastung, Prozesse, Platten) und je gewähltem 
   Grundüberwachung, Gitea bereit, GitLab offline); `&gewaehlt=N` wählt Runner N (z. B. `runner=3&gewaehlt=3`
   = buildagent in Grundüberwachung), `&faehig=teilweise` lässt runner-vm-01 Jobs ohne Schritte melden.
 
+### Info & Hilfe (#97, #123, Design 0.8.0 › 4. Info & Hilfe)
+
+Das Info-Blatt ist 890 px breit (Goldener Schnitt von 1440 px) und hat innen zwei Spalten
+`minmax(0,1.618fr) minmax(0,1fr)` mit 32 px Abstand (unter 900 px eine Spalte). **Links:** Runner,
+Verbindungen, Was tun, wenn …; **rechts:** Updates, Darstellung (Modus und Sprache), Über diesen Monitor,
+Fehler gefunden oder Idee? (`web/dashboard.js`; Daten und Texte der neuen Abschnitte in `web/info.js`, reine
+Logik ohne DOM, geprüft mit `tests/js/info.test.mjs`).
+
+- **Runner:** Die Liste kommt von `GET /api/einrichtung/runner` (angemeldet, gleiche Funde wie in der
+  Einrichtung, auch ignorierte, mit Sicherheitsgrad); fällt der Abruf aus, zeigt das Blatt die Runner aus
+  `runner[]` ohne Sicherheitsgrad. Je Runner: Punkt, Name, Dienst-Plakette, Pille (`angebunden` – der Dienst
+  antwortet, `Grundüberwachung`, `noch nicht angebunden` – Adapter da, Zugangsdaten fehlen, `neu gefunden`,
+  `ignoriert`) und kv (Server, Sicherheitsgrad mit Erklärung, Unit, Letzte Erkennung). „Neu erkennen“ ruft
+  `POST /api/einrichtung/runner/erkennen` und fragt alle 2 s nach, bis `zeit` neuer ist (höchstens 90 s); IDs,
+  die vorher fehlten, erscheinen sofort in der Liste als „neu gefunden“ mit der Hinweisleiste „1 neuer Runner
+  gefunden“. „Übernehmen“ nimmt sie zur Kenntnis (es ändert sich nichts in `runner.json`) und öffnet
+  „Zugangsdaten ändern“, „Ignorieren“ schickt `stand: "ignoriert"`; „Wieder anzeigen“ schickt `stand: null` (= wie erkannt) – eine frühere Wahl `grund` geht dabei verloren.
+- **Zuordnung ändern** (Dienst, Anzeigename, systemd-Unit, Log-Pfad; Speichern/Abbrechen) und **Ignorieren /
+  Wieder anzeigen** nutzen `POST /api/einrichtung/runner/zuordnung` – nur angemeldet, `Origin` = Host (CSRF),
+  Auftrag an den Sammler, der `runner.json` schreibt (E-22). Gesendet wird nur, was sich gegenüber dem Fund
+  ändert (`INFO.formEintrag`), der Stand `grund`/`ignoriert` bleibt wie er ist; die Eingabe wird vorab wie im
+  Server geprüft (`EINR.pruefeFormular`), der Server prüft erneut (400 mit Text). **Zugangsdaten ändern** zeigt nur
+  den Befehl `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` mit „Kopieren“ und einen Link zur
+  Anleitung des Dienstes – es gibt in der Oberfläche **kein** Feld für Token, Server oder Organisation (E-18, E-22).
+- **Verbindungen** (ersetzt „GitHub-Verbindung“): je Runner mit Fähigkeit `jobs` ein Kopf (Plakette,
+  Organisation bzw. Server, Runner) und kv: Server, Organisation, Token (`hinterlegt`,
+  `nicht eingerichtet`, `ungültig oder abgelaufen`, `ohne Zugriff` – abgeleitet aus `abfrage`), Rechte (nötig) (was das Token
+  braucht, nicht was der Dienst erlaubt: GitHub Actions/Metadata/Self-hosted runners, Forgejo/Gitea `repository, organization`, GitLab
+  `read_api`), Ablauf (`tokenAblauf`, sonst „–“), Letzte/Nächste Abfrage, API-Kontingent (nur mit
+  Kopfzeilen des Dienstes, sonst „–“ bzw. „vom Server nicht gemeldet“ – nichts erfunden) und Token-Datei
+  `/etc/runner-monitor/zugang/<runner>.token`.
+- **Was tun, wenn …** ist anbieterneutral und gilt für den **gewählten Runner**: „Zugangsdaten einrichten oder
+  erneuern“ (Unterpunkte GitHub · Forgejo / Gitea · GitLab, Befehl `einrichten.sh zugang <runner>`, Prüfbefehl je
+  Dienst mit der Token-Datei), „Dienst nicht erreichbar (GitHub, Forgejo …)“ (je Dienst eigener Test und
+  Antwortcodes; bei `http://` der Hinweis auf `http_erlaubt`, E-21), „Runner offline beim Dienst“, „Runner-Dienst
+  gestoppt“ und „Runner-Logs abrufen“ mit der **Unit des gewählten Runners** (nicht mehr `actions.runner.*`;
+  ohne bekannte Unit fällt GitHub auf das Muster, andere Dienste auf einen Platzhalter zurück). Server,
+  Organisation und Unit gehen nur nach strenger Prüfung in einen Befehl ein (`INFO.serverBasis`,
+  `INFO.einheit`). Der Link „Anleitung: Zugangsdaten für {Dienst} ›“ bei „Zugangsdaten ändern“ zeigt die
+  Zugangs-Anleitung für genau diesen Runner.
+- **„Was tun?“ und Karten je Dienst (#123):** Die Meldung eines Runners (`meldungen[]` mit `dienst`) nennt seinen
+  Dienst („runner-vm-02: Forgejo nicht erreichbar“, „Kein Gitea-Token“ …) und führt zur Anleitung, die für
+  diesen Dienst gilt. Kartenfuß „Jobs je Repository“ und leerer Zustand ohne GitHub-Pfad: „{Dienst} nicht
+  erreichbar“, „Kein {Dienst}-Token eingerichtet“ mit `/etc/runner-monitor/zugang/<runner>.token`; „Runner
+  zuordnen ›“ öffnet im Info-Blatt das Formular dieses Runners.
+- **Alter des letzten guten Stands (#123):** Schlägt die Abfrage beim Dienst fehl, behält der Sammler den letzten
+  guten Stand (`jobsJeRepository.abgefragt` = letzte erfolgreiche Abfrage). Die Oberfläche zeigt das Alter:
+  der Kartenfuß „angezeigt wird der Stand von 14:02:11 (vor 12 Min.)“; nach 2 Minuten Ausfall steht in
+  „Runner-Status“ „Stand von … (vor …) – {Dienst} liefert seitdem keine neuen Daten“, nach 10 Minuten gilt der
+  Stand als **veraltet**: „Zustand unbekannt“ statt eines Jobs, der stundenlang „läuft“, und „{Dienst}:
+  unbekannt“ statt „Online bei …“ (`RUNNER.alter`, Grenzen `ALT_HINWEIS` = 120 s, `ALT_VERALTET` = 600 s;
+  nur bei Fähigkeit `jobs`, der Dienst des Runners auf der VM ist davon unabhängig).
+- **Bedienung:** Beim Öffnen liegt der Fokus im Blatt (`role="dialog"`, Tab bleibt im Blatt), Esc schließt zuerst
+  ein offenes Formular bzw. die Zugangs-Box, dann das Blatt; nach jeder Aktion kehrt der Fokus zum Auslöser
+  zurück; die Statuszeile ist eine `aria-live`-Region; mit `prefers-reduced-motion` dreht sich das Symbol nicht.
+  Tippen im Formular wird vom sekündlichen Auffrischen nicht unterbrochen.
+- **Demo:** `?demo&runner=3` zeigt die Liste (GitHub, Forgejo, unbekannter Runner); „Neu erkennen“ findet beim
+  ersten Mal einen neuen Gitea-Runner (`runner-vm-03`, bei `runner=4` oder mehr `runner-vm-05`), ignorieren und
+  zuordnen wirken im Speicher; `&forgejo=angebunden` zeigt Forgejo mit Jobs (Verbindungen),
+  `&anbieter=kein-token|nicht-erreichbar|token-ungueltig` lässt Forgejo, Gitea und GitLab mit Fehler abfragen
+  (dazu `&anbieteralter=N`, Alter des letzten guten Stands in Sekunden, Standard 900).
+
 ### Grundüberwachung und „teilweise“ (#95, Design 0.8.0 › „Nicht verfügbar“ ehrlich zeigen)
 
 Die Oberfläche richtet sich allein nach `faehig{…}` und `log` des Runners, nie nach dem Namen des Dienstes
@@ -856,5 +918,5 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/sammler.py` | root-Sammler (GitHub, Forgejo/Gitea, Docker, Releases, Aufträge) |
 | `runner_monitor/einrichtung.py` | Runner-Schritte der Einrichtung: Prüfung einer Zuordnung, Aufträge, Schreiben von `runner.json` (Sammler), Funde und Ergebnis „Verbindung prüfen“ für die Oberfläche |
 | `runner_monitor/aktualisierer.py` | root-Update-Hilfsdienst |
-| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `einrichtung-runner.js` (Wahl je Fund, Zusammenfassung, Einträge für `runner.json`), `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `runner.js` (Reiter, „+N“, gemerkte Wahl, Ansicht eines Runners nach Fähigkeiten, Log-Quelle und Journal-Ziel), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
+| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `einrichtung-runner.js` (Wahl je Fund, Zusammenfassung, Einträge für `runner.json`), `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `runner.js` (Reiter, „+N“, gemerkte Wahl, Ansicht eines Runners nach Fähigkeiten, Log-Quelle und Journal-Ziel, Alter des letzten guten Stands), `info.js` (Info-Blatt: Runner-Liste, Verbindungen, Anleitungen je Dienst mit der Unit des gewählten Runners), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
 | `einrichten.sh` | Installation, Wartung, Entfernen |

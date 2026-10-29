@@ -57,9 +57,12 @@ const RUNNER = (() => {
 
   /* Kurzzustand für Reiter und Liste: art = Farbklasse (laeuft = --brand, ok = --success, fehler = --danger,
      warn = --warning, neutral), wort = Schlüssel des Zustandstexts (der Zustand steht immer auch als Text). */
-  function zustand(r) {
+  function zustand(r, jetzt) {
     // Ohne Unit (faehig.status false) gibt es keinen Dienst: Reiter und Karte zeigen beide „Kein Dienst“ (Review #114)
     const z = r && r.faehig && r.faehig.status === false ? 'fehlt' : r && r.status && r.status.zustand;
+    // Veralteter Stand beim Dienst (#123, alter()): ein Job oder „Bereit“ ist dann nicht mehr belegt – wie die Karte „unbekannt“
+    if (jetzt != null && ['job', 'bereit', 'offline'].includes(z) && r.status && r.status.dienst && r.status.dienst.zustand === 'aktiv'
+      && r.faehig && r.faehig.jobs && alter(r.jobsJeRepository, jetzt).stufe === 'veraltet') return { art: 'neutral', wort: 'unbekannt' };
     return {
       job: { art: 'laeuft', wort: 'job' }, bereit: { art: 'ok', wort: 'bereit' },
       gestoppt: { art: 'fehler', wort: 'gestoppt' }, offline: { art: 'warn', wort: 'offline' },
@@ -123,7 +126,24 @@ const RUNNER = (() => {
     return n === 0 ? { art: 'keine', n: 0 } : { art: 'zahl', n };
   }
 
-  return { SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd,
+
+  /* Alter des letzten guten Stands (#123): Schlägt die Abfrage beim Dienst fehl, behält der Sammler den letzten
+     guten Stand – Job, „Online bei …“ und Zahlen. Kurz ist das normal (der Kartenfuß nennt die Zeit); nach 2 Min.
+     steht ein Hinweis mit dem Alter, nach 10 Min. gilt der Stand als veraltet: „Zustand unbekannt“ statt eines
+     Jobs, der stundenlang „läuft“. Ohne Abfrage (kein Token, Grundüberwachung) gibt es nichts, was veralten könnte.
+     jobs = jobsJeRepository (abgefragt = letzte erfolgreiche Abfrage), jetzt in Millisekunden. */
+  const ALT_HINWEIS = 120, ALT_VERALTET = 600;
+  const AUSFALL = ['nicht-erreichbar', 'kontingent', 'fehler', 'token-ungueltig', 'keine-rechte'];
+  function alter(jobs, jetzt = Date.now()) {
+    if (!jobs || !AUSFALL.includes(jobs.abfrage)) return { stufe: 'frisch', sekunden: 0, seit: null };
+    const seit = jobs.abgefragt ? ms(jobs.abgefragt) : NaN;
+    if (!Number.isFinite(seit)) return { stufe: 'veraltet', sekunden: null, seit: null };  // nie ein guter Stand
+    const s = Math.max(0, Math.round((jetzt - seit) / 1000));
+    return { stufe: s >= ALT_VERALTET ? 'veraltet' : s >= ALT_HINWEIS ? 'hinweis' : 'frisch', sekunden: s, seit };
+  }
+  const ms = (z) => (z == null ? NaN : (typeof z === 'number' ? (z < 1e12 ? z * 1000 : z) : Date.parse(z)));
+
+  return { ALT_HINWEIS, ALT_VERALTET, alter, SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd,
     logQuelle, journalZiel, journalUrl, logZeilen, neustarts };
 })();
 
