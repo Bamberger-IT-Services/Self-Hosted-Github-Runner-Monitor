@@ -166,8 +166,13 @@ class JobEreignis:
     ergebnis: str = ""
 
 
-def deute_journalzeile(eintrag: dict) -> JobEreignis | None:
-    """Eine Zeile aus ``journalctl -o json`` in ein Ereignis übersetzen (oder None)."""
+def deute_journalzeile(eintrag: dict, unit: str | None = None) -> JobEreignis | None:
+    """Eine Zeile aus ``journalctl -o json`` in ein Ereignis übersetzen (oder None).
+
+    ``unit`` ist die Unit des überwachten Runners: „Dienst gestartet/gestoppt“ zählt nur, wenn das Feld ``UNIT``
+    (setzt systemd, wenn es über die Unit spricht) genau dieser Unit entspricht – sonst würde das Stoppen eines
+    zweiten GitHub-Runners auf der VM beim ersten erscheinen (#131). ``None`` prüft nicht (alter Aufruf),
+    ein leerer Name ordnet nichts zu."""
     nachricht = eintrag.get("MESSAGE", "")
     if isinstance(nachricht, list):  # Nicht-UTF-8 kommt als Byte-Liste
         nachricht = bytes(nachricht).decode("utf-8", "replace")
@@ -178,7 +183,8 @@ def deute_journalzeile(eintrag: dict) -> JobEreignis | None:
         return JobEreignis(zeit, "ende", t.group("name"), ERGEBNIS.get(t.group("ergebnis").lower(), "abgebrochen"))
     # Nur echte Meldungen von systemd: _COMM und _PID setzt journald selbst, SYSLOG_IDENTIFIER dagegen der
     # Absender – ein Job könnte sonst „Dienst gestoppt“ vortäuschen (#119, S-JOURNAL-01).
-    if eintrag.get("_COMM") == "systemd" and str(eintrag.get("_PID", "")) == "1":
+    if eintrag.get("_COMM") == "systemd" and str(eintrag.get("_PID", "")) == "1" \
+            and (unit is None or (unit and eintrag.get("UNIT") == unit)):
         if nachricht.startswith("Started"):
             return JobEreignis(zeit, "dienst-gestartet")
         if nachricht.startswith(("Stopped", "Stopping")):
@@ -193,9 +199,11 @@ def deute_journalzeile(eintrag: dict) -> JobEreignis | None:
 class JournalFolger(threading.Thread):
     """Liest ``journalctl -f`` des Runners und meldet Ereignisse über ``melde``."""
 
-    def __init__(self, melde: Callable[[JobEreignis], None], rueckblick: int = 400) -> None:
+    def __init__(self, melde: Callable[[JobEreignis], None], rueckblick: int = 400,
+                 unit: Callable[[], str] | None = None) -> None:
         super().__init__(name="journal", daemon=True)
         self.melde = melde
+        self.unit = unit  # liefert die Unit des überwachten Runners (ändert sich, wenn er neu erkannt wird)
         self.rueckblick = rueckblick
 
     def run(self) -> None:  # pragma: no cover – braucht systemd
@@ -208,7 +216,7 @@ class JournalFolger(threading.Thread):
                 assert prozess.stdout is not None
                 for zeile in prozess.stdout:
                     try:
-                        ereignis = deute_journalzeile(json.loads(zeile))
+                        ereignis = deute_journalzeile(json.loads(zeile), self.unit() if self.unit else None)
                         if ereignis:
                             self.melde(ereignis)
                     except ValueError:
