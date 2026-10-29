@@ -4,6 +4,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Behoben
+- CI „pruefen“ auf Forgejo grün (#133). Der Forgejo-Runner (act-Image) unterscheidet sich von GitHubs
+  Rechnern: Schritte laufen als root, bash mit `pipefail`, ohne shellcheck und ohne UTF-8-Locale.
+  `test_platte_ohne_runner` maß die echte Platte des Testrechners (grün nur, wenn dort < 25 GB frei
+  sind) und misst jetzt nicht mehr; der Flut-Test des Journal-Folgers las `_neu` ohne Sperre und sah
+  sporadisch 201 statt höchstens 200 Zeilen (Grenze im Programm unverändert); shellcheck wird als
+  root ohne sudo aus dem Ubuntu-Archiv installiert, läuft mit `C.UTF-8`, und die gewollten deutschen
+  Anführungszeichen in `einrichten.sh` sind von SC1111 ausgenommen; „Paket baut“ bricht nicht mehr
+  an `tar … | head` (SIGPIPE unter `pipefail`) ab und prüft zusätzlich die SHA-256-Prüfsumme.
+
 ## [0.8.0] – 29.10.2026
 
 ### Neu

@@ -554,6 +554,9 @@ class RunnerListeTest(unittest.TestCase):
         self.assertNotIn("buildagent", [m["runner"] for m in meldungen])
 
     def test_platte_ohne_runner(self):
+        # Ohne echte Messung: unter Linux überschreibt Takt 0 sonst „platten“ mit der Platte des Testrechners
+        # (Meldung nur, wenn dort zufällig < 25 GB frei sind – auf GitHub-Rechnern ja, auf dem Forgejo-Runner nicht, #133).
+        self.z.messer = None
         self.z.bereiche["platten"] = [{"pfad": "/", "gesamt": 100, "frei": 5, "belegt": 95, "schwelleFrei": 25}]
         _, _, meldungen = self.takt()
         platte = [m for m in meldungen if m["id"] == "platte"]

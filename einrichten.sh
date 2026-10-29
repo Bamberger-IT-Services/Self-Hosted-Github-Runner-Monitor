@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1111  # „…“ in den Texten sind gewollte deutsche Anführungszeichen, keine Shell-Quotes (#133)
 # Runner-Monitor einrichten, warten und entfernen (Ubuntu 22.04/24.04, als root).
 #
 #   sudo ./einrichten.sh                 # installieren oder auf diese Version aktualisieren
