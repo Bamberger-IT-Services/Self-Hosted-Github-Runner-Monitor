@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 29.10.2026 · Version 0.7.0 (Runner-Erkennung aus 0.8.0 in Arbeit)**
+**Stand: 29.10.2026 · Version 0.7.0 (Runner-Erkennung und Anbieter-Adapter aus 0.8.0 in Arbeit)**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -19,7 +19,7 @@ flowchart LR
     U["runner-monitor-update<br/>(root, bei Bedarf)"]
     RUN[("/run/runner-monitor<br/>github.json · docker.json · release.json")]
     VAR[("/var/lib/runner-monitor<br/>zugang · sitzungen · einstellungen<br/>auftraege/ · update-status.json")]
-    TOK[("/etc/runner-monitor/github-token<br/>nur root")]
+    TOK[("/etc/runner-monitor/zugang/&lt;runner&gt;.token<br/>(Rückfall github-token) · nur root")]
     R -- "Job-Start/-Ende" --> J
     R -- "_diag/pages/*.log<br/>Ausgabe je Schritt" --> M
     J --> M
@@ -94,8 +94,9 @@ dann nach `/run/runner-monitor/erkennung.json` geschrieben (0644, ohne Geheimnis
 laufen mit `time.monotonic()`, die Fehlerausgabe (höchstens 2000 Zeichen) geht ins Journal; ein
 abgebrochener oder ungültiger Lauf lässt die alte Datei stehen. `einrichten.sh` zeigt dieselbe
 Erkennung in „System prüfen“ › „Runner auf dieser VM“ (`timeout --foreground 60 python3 -m
-runner_monitor.erkennung --text`, Rückgabe 3 = kein Runner). Das Dashboard zeigt bis zu den
-Anbieter-Adaptern (#92, #93, #99) weiter nur den GitHub-Runner wie bisher.
+runner_monitor.erkennung --text`, Rückgabe 3 = kein Runner). Seit den Anbieter-Adaptern (#92) stehen
+alle nicht ignorierten Funde in `runner[]` (siehe „Anbieter-Adapter“); die Oberfläche zeigt bis #94
+weiter nur den GitHub-Runner wie bisher.
 
 | Quelle | Was gelesen wird | Merkmal (Beispiel) |
 |---|---|---|
@@ -181,6 +182,139 @@ Quelle beenden die Erkennung nie.
 `systemctl` über D-Bus, `journalctl` über `/var/log/journal` brauchen keine Geräte) – ist aber nicht
 gesetzt, weil es auf einer echten VM noch nicht erprobt ist; Vorschlag für ein eigenes Issue.
 
+## Anbieter-Adapter (seit Design 0.8.0, #92)
+
+Status, Jobs, Schritte und Logs kommen über eine gemeinsame Schnittstelle, egal welcher Dienst
+dahintersteht ([ADR-0006](adr/0006-anbieter-adapter-und-zustand.md), E-19). Paket
+`runner_monitor/anbieter/`:
+
+| Datei | Inhalt |
+|---|---|
+| `__init__.py` | Basisklasse `Anbieter` (zugleich Grundüberwachung), `RunnerKonfig`, Registry (`registriere`, `klasse_fuer`, `faehigkeiten_tabelle`) |
+| `github.py` | GitHub-Adapter: Abfrage einer Runde (bisher `github.abfrage`), Jobs je Repository, aktueller Job mit Schritten, Online-Status, Log-Quelle `_diag/pages` |
+| `token.py` | Zugangsdaten je Runner, Übernahme des alten Tokens, Kommandozeile für `einrichten.sh` |
+
+Schnittstelle je Runner: `faehig()`, `abfrage(speicher, …)` (nur im Sammler, root, mit Token),
+`dienst_status()`, `beim_dienst()`, `jobs_je_repository()`, `api_job()`, `log_quelle()` und
+`eintrag()` (ein Eintrag in `runner[]`). Ein Dienst ohne eigenen Adapter bekommt die
+**Grundüberwachung** (Dienst über systemd, Journal). `runner_monitor/github.py` bleibt der
+REST-Klient (auch für Releases und die Prüfung in der Einrichtung) und reicht die alten Namen
+(`github.abfrage`, `job_fuer_runner` …) an den Adapter weiter, bis das Altformat entfällt.
+
+**Fähigkeiten je Dienst** (diese Version; Test: muss zu `erkennung.FAEHIG` passen):
+
+| Dienst | Adapter | status | jobs | schritte | logs | updates |
+|---|---|---|---|---|---|---|
+| GitHub | `GitHub` | ✓ | ✓ | ✓ | ✓ | – |
+| Forgejo, Gitea | Grundüberwachung (bis #93) | ✓ | – | – | ✓ | – |
+| GitLab | Grundüberwachung (bis #99) | ✓ | – | – | ✓ | – |
+| unbekannt | Grundüberwachung | ✓ | – | – | ✓ | – |
+
+Ohne Unit gibt es weder `status` noch `logs` (außer beim GitHub-Runner aus `MONITOR_RUNNER_VERZ`,
+dessen Status wie bisher „fehlt“ zeigt und dessen Live-Log aus `_diag/pages` kommt). Weitere
+GitHub-Runner neben dem aus `MONITOR_RUNNER_VERZ` laufen bis #94 in der Grundüberwachung.
+
+**Woher ein Adapter seine Werte nimmt (E-18):** Server, Organisation, Log-Pfad und Token-Datei nur
+aus der Konfiguration – GitHub: Server fest `https://github.com`, Organisation aus
+`einstellungen.json` bzw. `MONITOR_ORG`, Token aus `zugang/<id>.token` (Rückfall `github-token`);
+Log-Datei anderer Runner nur aus `/etc/runner-monitor/runner.json`, sonst Journal der Unit. Vom Fund
+der Erkennung kommen nur ID, Anzeigename, Unit (geprüft), Version, Einstufung und Stand – zum
+Anzeigen, nie als Ziel einer Anfrage. Der Monitor prüft `erkennung.json` beim Lesen noch einmal
+(`erkennung.pruefe_ergebnis`), nimmt höchstens 20 Runner auf und fragt den Dienststatus von Runnern in
+Grundüberwachung höchstens alle 10 s ab.
+
+### Momentaufnahme `GET /api/zustand` (E-19, additiv)
+
+Nur angemeldet (sonst 401 bzw. Weiterleitung zur Einrichtung), `no-store`. Bis 0.7 gab es die
+Momentaufnahme nur als ersten Schwall von `/events`; jetzt auch als ein JSON-Objekt:
+
+```json
+{ "format": 2,
+  "status": { … wie bisher … }, "system": { …, "verlauf": {…} }, "prozesse": […], "platten": […],
+  "container": […], "workflows": { … wie bisher … }, "update": { … },
+  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.7.0",
+          "auslastung": { …Bereich system… }, "verlauf": { "cpu": [], "ram": [], "netz": [], "start": 0 },
+          "prozesse": […], "platten": […], "container": […] },
+  "runner": [ …Einträge… ],
+  "meldungen": [ …Meldungen… ] }
+```
+
+Die bisherigen Bereiche bleiben **unverändert**, die Oberfläche nutzt sie weiter, bis #94 sie auf
+`vm`/`runner[]`/`meldungen[]` umstellt; danach kann das Altformat in einem eigenen Issue entfallen.
+Das Live-Log bleibt allein in `/events`. Über `/events` kommen zusätzlich die Ereignisse `runner`
+(die Liste) und `meldungen`, nur wenn sie sich ändern; `vm` gibt es nur in `/api/zustand`, weil
+`system`, `prozesse`, `platten` und `container` schon einzeln kommen.
+
+Ein Eintrag in `runner[]`:
+
+```json
+{ "id": "runner-vm-01", "name": "runner-vm-01", "dienst": "github", "server": "https://github.com",
+  "org": "beispiel-org", "unit": "actions.runner.beispiel-org.runner-vm-01.service",
+  "stand": "angebunden", "einstufung": "voll", "version": "2.338.1", "labels": ["self-hosted", "linux"],
+  "faehig": { "status": true, "jobs": true, "schritte": true, "logs": true, "updates": false },
+  "status": { "zustand": "job",
+              "dienst": { "zustand": "aktiv", "seit": 1761700000, "grund": null },
+              "beimDienst": { "zustand": "online", "seit": null } },
+  "job": { "repo": "web-portal", "workflow": "CI", "name": "test", "start": 1761700100,
+           "schritt": { "nr": 3, "von": 8, "name": "Abhängigkeiten" }, "schritte": ["…"] },
+  "letzteJobs": [ { "name": "build", "ergebnis": "erfolg", "dauer": 274, "ende": 1761699000, "repo": "api-dienst", "workflow": "CI" } ],
+  "jobsJeRepository": { …wie der Bereich workflows… },
+  "log": { "art": "seiten", "pfad": "/opt/actions-runner/_diag/pages", "unit": "…" } }
+```
+
+- `status.zustand`: `job|bereit|offline|gestoppt|fehlt` (mit Jobs), `aktiv|gestoppt|fehlt`
+  (Grundüberwachung: „Dienst aktiv“), `unbekannt` (ohne Fähigkeit `status`). `beimDienst` ist `null`
+  ohne Anbindung.
+- `job` und `letzteJobs` sind `null` ohne Fähigkeit `jobs`; `job.schritt` ist `{nr, von|null, name}`,
+  `von` ist `null`, solange der Dienst keine Schrittliste geliefert hat, und `job.schritt` ist `null`
+  ohne Fähigkeit `schritte` („Schritte nicht verfügbar“).
+- `jobsJeRepository` ist `null` ohne Fähigkeit `jobs`; `log` ist `null` ohne Fähigkeit `logs`, sonst
+  `{art: seiten, pfad, unit}` (GitHub, mit Schritt-Trennern), `{art: journal, unit}` oder
+  `{art: datei, pfad}` (nur aus `runner.json`).
+- `stand`, `einstufung`, `version` kommen aus der Erkennung; ist der GitHub-Runner noch nicht erkannt,
+  gilt `angebunden`, sobald ein Token da ist, sonst `offen`. Ignorierte Funde fehlen.
+
+Eine Meldung in `meldungen[]` (Texte entstehen wie bisher im Browser, hier nur Art und Werte; nach
+Schwere `fehler` → `warn` → `neutral` sortiert):
+
+```json
+{ "id": "gestoppt", "stufe": "fehler", "runner": "runner-vm-02", "dienst": "forgejo",
+  "daten": { "seit": 1761700000, "grund": "oom-kill" } }
+```
+
+| `id` | Stufe | Wann | `daten` |
+|---|---|---|---|
+| `gestoppt` | fehler | Dienst des Runners gestoppt | `seit`, `grund` |
+| `fehlt` | warn | kein Runner (`runner: null`) oder Dienst des Runners fehlt | – |
+| `offline` | fehler | Dienst aktiv, beim Dienst offline | `seit` |
+| `abfrage` | warn | Dienst nicht erreichbar, Kontingent erschöpft, Fehler | `abfrage`, `abgefragt`, `naechste` |
+| `token` | fehler / neutral / warn | Token ungültig oder ohne Rechte / kein Token / läuft in ≤ 14 Tagen ab | `abfrage` bzw. `tokenAblauf` |
+| `platte` | warn | `/` unter der Schwelle (`runner: null`) | `pfad`, `frei`, `schwelleFrei` |
+
+Meldungen zur Verbindung und zu Updates des Monitors bleiben bis #94 allein im Browser.
+
+### Zugangsdaten je Runner und Übernahme des Tokens (E-19)
+
+| Pfad | Besitzer, Rechte | Inhalt |
+|---|---|---|
+| `/etc/runner-monitor/zugang/` | root:root, 0700 | ein Token je Runner, Dateiname `<id>.token` (ID aus der Erkennung: `a-z 0-9 . _ -`, höchstens 64 Zeichen) |
+| `/etc/runner-monitor/zugang/<id>.token` | root, 0600 | Token; nur der Sammler liest es (regulär, ohne Symlink, höchstens 4 KB) |
+| `/etc/runner-monitor/github-token` | root, 0600 | bisheriger Ort, bleibt als **Rückfall** bis #94/#96 |
+
+- **Übernahme:** Beim ersten Start des Sammlers nach dem Update (und bei `einrichten.sh`) wird das
+  bestehende GitHub-Token einmal nach `zugang/<id>.token` **kopiert**, nie überschrieben; `<id>` ist
+  die ID des GitHub-Runners aus `MONITOR_RUNNER_VERZ/.runner` (`agentName`, wie die Erkennung sie
+  bildet). Gibt es noch keinen registrierten Runner, versucht es der Sammler im nächsten Takt.
+- **Lesen:** zuerst `zugang/<id>.token`, sonst der alte Ort.
+- **Erneuern:** `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (ohne Angabe: Liste
+  der erkannten Runner); beim GitHub-Runner schreibt es auch den alten Ort. Die alten Wege
+  (Einrichtung im Browser, `einrichten.sh token`) schreiben ebenfalls beide Orte – sonst gälte eine
+  ältere Kopie weiter. Ältere Versionen (`einrichten.sh zurueck`) und der Update-Hilfsdienst
+  (`gh attestation verify`) lesen nur den alten Ort.
+- Im Dashboard lassen sich Zugangsdaten weder ansehen noch ändern (nur auf der VM, Design › Info ›
+  „Zugangsdaten ändern“); nur die Ersteinrichtung im Browser legt wie bisher das GitHub-Token als
+  Auftrag für den Sammler ab. Tokens landen nie in `/run/runner-monitor`, `/api/zustand` oder `/events`.
+
 ## Vom Server in den Browser
 
 Der Browser öffnet nach der Anmeldung **eine** Verbindung `GET /events` (Server-Sent Events).
@@ -197,6 +331,8 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | `update` | `installiert`, `neueste{version, veroeffentlicht, notizen[], aenderungen[{version, url, neu[], einmalig}], …}` (`aenderungen`: alle Releases nach der installierten bis zur neuesten, aus den Abschnitten „Was ist neu“ und „Einmalig nach dem Update“ der Release-Notiz), `status{zustand: laeuft\|fehler\|erfolg, schritt, meldung}`, `auto` |
 | `container` | `[{name, image, zustand, seit}]` |
 | `log` | `neu` (Ansicht leeren), `ereignisse[{art, zeit, repo, workflow, name, ergebnis, dauer}]`, `zeilen[{art: zeile\|schritt, zeit, text \| nr, von, name}]` (gebündelt, bis 1500 je Nachricht) |
+| `runner` | seit #92: Liste der Runner wie `runner[]` in `/api/zustand` (siehe „Anbieter-Adapter“), nur bei Änderung; die Oberfläche nutzt sie ab #94 |
+| `meldungen` | seit #92: Liste wie `meldungen[]` in `/api/zustand`, nur bei Änderung |
 
 Zeiten sind Unix-Sekunden. Alle 15 s kommt ein Kommentar `: lebt`, damit Proxys die Verbindung
 offen lassen. Nach 5 s ohne Daten zeigt der Browser „Getrennt“ und den letzten Stand; nach 10 s
@@ -230,7 +366,8 @@ zählt eins weiter. `dashboard.js` gruppiert also nicht mehr vom Listenende aus:
 x = 100 % („jetzt“), die Kurve wandert je Sekunde um eine Messung nach links, und nur der rechte Rand
 ändert sich. CPU und RAM zeigen den Mittelwert je Eimer, das Netz das Maximum (Spitzen bleiben
 sichtbar). Die Netz-Skala richtet sich nach der Spitze im gewählten Zeitraum, mindestens 64 KB/s.
-Der Server schickt weiter 600 Sekundenwerte; `/api/zustand` und `verlauf.json` bleiben unverändert.
+Der Server schickt weiter 600 Sekundenwerte; der Verlauf in der Momentaufnahme und `verlauf.json`
+bleiben unverändert.
 
 **Höchstens 6 Live-Verbindungen je Sitzung:** Ein weiteres Fenster derselben Anmeldung bekommt 429 und
 versucht es mit wachsender Wartezeit erneut; sobald ein anderes Fenster zu ist, verbindet es sich.
@@ -302,7 +439,8 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `/opt/runner-monitor/versionen/X.Y.Z/` | root, 0755 | Programm je Version |
 | `/opt/runner-monitor/aktuell` | root | Verweis auf die laufende Version |
 | `/etc/runner-monitor/konfig.env` | root:runner-monitor, 0640 | Einstellungen ([Vorlage](../deploy/konfig.env.example)) |
-| `/etc/runner-monitor/github-token` | root, 0600 | GitHub-Token (nur der Sammler liest es) |
+| `/etc/runner-monitor/zugang/` | root:root, 0700 (Dateien `<runner>.token` 0600) | Zugangsdaten je Runner (#92, nur der Sammler liest sie; siehe „Anbieter-Adapter“) |
+| `/etc/runner-monitor/github-token` | root, 0600 | bisheriger Ort des GitHub-Tokens, Rückfall bis #94/#96 (Update-Hilfsdienst und ältere Versionen lesen nur ihn) |
 | `/etc/runner-monitor/runner.json` | root:runner-monitor, 0640 | Zuordnung und Ignorieren erkannter Runner (siehe „Runner erkennen“) |
 | `/var/lib/runner-monitor/` | runner-monitor, 0750 | `zugang.json` (scrypt-Hash), `sitzungen.json`, `sperren.json`, `einstellungen.json` (Organisation, Auto-Update), `einrichtungscode.json`, `systempruefung.json`, `update-status.json`, `verlauf.json` (Verlauf der letzten 10 Min., alle 10 s gesichert), `auftraege/` |
 | `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner) – Ergebnisse des Sammlers |
@@ -314,7 +452,7 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 - Kein HTTPS von sich aus – gedacht für das lokale Netz. Wer von außen zugreifen will, setzt
   einen Reverse-Proxy mit TLS davor ([Sicherheitsbericht](sicherheit/bericht.md), S-01).
 - Ein Runner je VM im Dashboard (der erste gefundene `actions.runner.*`-Dienst). Die Erkennung findet
-  schon alle Runner; mehrere im Dashboard kommen mit #94.
+  schon alle Runner, `/api/zustand` liefert sie in `runner[]`; mehrere im Dashboard kommen mit #94.
 
 ## Quellcode
 
@@ -325,9 +463,10 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/system.py` | Messungen aus `/proc` |
 | `runner_monitor/runner.py` | Runner-Registrierung, Dienststatus, Journal- und Schritt-Logs |
 | `runner_monitor/erkennung.py` | Erkennung aller Runner auf der VM (Units, Prozesse, Registrierungen, Server-Probe), Zuordnung aus `runner.json`, Ausgabe für `einrichten.sh` |
-| `runner_monitor/github.py` | GitHub-API: Läufe, Jobs, Runner, Releases |
-| `runner_monitor/zustand.py` | Gesamtstand, Verlauf, Verteilung an alle Browserfenster |
-| `runner_monitor/server.py` | HTTP, Anmeldung, Einrichtung, SSE |
+| `runner_monitor/github.py` | GitHub-REST-Klient (ETag, Fehlerarten), Releases, Versionen; alte Namen der Runner-Auswertung leiten an den Adapter weiter |
+| `runner_monitor/anbieter/` | Anbieter-Adapter: Basisklasse, Grundüberwachung, Registry und Fähigkeiten (`__init__.py`), GitHub-Adapter (`github.py`), Zugangsdaten je Runner und Token-Übernahme (`token.py`) |
+| `runner_monitor/zustand.py` | Gesamtstand, Verlauf, `runner[]` und `meldungen[]`, Momentaufnahme, Verteilung an alle Browserfenster |
+| `runner_monitor/server.py` | HTTP, Anmeldung, Einrichtung, SSE, `GET /api/zustand` |
 | `runner_monitor/zugang.py` | Passwörter, Sitzungen, Sperren, Einrichtungscode |
 | `runner_monitor/sammler.py` | root-Sammler (GitHub, Docker, Releases, Aufträge) |
 | `runner_monitor/aktualisierer.py` | root-Update-Hilfsdienst |

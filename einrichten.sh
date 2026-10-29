@@ -5,6 +5,7 @@
 #   sudo ./einrichten.sh code            # neuen Einrichtungscode anzeigen (60 Min. gültig)
 #   sudo ./einrichten.sh passwort        # Zugang zurücksetzen – danach neu im Browser anlegen
 #   sudo ./einrichten.sh token           # GitHub-Token eintragen oder erneuern
+#   sudo ./einrichten.sh zugang <runner> # Zugangsdaten eines Runners eintragen oder erneuern (ohne: Liste)
 #   sudo ./einrichten.sh runner          # GitHub-Runner auf dieser VM einrichten (--umziehen: neu anmelden)
 #   sudo ./einrichten.sh aktualisieren   # neueste Version von GitHub installieren
 #   sudo ./einrichten.sh zurueck         # zur vorherigen Version zurück
@@ -170,6 +171,7 @@ installieren() {
   ok "Leserechte: Systemprotokoll, Docker-Status, Runner-Logs"
   alte_ansicht_entfernen
   installiere_dateien
+  token_uebernehmen
   install -m 644 "$QUELLE"/deploy/systemd/runner-monitor*.service "$QUELLE"/deploy/systemd/runner-monitor-update.path "$SYSTEMD/"
   systemctl daemon-reload
   systemctl enable runner-monitor-sammler.service runner-monitor.service runner-monitor-update.path >/dev/null
@@ -206,7 +208,7 @@ installieren() {
 }
 
 token() {
-  local t org neu
+  local t org neu rid
   echo "Fine-grained Token mit Read-only für Actions und Metadata (optional: Self-hosted runners)."
   echo "Erstellen: github.com › Settings › Developer settings › Fine-grained tokens (Resource owner: die Organisation)"
   read -r -s -p "  Token (Eingabe bleibt unsichtbar): " t </dev/tty; echo
@@ -214,6 +216,9 @@ token() {
   install -d -o root -g "$NUTZER" -m 750 "$ETC"
   (umask 077; printf '%s\n' "$t" > "$ETC/github-token.neu"); mv "$ETC/github-token.neu" "$ETC/github-token"
   ok "gespeichert in $ETC/github-token (nur root)"
+  # Auch je Runner ablegen (#92, E-19), sonst gälte eine ältere Kopie in zugang/ weiter.
+  rid="$(token_helfer kopiere --ueberschreiben --alt "$ETC/github-token" --verz "$ETC/zugang" --runner-verz "$RUNNER_VERZ")" || true
+  if [ -n "$rid" ]; then ok "auch in $ETC/zugang/$rid.token (je Runner, nur root)"; fi
   # Organisation immer anbieten. Die Einstellung aus dem Browser hat Vorrang vor konfig.env,
   # deshalb beide Stellen lesen und beide schreiben (sonst fehlt sie nach „Überspringen“).
   org="$("$PYTHON" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("org",""))' "$DATEN/einstellungen.json" 2>/dev/null || true)"
@@ -242,6 +247,54 @@ os.replace(pfad + ".neu", pfad)' "$DATEN/einstellungen.json" "$neu"
   ok "Organisation: $neu"
   systemctl restart runner-monitor-sammler.service runner-monitor.service
   ok "übernommen – die Workflows erscheinen in spätestens 30 s"
+}
+
+# Zugangsdaten je Runner (#92, E-19): $ETC/zugang/<runner>.token, Verzeichnis root 0700, Datei 0600 –
+# nur der Sammler (root) liest sie, nie über die Weboberfläche. Beim GitHub-Runner wird auch der alte
+# Ort $ETC/github-token geschrieben (Rückfall für ältere Versionen und den Update-Hilfsdienst, bis #94/#96).
+token_helfer() { (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 "$PYTHON" -m runner_monitor.anbieter.token "$@" 2>/dev/null); }
+
+# Bisheriges GitHub-Token einmal je Runner ablegen – Kopie, der alte Ort bleibt (der Sammler tut das
+# beim Start ebenso; hier steht es sichtbar in der Ausgabe).
+token_uebernehmen() {
+  local rid
+  [ -s "$ETC/github-token" ] || return 0
+  rid="$(token_helfer kopiere --alt "$ETC/github-token" --verz "$ETC/zugang" --runner-verz "$RUNNER_VERZ")" || true
+  if [ -n "$rid" ]; then ok "GitHub-Token übernommen nach $ETC/zugang/$rid.token (alter Ort bleibt)"; fi
+}
+
+zugang() {
+  local id="${1:-}" t gid
+  if [ -z "$id" ]; then
+    echo "Aufruf: sudo $0 zugang <runner>"
+    echo "Erkannte Runner (ID, Dienst, Name):"
+    token_helfer liste --erkennung /run/runner-monitor/erkennung.json || hin "noch keine Erkennung – der Sammler sucht beim Start und alle 6 Stunden"
+    exit 1
+  fi
+  [[ "$id" =~ ^[a-z0-9_]([a-z0-9._-]{0,62}[a-z0-9_])?$ ]] || fehler "Ungültige Runner-ID: $id (Liste: sudo $0 zugang)"
+  gid="$(token_helfer github-id --runner-verz "$RUNNER_VERZ")" || true
+  if [ "$id" = "$gid" ]; then
+    echo "GitHub: Fine-grained Token mit Read-only für Actions und Metadata (optional: Self-hosted runners)."
+  else
+    echo "Token mit Leserechten beim Dienst dieses Runners."
+    hin "Genutzt, sobald der Monitor diesen Dienst abfragen kann (Forgejo/Gitea #93, GitLab #99)."
+  fi
+  read -r -s -p "  Token für $id (Eingabe bleibt unsichtbar): " t </dev/tty; echo
+  if [ "$id" = "$gid" ]; then
+    [[ "$t" =~ ^[A-Za-z0-9_]{20,255}$ ]] || fehler "Das sieht nicht wie ein GitHub-Token aus."
+  else
+    [[ "$t" =~ ^[A-Za-z0-9._~+/=-]{16,512}$ ]] || fehler "Das Token ist zu kurz oder enthält ungültige Zeichen."
+  fi
+  install -d -o root -g "$NUTZER" -m 750 "$ETC"
+  install -d -o root -g root -m 700 "$ETC/zugang"
+  (umask 077; printf '%s\n' "$t" > "$ETC/zugang/$id.token.neu"); mv "$ETC/zugang/$id.token.neu" "$ETC/zugang/$id.token"
+  ok "gespeichert in $ETC/zugang/$id.token (nur root)"
+  if [ "$id" = "$gid" ]; then
+    (umask 077; printf '%s\n' "$t" > "$ETC/github-token.neu"); mv "$ETC/github-token.neu" "$ETC/github-token"
+    ok "auch in $ETC/github-token (Rückfall für ältere Versionen und Updates)"
+  fi
+  systemctl try-restart runner-monitor-sammler.service 2>/dev/null || true
+  ok "übernommen – der Sammler fragt in spätestens 30 s neu ab"
 }
 
 runner_einrichten() {
@@ -313,11 +366,12 @@ case "${1:-installieren}" in
   code) neuer_code ;;
   passwort) passwort ;;
   token) token ;;
+  zugang) zugang "${2:-}" ;;
   runner) runner_einrichten "${2:-}" ;;
   aktualisieren) aktualisieren ;;
   zurueck) zurueck ;;
   status) status ;;
   entfernen) entfernen "${2:-}" ;;
-  -h|--help|hilfe) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h|--help|hilfe) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) fehler "Unbekannter Befehl: $1 (Hilfe: $0 hilfe)" ;;
 esac

@@ -1,6 +1,6 @@
 # Sicherheitsbericht
 
-**Stand: 29.10.2026 · Version 0.7.0** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
+**Stand: 29.10.2026 · Version 0.7.0 (0.8.0 in Arbeit)** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
 
 Einsatzrahmen: ein Monitor im **lokalen Netz** einer Runner-VM, ein Zugang, nur lesend.
 Erreichbar über HTTP auf Port 8090, die Firewall-Regel des Einrichtungsskripts lässt nur das
@@ -20,6 +20,7 @@ eigene Netz zu.
 | S-HTTP-01 | Wurde ein POST vor dem Lesen des Körpers abgelehnt (Herkunft, Inhaltstyp, Größe), blieb der Körper in der Verbindung und wurde als nächste Anfrage gelesen; Fehlerseiten der Standardbibliothek (kaputte Anfragezeile, unbekannte Methode) kamen ohne Sicherheits-Kopfzeilen | niedrig | behoben: Verbindung wird dann geschlossen (`Connection: close`), alle Fehler als JSON mit CSP und den übrigen Kopfzeilen (Issue #20) | 23.10.2026 |
 | S-DOS-01 | Ein angemeldeter Browser konnte beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | behoben: höchstens 6 Live-Verbindungen je Sitzung, weitere bekommen 429 (Issue #19); hängende Verbindungen enden nach 60 s, übergelaufene Warteschlangen beenden den Strom (seit 0.3.1) | 23.10.2026 |
 | S-ERK-01 | Runner-Erkennung (#91) läuft als root und wertet Unit-Dateien, `/proc` und `.runner`-Dateien aus – auch solche, die ein Benutzer der VM anlegen kann (`/home/*`). Ohne Schutz könnte er so eine Server-Abfrage des Sammlers an eine Adresse seiner Wahl auslösen, den Sammler mit einem langsamen Server oder DNS aufhalten, über Symlinks root-Dateien lesen lassen oder mit einem nachgemachten Fund die ID und Zuordnung eines echten Runners übernehmen | niedrig | behandelt (Review #107): nichts aus einem Fund wird ausgeführt; keinem Symlink gefolgt außer bei Unit-Dateien, `lstat` vor dem Öffnen, `O_NOFOLLOW`/`O_NONBLOCK`/`O_NOCTTY`, Größengrenzen; Tokens nie übernommen; Namen, Units, Pfade, Adressen nach festen Mustern; Bei Funden mit Unit-Datei zählen für Name, Server und Dienst nur Registrierungen aus der Unit (ein Job-Prozess mit `exec -a` oder eigener `--config` ist nur Merkmal, #109); Server-Probe nur für Funde mit systemd-Unit (E-17), GET auf feste Pfade ohne Zugangsdaten und Weiterleitungen, harte Fristen 3 s/10 s in eigenem Faden (auch DNS), höchstens 8 Server; Erkennung im Sammler als eigener Prozess mit 60 s Grenze, Ergebnis geprüft; IDs zuerst an Funde mit Unit, Funde ohne Unit nie „angebunden“, Adapter nehmen Server und Log-Pfad nie aus dem Fund (E-18); Steuerzeichen in der Textausgabe ersetzt. Offen: `PrivateDevices=yes` für den Sammler (möglich, noch nicht auf der VM erprobt) | 29.10.2026 |
+| S-ADAPTER-01 | Anbieter-Adapter und Zugangsdaten je Runner (#92): neue Angriffsfläche durch mehrere Tokens (`/etc/runner-monitor/zugang/<runner>.token`), die Übernahme des alten Tokens, Adapter-Eingaben aus `erkennung.json` und `runner.json` und den neuen Endpunkt `GET /api/zustand`. Risiken: ein Fund lenkt einen Adapter mit Token an einen fremden Server oder auf eine fremde Datei; eine Runner-ID wird zum Pfad (`../`); ein Symlink in `zugang/` lässt root eine fremde Datei als Token lesen; die Übernahme überschreibt ein neueres Token; Tokens gelangen in die Momentaufnahme; viele Funde lösen viele `systemctl`-Aufrufe aus | niedrig | behandelt: Server, Organisation, Log-Pfad und Token-Datei nur aus der Konfiguration (`konfig.env`, `einstellungen.json`, `runner.json`, `zugang/`), nie aus dem Fund (E-18); GitHub-Server fest; IDs nur `a-z 0-9 . _ -` ohne Punkt/Minus am Anfang, höchstens 64 Zeichen; `zugang/` root 0700 (Besitzer und Art geprüft, kein Symlink), Dateien 0600, atomar geschrieben, gelesen nur regulär ohne Symlink bis 4 KB; Übernahme als Kopie über `os.link` (überschreibt nie), alter Ort bleibt; `erkennung.json` wird im Monitor erneut geprüft, Unit-Namen vor jedem `systemctl` erneut geprüft, höchstens 20 Runner, Dienststatus der Grundüberwachung höchstens alle 10 s; `/api/zustand` nur angemeldet und `no-store`, enthält dieselben Daten wie `/events` und nie Tokens; Kommandozeile für `einrichten.sh` gibt nur die ID aus, das Token nie (auch nicht als Argument). Restrisiko: Der Dateiname des GitHub-Tokens folgt dem `agentName` in `.runner`, den der Runner-Benutzer (also jeder Workflow, S-HOST-01) ändern kann – dann liest der GitHub-Adapter eine andere vorhandene Token-Datei oder fällt auf den alten Ort zurück und schickt sie an `api.github.com`; ein fremder Server ist dabei nie möglich. Offen bis #94/#96: zwei Orte für das GitHub-Token (Rückfall) | 29.10.2026 |
 
 Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), siehe
 [SECURITY.md](../../SECURITY.md).
@@ -49,6 +50,8 @@ Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), 
 ## V4 Zugriff
 
 - Ein Zugang, alles nur lesend. Ändernde Aktionen: Update starten, Auto-Update schalten, abmelden.
+- `GET /api/zustand` (seit #92) nur angemeldet, wie `/events`; Zugangsdaten je Runner lassen sich im
+  Dashboard weder ansehen noch ändern, nur auf der VM mit `sudo einrichten.sh zugang <runner>` (S-ADAPTER-01).
 - Ohne Anmeldung erreichbar: Anmeldung, Einrichtung (nur mit Code), statische Dateien und `/api/health`. Seit 0.3.0 nennt `/api/health` neben der Version auch den Namen der VM (die Anmeldeseite zeigt ihn, Design 0.3.0) – im LAN hinter ufw unkritisch.
 
 ## V5 Eingaben
@@ -58,6 +61,8 @@ Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), 
 - Runner-Erkennung: Funde (Unit-Dateien, Befehlszeilen, `.runner`, `config.toml`) gelten als
   feindliche Eingabe – nur gelesen und geprüft, nie ausgeführt; `systemctl`/`journalctl` nur mit
   geprüftem Unit-Namen als eigenem Argument (S-ERK-01, [FUNKTIONSWEISE](../FUNKTIONSWEISE.md)).
+- Anbieter-Adapter: `erkennung.json` und `runner.json` gelten im Monitor erneut als Eingabe (Form,
+  Größe, Muster); Ziele von Anfragen und Log-Pfade kommen nie aus einem Fund (S-ADAPTER-01).
 
 ## V7 Fehler und Protokoll
 
@@ -66,7 +71,8 @@ Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), 
 
 ## V8 Daten
 
-- `/var/lib/runner-monitor` 0750, Dateien 0600; Token-Datei root 0600.
+- `/var/lib/runner-monitor` 0750, Dateien 0600; Token-Datei root 0600; `/etc/runner-monitor/zugang/`
+  root 0700 mit `<runner>.token` 0600 (seit #92, der alte Ort `github-token` bleibt bis #94/#96).
 
 ## V9 Kommunikation
 

@@ -104,8 +104,10 @@ github.com › Settings › Developer settings › Personal access tokens › **
 | Repository permissions | **Actions: Read-only**, **Metadata: Read-only** |
 | Organization permissions | **Self-hosted runners: Read-only** (optional, für „Online bei GitHub“) |
 
-Das Token wird auf der VM in `/etc/runner-monitor/github-token` gespeichert (nur root kann
-es lesen). Erneuern oder nachholen, wenn GitHub übersprungen wurde:
+Das Token wird auf der VM in `/etc/runner-monitor/zugang/<runner>.token` und – als Rückfall für
+ältere Versionen und den Update-Hilfsdienst – in `/etc/runner-monitor/github-token` gespeichert (nur
+root kann beide lesen, seit #92). Ein vorhandenes Token übernimmt das Update von selbst. Erneuern oder
+nachholen, wenn GitHub übersprungen wurde:
 
 ```bash
 sudo /opt/runner-monitor/aktuell/einrichten.sh token
@@ -151,6 +153,7 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `sudo ./einrichten.sh code` | neuer Einrichtungscode (nur solange kein Zugang besteht) |
 | `sudo ./einrichten.sh passwort` | Zugang zurücksetzen, alle abmelden, neuer Code – Token und Einstellungen bleiben |
 | `sudo ./einrichten.sh token` | GitHub-Token eintragen oder erneuern |
+| `sudo ./einrichten.sh zugang <runner>` | Zugangsdaten eines Runners eintragen oder erneuern (`<runner>` = ID aus der Erkennung; ohne Angabe: Liste). Schreibt `/etc/runner-monitor/zugang/<runner>.token`, beim GitHub-Runner auch `github-token` |
 | `sudo ./einrichten.sh runner` | GitHub-Runner einrichten |
 | `sudo ./einrichten.sh aktualisieren` | neueste Version installieren ([UPDATE.md](UPDATE.md)) |
 | `sudo ./einrichten.sh zurueck` | zur vorherigen Version |

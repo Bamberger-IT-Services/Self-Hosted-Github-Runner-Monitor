@@ -65,6 +65,11 @@ class Konfig:
         return self.token_datei.parent / "runner.json"
 
     @property
+    def zugang_verz(self) -> Path:
+        """Zugangsdaten je Runner (#92, E-19): ``<id>.token``, Verzeichnis root 0700, Dateien 0600."""
+        return self.token_datei.parent / "zugang"
+
+    @property
     def auftraege_verz(self) -> Path:
         return self.daten_verz / "auftraege"
 

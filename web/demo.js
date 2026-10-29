@@ -80,6 +80,51 @@ window.RM_DEMO = (() => {
     ];
   };
 
+  /* Seit #92 (E-19, additiv): zusätzlich runner[] und meldungen[] wie GET /api/zustand bzw. die
+     Ereignisse „runner“ und „meldungen“. Die Oberfläche nutzt sie ab #94; bis dahin ignoriert sie sie.
+     ?runner=2|3: dazu ein Forgejo-Runner und ein unbekannter Runner in Grundüberwachung. */
+  let runnerAnzahl = 1;
+  const FAEHIG_VOLL = { status: true, jobs: true, schritte: true, logs: true, updates: false };
+  const FAEHIG_GRUND = { status: true, jobs: false, schritte: false, logs: true, updates: false };
+  const grundRunner = (id, name, dienst, unit, einstufung, stand, dienstZustand) => ({
+    id, name, dienst, server: null, org: null, unit, stand, einstufung, version: null, labels: [], faehig: FAEHIG_GRUND,
+    status: { zustand: dienstZustand === 'aktiv' ? 'aktiv' : 'gestoppt', dienst: { zustand: dienstZustand, seit: START + 7200, grund: null }, beimDienst: null },
+    job: null, letzteJobs: null, jobsJeRepository: null, log: { art: 'journal', unit },
+  });
+  const runnerListe = () => {
+    const st = status(), w = workflows();
+    const zust = st.dienst.zustand === 'gestoppt' ? 'gestoppt' : st.job ? 'job' : st.github.zustand === 'offline' ? 'offline' : 'bereit';
+    const unit = 'actions.runner.beispiel-org.runner-vm-01.service';
+    const liste = [{
+      id: 'runner-vm-01', name: st.runner, dienst: 'github', server: 'https://github.com', org: w.org, unit,
+      stand: gh === 'kein-token' ? 'offen' : 'angebunden', einstufung: 'voll', version: st.version, labels: st.labels, faehig: FAEHIG_VOLL,
+      status: { zustand: zust, dienst: st.dienst, beimDienst: st.github }, job: st.job, letzteJobs: st.letzteJobs, jobsJeRepository: w,
+      log: { art: 'seiten', pfad: '/opt/actions-runner/_diag/pages', unit },
+    }];
+    if (runnerAnzahl >= 2) liste.push(grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'teil', 'grund', 'aktiv'));
+    if (runnerAnzahl >= 3) liste.push(grundRunner('buildagent', 'buildagent', 'unbekannt', 'buildagent.service', 'unbekannt', 'grund', zustand === 'gestoppt' ? 'gestoppt' : 'aktiv'));
+    return liste;
+  };
+  const meldungenListe = (liste) => {
+    const M = [];
+    for (const r of liste) {
+      const b = { runner: r.id, dienst: r.dienst }, d = r.status.dienst, j = r.jobsJeRepository;
+      if (d.zustand === 'gestoppt') M.push({ id: 'gestoppt', stufe: 'fehler', ...b, daten: { seit: d.seit, grund: d.grund } });
+      if (r.status.beimDienst && r.status.beimDienst.zustand === 'offline' && d.zustand === 'aktiv') M.push({ id: 'offline', stufe: 'fehler', ...b, daten: { seit: r.status.beimDienst.seit } });
+      if (j && j.abfrage === 'nicht-erreichbar') M.push({ id: 'abfrage', stufe: 'warn', ...b, daten: { abfrage: j.abfrage, abgefragt: j.abgefragt, naechste: j.naechste } });
+      if (j && j.abfrage === 'kein-token') M.push({ id: 'token', stufe: 'neutral', ...b, daten: { abfrage: j.abfrage } });
+      if (j && j.tokenAblauf && j.tokenAblauf - jetzt() <= 14 * 86400) M.push({ id: 'token', stufe: 'warn', ...b, daten: { tokenAblauf: j.tokenAblauf } });
+    }
+    for (const p of platten()) if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', stufe: 'warn', runner: null, dienst: null, daten: { pfad: p.pfad, frei: p.frei, schwelleFrei: p.schwelleFrei } });
+    const rang = { fehler: 0, warn: 1, neutral: 2 };
+    return M.sort((a, b) => rang[a.stufe] - rang[b.stufe]);
+  };
+  function runnerSenden() {
+    const liste = runnerListe();
+    api.empfange('runner', liste);
+    api.empfange('meldungen', meldungenListe(liste));
+  }
+
   function system(erst) {
     const ziel = zustand === 'gestoppt' || zustand === 'offline' ? 4 : zustand === 'volllast' ? 96 : job ? 58 : 6;
     cpuSchnitt += (ziel - cpuSchnitt) * 0.25 + zufall(-4, 4);
@@ -146,6 +191,7 @@ window.RM_DEMO = (() => {
     api.empfange('platten', platten());
     api.empfange('workflows', workflows());
     api.empfange('update', update());
+    runnerSenden();
   }
 
   function leiste() {
@@ -178,6 +224,7 @@ window.RM_DEMO = (() => {
     const p = new URLSearchParams(location.search);
     zustand = p.get('zustand') || zustand; grund = p.get('grund') || ''; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
+    const rn = parseInt(p.get('runner'), 10); if (rn >= 1 && rn <= 3) runnerAnzahl = rn;
     schritteLokal = p.get('schritte') === 'lokal';
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();
@@ -190,6 +237,7 @@ window.RM_DEMO = (() => {
       api.empfange('system', system(false));
       if (takt % 2 === 0) api.empfange('prozesse', prozesse());
       if (takt % 2 === 0) logTakt();
+      if (takt % 2 === 0) runnerSenden();
       if (takt % 5 === 0) { api.empfange('workflows', workflows()); api.empfange('platten', platten()); }
       if (upd === 'laeuft') { updSchritt++; if (updSchritt > 22) upd = 'erfolg-demo'; api.empfange('update', upd === 'erfolg-demo' ? { installiert: NEU, neueste: { version: NEU, geprueft: jetzt() }, status: { zustand: 'erfolg', zeit: jetzt() }, auto: false } : update()); }
     }, 1000);

@@ -284,6 +284,9 @@ class Handler(BaseHTTPRequestHandler):
         elif pfad == "/api/sitzung":
             # Das Dashboard fragt hiermit nach einem Verbindungsfehler, ob es noch angemeldet ist (sonst 401).
             self._json(HTTPStatus.OK, {"ok": True})
+        elif pfad == "/api/zustand":
+            # Momentaufnahme ohne Live-Log (#92, E-19): bisherige Bereiche + vm, runner[], meldungen[].
+            self._json(HTTPStatus.OK, app.zustand.zustand_api())
         else:
             self._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")
 
