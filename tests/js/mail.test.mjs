@@ -98,3 +98,11 @@ test('Oberfläche verlinkt nicht mehr auf GitHub-Issues', () => {
     assert.ok(!/issues\/new/.test(s), f);
   }
 });
+
+test('Runner-Zeile: Dienst nicht doppelt, wenn die Version ihn schon nennt', () => {
+  const a = { ...angaben, runner: [{ name: 'runner-vm-04', dienst: 'GitLab', version: 'GitLab Runner 17.5' }, { name: 'runner-vm-01', dienst: 'GitHub', version: '2.338.1' }] };
+  const { text } = teile(M.fehler(a, t));
+  assert.ok(text.includes('runner-vm-04 (GitLab Runner 17.5)'));
+  assert.ok(!text.includes('GitLab GitLab'));
+  assert.ok(text.includes('runner-vm-01 (GitHub 2.338.1)'));
+});

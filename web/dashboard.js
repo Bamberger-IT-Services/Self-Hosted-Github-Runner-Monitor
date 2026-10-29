@@ -851,7 +851,7 @@
     const mailAngaben = {
       version: u.installiert || st.monitorVersion || '', system: st.system || '', browser: navigator.userAgent,
       runner: runnerAngaben(),
-      gewaehlt: Array.isArray(S.runner) && S.runner.length ? (gewaehlterRunner() ? { name: gewaehlterRunner().name, zustand: zustandsWort()[RUNNER.zustand(gewaehlterRunner()).wort] } : null) : st.runner && dz && dz !== 'fehlt' ? { name: st.runner, zustand: dz === 'gestoppt' ? t('Gestoppt') : st.github && st.github.zustand === 'offline' ? t('Offline') : st.job ? t('Job') : t('Bereit') } : null,
+      gewaehlt: Array.isArray(S.runner) && S.runner.length ? (gewaehlterRunner() ? { name: gewaehlterRunner().name, zustand: RUNNER.zustand(gewaehlterRunner()).wort === 'job' ? t('Job') : zustandsWort()[RUNNER.zustand(gewaehlterRunner()).wort] } : null) : st.runner && dz && dz !== 'fehlt' ? { name: st.runner, zustand: dz === 'gestoppt' ? t('Gestoppt') : st.github && st.github.zustand === 'offline' ? t('Offline') : st.job ? t('Job') : t('Bereit') } : null,
     };
     const kv = (liste) => `<dl class="kv">${liste.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`).join('')}</dl>`;
 

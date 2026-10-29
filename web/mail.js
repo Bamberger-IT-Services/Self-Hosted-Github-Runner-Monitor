@@ -20,7 +20,8 @@ const MAIL = (() => {
   function angaben(a, t) {
     const bereinige = bereiniger(t);
     const runner = (a.runner || []).map((r) => {
-      const dv = [r.dienst, r.version].filter(Boolean).join(' ');
+      // Beginnt die Version schon mit dem Dienst („GitLab Runner 17.5“), wird er nicht doppelt genannt
+      const dv = (r.dienst && r.version && String(r.version).toLowerCase().startsWith(String(r.dienst).toLowerCase()) ? [r.version] : [r.dienst, r.version]).filter(Boolean).join(' ');
       return bereinige(r.name) + (dv ? ` (${bereinige(dv)})` : '');
     }).join(', ');
     const zeilen = [
