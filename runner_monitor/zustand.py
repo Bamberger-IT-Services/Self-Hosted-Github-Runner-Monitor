@@ -404,8 +404,8 @@ class Zustand:
 
         Der GitHub-Runner aus ``MONITOR_RUNNER_VERZ`` bekommt den GitHub-Adapter und dieselben Werte
         wie der Bereich ``status`` (unverändert). Forgejo- und Gitea-Runner mit Server und Organisation
-        in ``runner.json`` bekommen ihren Adapter und das Ergebnis des Sammlers (``anbieter.json``, #93);
-        alle anderen laufen in der Grundüberwachung (Dienst und Journal), GitLab bis #115.
+        in ``runner.json`` und GitLab-Runner mit Server (#115) bekommen ihren Adapter und das Ergebnis des
+        Sammlers (``anbieter.json``, #93); alle anderen laufen in der Grundüberwachung (Dienst und Journal).
         Ignorierte Funde fehlen. Server und Log-Pfad kommen nie aus dem Fund (E-18): GitHub fest,
         sonst nur aus ``runner.json``."""
         jetzt = time.time() if jetzt is None else jetzt
@@ -564,7 +564,7 @@ class Zustand:
                     j = gh["job"]
                     self.job_zuordnung[j.get("name", "")] = {"repo": j.get("repo", ""), "workflow": j.get("workflow", "")}
             self._setze("workflows", self._workflows(gh))
-        pfad = self.k.lauf_verz / "anbieter.json"  # Forgejo/Gitea (#93), ohne Geheimnisse
+        pfad = self.k.lauf_verz / "anbieter.json"  # Forgejo/Gitea (#93), GitLab (#115), ohne Geheimnisse
         if self._geaendert(pfad):
             daten = lies_json(pfad, {}) or {}
             weitere = daten.get("runner") if isinstance(daten, dict) else None

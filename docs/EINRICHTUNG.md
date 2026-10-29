@@ -149,10 +149,11 @@ Organisation › Settings › Personal access tokens › **Pending requests**.
 
 ### GitLab anbinden
 
-Gilt für einen erkannten GitLab-Runner (`gitlab-runner.service`, `config.toml`); der Adapter ist da
-([Funktionsweise](FUNKTIONSWEISE.md#gitlab-adapter-99)). Zugangsdaten für GitLab (und Forgejo/Gitea) nimmt
-die Weboberfläche bewusst nicht an (E-22): Sie gehören auf die VM. Bis der Sammler GitLab abfragt, erscheint
-der Runner im Schritt „Runner“ als „erkannt, noch nicht unterstützt“ mit Grundüberwachung.
+Gilt für einen erkannten GitLab-Runner (`gitlab-runner.service`, `config.toml`); der Sammler fragt ihn
+seit #115 ab ([Funktionsweise](FUNKTIONSWEISE.md#gitlab-adapter-99)), sobald Token und Server auf der VM
+liegen. Zugangsdaten für GitLab (und Forgejo/Gitea) nimmt die Weboberfläche bewusst nicht an (E-22): Sie
+gehören auf die VM. Ausgeliefert gilt er als „teil“ (E-20) und erscheint im Schritt „Runner“ als „erkannt,
+noch nicht unterstützt“; von Hand angebunden zeigt er Jobs.
 
 1. **Token erstellen:** GitLab › Gruppe (oder Projekt) › Settings › **Access tokens** › „Add new token“ –
    Rolle **Maintainer** (bei Gruppen-Runnern ggf. **Owner**), Bereich **`read_api`** (nur lesen), Ablaufdatum z. B. 90 Tage (der Monitor warnt
@@ -162,8 +163,10 @@ der Runner im Schritt „Runner“ als „erkannt, noch nicht unterstützt“ mi
    ```bash
    sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner-id>
    ```
-3. **Server:** die Adresse Ihres GitLab (z. B. `https://gitlab.example.org`) steht in der Konfiguration des
-   Runners, nicht im Fund. Der Monitor folgt keiner Weiterleitung – die Adresse muss die endgültige sein. Mit Token
+3. **Server:** die Adresse Ihres GitLab (z. B. `https://gitlab.example.org`) in `/etc/runner-monitor/runner.json`
+   (wie unten bei Forgejo, aber **ohne** `org` – GitLab braucht keine Organisation):
+   `{ "version": 1, "runner": { "runner-vm-03": { "server": "https://gitlab.example.org" } } }`.
+   Die Adresse aus der Erkennung wird nie übernommen. Der Monitor folgt keiner Weiterleitung – die Adresse muss die endgültige sein. Mit Token
    nur **`https://`**; ein Server nur mit `http://` (z. B. im LAN) wird erst abgefragt, wenn in
    `/etc/runner-monitor/runner.json` bei diesem Runner `"http_erlaubt": true` steht – das Token läuft dann unverschlüsselt
    durchs Netz, und `HTTP_PROXY` wird dabei bewusst nicht benutzt.

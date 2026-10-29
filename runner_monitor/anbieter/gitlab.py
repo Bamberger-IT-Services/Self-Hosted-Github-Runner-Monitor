@@ -42,6 +42,8 @@ from . import Anbieter, RunnerKonfig, registriere
 from . import token as zugangsdaten
 
 TAKT = 30                        # Sekunden zwischen zwei Abfragen (Sammler)
+ZEITLIMIT = 15.0                 # harte Gesamtfrist je Anfrage (DNS, Verbindung, Lesen – eigener Faden)
+FRIST = 25.0                     # eine ganze Runde (wie Forgejo); danach bricht sie ab („nicht erreichbar“, #115)
 TOKEN_PRUEFUNG = 3600            # Bereiche und Ablauf des Tokens höchstens stündlich neu holen
 MAX_ANTWORT = 4 * 1024 * 1024    # größere Antworten gelten als Fehler
 MAX_RUNNER_SEITEN = 5            # höchstens 500 Runner durchsuchen
@@ -81,9 +83,11 @@ class Klient:
     ``https://`` ist Pflicht; ``http://`` nur mit ``http_erlaubt`` (``runner.json`` des Runners, E-21).
     Jede Anfrage hat eine **harte Gesamtfrist** (``zeitlimit``): Sie läuft in einem eigenen Daemon-Faden;
     ist er zur Frist nicht fertig (langsamer DNS, tröpfelnder Server), gilt der Server als nicht
-    erreichbar und der Faden wird zurückgelassen (wie ``erkennung.Quelle.hole``)."""
+    erreichbar und der Faden wird zurückgelassen (wie ``erkennung.Quelle.hole``). Dazu eine Frist für
+    die ganze Runde (``frist``, ab Erzeugen des Klienten, #115): Keine Anfrage läuft über sie hinaus."""
 
-    def __init__(self, server: str, token: str = "", zeitlimit: float = 15.0, http_erlaubt: bool = False) -> None:
+    def __init__(self, server: str, token: str = "", zeitlimit: float = ZEITLIMIT, http_erlaubt: bool = False,
+                 frist: float = FRIST) -> None:
         adresse = erkennung.pruefe_url(server) or ""
         if adresse.startswith("http://") and http_erlaubt is not True:
             adresse = ""  # Token nur über https, außer runner.json erlaubt http ausdrücklich
@@ -92,19 +96,23 @@ class Klient:
         self.zeitlimit = zeitlimit
         self.zaehler = {"anfragen": 0}
         self.letzter_kopf: dict = {}
+        self._ende = time.monotonic() + frist
 
     def hole(self, pfad: str, parameter: dict | None = None) -> gh.Antwort:
         if not self.server:
             raise GitLabFehler("fehler", "Server fehlt, ist keine gültige Adresse oder nicht https:// (http:// nur mit „http_erlaubt“ in runner.json)")
+        rest = min(self.zeitlimit, self._ende - time.monotonic())
+        if rest <= 0:
+            raise GitLabFehler("nicht-erreichbar", "Frist für die Abfrage überschritten")
         url = f"{self.server}/api/v4{pfad}"
         if parameter:
             url += "?" + urllib.parse.urlencode(parameter)
         self.zaehler["anfragen"] += 1
         ergebnis: list = []
-        ende = time.monotonic() + self.zeitlimit
+        ende = time.monotonic() + rest
         faden = threading.Thread(target=self._hole, args=(url, ende, ergebnis), name="gitlab-abfrage", daemon=True)
         faden.start()
-        faden.join(self.zeitlimit)
+        faden.join(rest)
         if faden.is_alive() or not ergebnis:
             raise GitLabFehler("nicht-erreichbar", "Zeitüberschreitung (keine vollständige Antwort innerhalb der Frist)")
         art, *wert = ergebnis[0]
@@ -331,7 +339,10 @@ def abfrage(klient: Klient, name: str, letzter_erfolg: float | None = None, spei
             ergebnis["repos"] = zaehle_laufende(laeuft)
             ergebnis["job"] = job_aus(laeuft[0]) if laeuft else None
             letzte = _liste(klient.hole(f"/runners/{rid}/jobs", {"order_by": "id", "sort": "desc", "per_page": 20}).daten)
-            ergebnis["letzteJobs"] = [letzter_job_aus(j) for j in letzte if j.get("status") in ERGEBNIS][:LETZTE_JOBS]
+            # nur ein Text zählt: ein nicht hashbarer status (Liste, Objekt) wäre bei „in“ ein TypeError und
+            # ließe die ganze Runde ausfallen – so fehlt nur dieser eine Job (#115)
+            ergebnis["letzteJobs"] = [letzter_job_aus(j) for j in letzte
+                                      if isinstance(j.get("status"), str) and j["status"] in ERGEBNIS][:LETZTE_JOBS]
         ergebnis["letzterErfolg"] = jetzt
     except GitLabFehler as fehler:
         ergebnis["abfrage"] = "nicht-erreichbar" if fehler.art in ("nicht-erreichbar", "fehler") else fehler.art
@@ -445,10 +456,13 @@ def workflows_aus(ergebnis: dict | None) -> dict:
 @registriere
 class GitLab(Anbieter):
     dienst = "gitlab"
-    # Was der Adapter kann. Ausgeliefert wird bis zur Anbindung im Sammler (#94) die Tabelle
-    # ``erkennung.FAEHIG`` – sie darf weniger versprechen als diese Klasse (E-20).
+    # Was der Adapter kann. Ausgeliefert wird bis zur Anbindung in der Einrichtung (#96) die Tabelle
+    # ``erkennung.FAEHIG`` – sie darf weniger versprechen als diese Klasse (E-20). Ein von Hand in
+    # runner.json angebundener Runner (Server, Unit) meldet in runner[] die Fähigkeiten dieser Klasse.
     # Schritte: GitLab liefert keine Schrittliste (nur Jobs in Stages) – nicht als verfügbar zeigen.
     FAEHIG = {"status": True, "jobs": True, "schritte": False, "logs": True, "updates": False}
+    ANBINDUNG = True   # der Sammler fragt ihn ab (#115), sobald runner.json den Server nennt
+    BRAUCHT_ORG = False  # der Runner wird über seinen Namen gefunden, nicht über eine Organisation
 
     # ------------------------------------------------------------ Sammler (root)
 
@@ -480,6 +494,23 @@ class GitLab(Anbieter):
     def letzte_jobs(self, ergebnis: dict | None) -> list[dict]:
         liste = (ergebnis or {}).get("letzteJobs")
         return [j for j in liste if isinstance(j, dict)] if isinstance(liste, list) else []
+
+    def eintrag(self, *, ergebnis: dict | None = None, **rest) -> dict:
+        """Wie die Basis, dazu Job, letzte Jobs und Labels aus der Abfrage des Sammlers (#115). Ehrlich
+        wie bei Forgejo (E-23): ist der Runner bei GitLab nicht zu finden oder schlug die Abfrage fehl,
+        ist der Zustand ``unbekannt`` statt „bereit“."""
+        erg = ergebnis if isinstance(ergebnis, dict) else {}
+        rest.setdefault("job", self.api_job(erg))
+        rest.setdefault("letzte_jobs", self.letzte_jobs(erg))
+        runner_erg = erg.get("runner") if isinstance(erg.get("runner"), dict) else {}
+        if not rest.get("labels"):
+            labels = runner_erg.get("labels")
+            rest["labels"] = [lab for lab in labels if isinstance(lab, str)] if isinstance(labels, list) else []
+        e = super().eintrag(ergebnis=erg, **rest)
+        st = e["status"]
+        if e["faehig"]["jobs"] and st["zustand"] == "bereit" and (st.get("beimDienst") or {}).get("zustand") == "unbekannt":
+            st["zustand"] = "unbekannt"
+        return e
 
 
 def konfig_fuer(name: str, rid: str, unit: str | None, server: str | None, zugang_verz, log: str | None = None,

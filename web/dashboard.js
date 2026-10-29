@@ -307,6 +307,7 @@
       if (m.id === 'platte' || !ANLEITUNG[m.id]) continue;
       const r = (S.runner || []).find((x) => x.id === m.runner), d = m.daten || {}, j = r && r.jobsJeRepository;
       const vor = mehrere && r ? `${r.name}: ` : '';
+      const gh = !m.dienst || m.dienst === 'github', dn = RUNNER.dienstName(m.dienst) || t('Dienst');
       let e = null;
       if (m.id === 'gestoppt') {
         const grund = d.grund ? (STOPP_GRUND[d.grund] || d.grund) : '';
@@ -319,15 +320,24 @@
       } else if (m.id === 'offline') {
         e = { cls: 'fehler', ic: IC.x(18), titel: vor ? t('Offline bei {dienst}', { dienst: RUNNER.dienstName(m.dienst) || 'GitHub' }) : t('Runner offline bei GitHub'), text: `${d.seit ? t('seit {z}', { z: zeit(d.seit) }) + ' · ' : ''}${t('Jobs werden nicht zugestellt')}` };
       } else if (m.id === 'abfrage') {
-        e = { cls: 'warn', ic: IC.warn(18), titel: d.abfrage === 'kontingent' ? t('GitHub-Kontingent erschöpft') : t('GitHub nicht erreichbar'),
-          text: t('Workflows zeigen den Stand von {z}', { z: d.abgefragt ? zeit(d.abgefragt) : '–' }) + (d.naechste ? ' · ' + t('neuer Versuch in {n} s', { n: Math.max(0, Math.round((ms(d.naechste) - jetzt) / 1000)) }) : '') };
+        // Forgejo, Gitea, GitLab (#115): Dienst im Titel statt „GitHub“; GitHub-Texte wie in 0.4.0
+        const stand = { z: d.abgefragt ? zeit(d.abgefragt) : '–' };
+        e = { cls: 'warn', ic: IC.warn(18), titel: gh ? (d.abfrage === 'kontingent' ? t('GitHub-Kontingent erschöpft') : t('GitHub nicht erreichbar'))
+          : (d.abfrage === 'kontingent' ? t('{dienst}-Kontingent erschöpft', { dienst: dn }) : t('{dienst} nicht erreichbar', { dienst: dn })),
+          text: (gh ? t('Workflows zeigen den Stand von {z}', stand) : t('Jobs zeigen den Stand von {z}', stand)) + (d.naechste ? ' · ' + t('neuer Versuch in {n} s', { n: Math.max(0, Math.round((ms(d.naechste) - jetzt) / 1000)) }) : '') };
       } else if (m.id === 'token') {
         if (d.tokenAblauf) {
           const tage = Math.ceil((ms(d.tokenAblauf) - jetzt) / 86400000);
           if (tage > 14 || tage <= 0) continue;
-          e = { nach: true, cls: 'warn', ic: IC.schluessel(18), titel: t('GitHub-Token läuft in {n} {tage} ab', { n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }), text: t('am {d} – danach bleiben die Workflows leer', { d: datum(d.tokenAblauf) }) };
-        } else if (d.abfrage === 'kein-token') e = { cls: 'neutral', ic: IC.schluessel(18), titel: t('Kein GitHub-Token'), text: t('Workflows und GitHub-Status sind aus') };
-        else e = { cls: 'fehler', ic: IC.schluessel(18), titel: d.abfrage === 'token-ungueltig' ? t('GitHub-Token ungültig oder abgelaufen') : t('GitHub-Token ohne Zugriff'), text: t('Workflows werden nicht mehr abgefragt') };
+          const w = { n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')), dienst: dn };
+          e = { nach: true, cls: 'warn', ic: IC.schluessel(18), titel: gh ? t('GitHub-Token läuft in {n} {tage} ab', w) : t('{dienst}-Token läuft in {n} {tage} ab', w),
+            text: gh ? t('am {d} – danach bleiben die Workflows leer', { d: datum(d.tokenAblauf) }) : t('am {d} – danach bleiben die Jobs leer', { d: datum(d.tokenAblauf) }) };
+        } else if (d.abfrage === 'kein-token') e = { cls: 'neutral', ic: IC.schluessel(18), titel: gh ? t('Kein GitHub-Token') : t('Kein {dienst}-Token', { dienst: dn }), text: gh ? t('Workflows und GitHub-Status sind aus') : t('Jobs und Status bei {dienst} sind aus', { dienst: dn }) };
+        else {
+          const titel = d.abfrage === 'token-ungueltig' ? (gh ? t('GitHub-Token ungültig oder abgelaufen') : t('{dienst}-Token ungültig oder abgelaufen', { dienst: dn }))
+            : (gh ? t('GitHub-Token ohne Zugriff') : t('{dienst}-Token ohne Zugriff', { dienst: dn }));
+          e = { cls: 'fehler', ic: IC.schluessel(18), titel, text: gh ? t('Workflows werden nicht mehr abgefragt') : t('Jobs werden nicht mehr abgefragt') };
+        }
       }
       if (!e) continue;
       e.titel = vor + e.titel; e.id = ANLEITUNG[m.id];

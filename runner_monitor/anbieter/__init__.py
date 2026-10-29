@@ -5,7 +5,7 @@ Dienstes (README › „Nicht verfügbar“ ehrlich zeigen). Jeder Dienst hat ei
 
 * ``github``     – :class:`runner_monitor.anbieter.github.GitHub` (voll: Status, Jobs, Schritte, Logs)
 * ``gitlab``     – :class:`runner_monitor.anbieter.gitlab.GitLab` (Status, Jobs, Log; ohne Schritte;
-  im Sammler ab #115)
+  im Sammler seit #115) – nur, wenn ``runner.json`` den Server nennt (keine Organisation nötig)
 * ``forgejo``, ``gitea`` – :class:`runner_monitor.anbieter.forgejo.Forgejo` bzw. ``Gitea`` (#93: Status
   beim Dienst, Jobs, Schritte; Log aus dem Journal der Unit) – nur, wenn ``runner.json`` Server und
   Organisation nennt; sonst Grundüberwachung
@@ -189,7 +189,7 @@ class Anbieter:
 
 class Grundueberwachung(Anbieter):
     """Für Dienste ohne eigenen Adapter (unbekannte Runner) und für Runner, die nicht angebunden sind
-    (Forgejo/Gitea ohne Server und Organisation in runner.json, „grund“; GitLab bis #115)."""
+    (Forgejo/Gitea ohne Server und Organisation in runner.json, GitLab ohne Server, „grund“)."""
 
     dienst = "unbekannt"
 

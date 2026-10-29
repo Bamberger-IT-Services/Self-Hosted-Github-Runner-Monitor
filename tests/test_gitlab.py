@@ -380,6 +380,15 @@ class RobustheitTest(Basis):
         self.assertEqual(e["abfrage"], "ok")
         self.assertEqual((e["job"]["repo"], e["job"]["workflow"], e["job"]["name"], e["job"]["start"]), ("", "", "", None))
 
+    def test_status_nicht_hashbar_kostet_nur_den_einen_job(self):
+        """#115: ``status`` als Liste oder Objekt war bei ``in ERGEBNIS`` ein TypeError – die ganze Runde fiel aus."""
+        self.s.antworten[LETZTE] = (200, [{**JOBS_LETZTE[1], "status": ["success"]}, {**JOBS_LETZTE[2], "status": {"a": 1}},
+                                          {**JOBS_LETZTE[3], "status": None}, JOBS_LETZTE[2]])
+        e = self.frage()
+        self.assertEqual(e["abfrage"], "ok", e["fehler"])
+        self.assertEqual([(j["name"], j["ergebnis"]) for j in e["letzteJobs"]], [("lint", "fehler")])
+        self.assertEqual(e["job"]["name"], "unit-tests")  # der Rest der Runde bleibt
+
     def test_jobs_kein_array(self):
         self.s.antworten[LAUFEND] = (200, {"message": "x"})
         self.assertEqual(self.frage()["abfrage"], "ok")  # leere Liste, kein Absturz
@@ -451,8 +460,11 @@ class PausiertTest(Basis):
         self.assertEqual((e["runner"]["zustand"], e["runner"]["pausiert"]), ("offline", True))
         a = gitlab.GitLab(anbieter.RunnerKonfig(id="r", name="runner-vm-03", dienst="gitlab", unit="gitlab-runner.service"))
         self.assertEqual(a.beim_dienst(e), {"zustand": "offline", "seit": None, "pausiert": True})
-        eintrag = a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=e)
+        eintrag = a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis={**e, "job": None})
         self.assertEqual(eintrag["status"]["zustand"], "offline")
+        # pausiert, aber der laufende Job wird noch zu Ende gebracht: ehrlich „job“ (#115: Job aus der Abfrage)
+        eintrag = a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=e)
+        self.assertEqual((eintrag["status"]["zustand"], eintrag["job"]["name"]), ("job", "unit-tests"))
 
     def test_nur_altes_active_feld(self):
         self.s.antworten["/api/v4/runners/42"] = (200, {**{k: v for k, v in RUNNER_42.items() if k != "paused"}, "active": False})

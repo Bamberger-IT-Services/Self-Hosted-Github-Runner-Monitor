@@ -36,7 +36,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   über die GitLab-REST-API (Token mit Bereich `read_api`, nur lesend, ohne Weiterleitungen). Ehrlich
   „nicht verfügbar“: Schritte und wartende Jobs (die API liefert sie nicht). Anleitung unter
   Einrichtung › „GitLab anbinden“ und im Runbook `gitlab-nicht-erreichbar`; der Sammler ruft den Adapter
-  mit #94/#96 auf, bis dahin bleibt GitLab in der Grundüberwachung. Das Token geht nur über `https://`
+  seit #115 auf (von Hand angebunden), ausgeliefert bleibt GitLab bis #96 „teil“. Das Token geht nur über `https://`
   (`http://` nur mit `"http_erlaubt": true` in `runner.json`) (#99, E-20, E-21).
 - Grundüberwachung und „teilweise“ ehrlich zeigen: Runner ohne Anbindung zeigen „Dienst aktiv“ bzw.
   „Dienst gestoppt“, den Hinweis „Nur Grundüberwachung“, Dienst (Unit · aktiv seit …), Neustarts
@@ -67,10 +67,19 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Stand je Runner zusammen. Ab 390 px bedienbar (#96).
 - „Verbindung prüfen“ ohne eingegebenes Token prüft das auf der VM hinterlegte GitHub-Token über den
   Sammler; bei einem angebundenen Forgejo-/Gitea-Runner (Server und Organisation in `runner.json`) ebenso (#96).
+- Sammler fragt alle angebundenen Runner ab: Forgejo, Gitea und jetzt auch GitLab (Server in
+  `/etc/runner-monitor/runner.json`, keine Organisation nötig) – je Runner ein eigener Faden, höchstens
+  vier zugleich, mit Frist je Runde (Adapter 25 s, Sicherheitsnetz 35 s). Ein hängender oder tröpfelnder
+  Server verzögert weder GitHub, Docker und Updates noch die anderen Runner; je Runner läuft höchstens
+  eine Runde. Fehler (nicht erreichbar, Token ungültig, keine Rechte) erscheinen als Meldung mit Runner
+  und Dienst („GitLab nicht erreichbar“, „Forgejo-Token ungültig oder abgelaufen“). Ausgeliefert bleiben
+  Forgejo, Gitea und GitLab als „teil“, bis die Einrichtung im Browser sie anbindet (#96, E-20, E-23) (#115).
 
 ### Behoben
 - Reiter und Karte zeigen für einen Runner ohne systemd-Dienst beide „Kein Dienst“ (der Reiter zeigte
   „Unbekannt“) (#95, Review #114).
+- GitLab: Ein Job mit `status` als Liste oder Objekt ließ die ganze Runde als „unerwartete Antwort“
+  ausfallen; jetzt fehlt nur dieser Job (#115).
 - Dashboard lud nicht (Syntaxfehler in `web/dashboard.js` seit dem Review zu #90: ein Zeilenkommentar
   schluckte eine schließende Klammer; Hotfix #112). Ein neuer Test prüft alle Skripte in `web/` (`tests/js/demo.test.mjs`).
 
