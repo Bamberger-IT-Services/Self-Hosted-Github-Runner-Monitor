@@ -12,6 +12,7 @@
   const TITEL = [t('Code'), t('Zugang'), t('Runner'), t('Anbinden'), t('Fertig')];
   const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
   const DOKU = 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/FUNKTIONSWEISE.md';
+  const DOKU_ANBINDEN = 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/EINRICHTUNG.md#forgejo--oder-gitea-runner-anbinden-93';
   const E = {
     codeOk: false, schritt: 1, pruefung: {}, runnerAnzahl: null, nutzer: 'admin', zugang: false, fertig: false,
     // Schritt 3
@@ -272,7 +273,9 @@
         <div class="feld"><label for="token-${id}">${t('Fine-grained Token')}</label><input id="token-${id}" data-feld="token" data-id="${id}" class="mono" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">${gespeichert ? `<span class="feld-hinweis">${t('Ein Token ist hinterlegt. Leer lassen, um es zu behalten.')}</span>` : ''}</div>
         ${knopf}`;
     }
-    return `<div class="feld"><label for="server-${id}">${t('Server')}</label><input id="server-${id}" class="mono" readonly value="${esc(f.server || '')}" placeholder="–"><span class="feld-hinweis">${t('Vorschlag aus der Erkennung. Server, Organisation und Token tragen Sie aus Sicherheitsgründen auf der VM ein:')}</span></div>
+    return `<div class="feld"><label for="server-${id}">${t('Server')}</label><input id="server-${id}" class="mono" readonly value="${esc(f.server || '')}" placeholder="–"><span class="feld-hinweis">${f.dienst === 'forgejo' || f.dienst === 'gitea'
+        ? t('Vorschlag aus der Erkennung. Server, Organisation und Token tragen Sie aus Sicherheitsgründen auf der VM ein: Server und Organisation in {datei} (Anleitung: {doku}), das Token mit diesem Befehl – er legt nur das Token ab:', { datei: '<code>/etc/runner-monitor/runner.json</code>', doku: `<a href="${DOKU_ANBINDEN}" rel="noopener" target="_blank">${t('Forgejo- oder Gitea-Runner anbinden ↗')}</a>` })
+        : t('Vorschlag aus der Erkennung. Zugangsdaten tragen Sie aus Sicherheitsgründen auf der VM ein; dieser Befehl legt das Token ab:')}</span></div>
       ${codeblock(`${SKRIPT} zugang ${f.id}`)}
       ${knopf}`;
   }
@@ -425,13 +428,14 @@
     for (let i = 0; i < 25; i++) {  // nächste Abfrage des Sammlers (Takt 2 s, Abfrage bis etwa 30 s)
       await warte(2000);
       const d = await hole('/api/einrichtung/runner');
-      const gh = (d.daten && d.daten.github) || {};
+      // GitHub-Runner: github.json; angebundene Forgejo-/Gitea-Runner: anbieter.json (#93)
+      const gh = f.primaer ? ((d.daten && d.daten.github) || {}) : (((d.daten && d.daten.anbieter) || {})[id] || {});
       if (d.ok && gh.abgefragt && gh.abgefragt >= seit - 1 && gh.pruefung) {
-        E.gh = gh;
+        if (f.primaer) E.gh = gh;
         E.pruef[id] = { ok: !!gh.pruefung.ok, ergebnisse: gh.pruefung.ergebnisse || [] };
         if (gh.pruefung.ok) {
           const erst = (gh.pruefung.ergebnisse || [])[0] || {};
-          E.angebunden[id] = { org: gh.org || '', ablauf: erst.ablauf || null };
+          E.angebunden[id] = { org: f.primaer ? (gh.org || '') : '', ablauf: erst.ablauf || null };
         }
         zeichnePruef(id);
         return E.pruef[id].ok;

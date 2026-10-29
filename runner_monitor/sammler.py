@@ -12,8 +12,9 @@ Aufträge der Oberfläche liegen als Dateien in ``/var/lib/runner-monitor/auftra
 * ``runner-zuordnung`` – Zuordnung/Ignorieren aus der Einrichtung → ``/etc/runner-monitor/runner.json``
   (noch einmal geprüft, nur die Felder der Oberfläche, 0640; danach neu erkennen – #96, E-22)
 * ``erkennung-neu`` – „Neu erkennen“: Erkennung sofort, höchstens alle 10 s (#96)
-* ``verbindung-pruefen`` – „Verbindung prüfen“: nächste Abfrage des GitHub-Adapters sofort, höchstens
-  alle 10 s; das Ergebnis steht wie immer in ``github.json`` (#96)
+* ``verbindung-pruefen`` – „Verbindung prüfen“: nächste Abfrage des GitHub-Adapters bzw. eines
+  angebundenen Forgejo-/Gitea-Runners sofort, höchstens alle 10 s; das Ergebnis steht wie immer in
+  ``github.json`` bzw. ``anbieter.json`` (#96)
 * ``update``       – wird vom systemd-Pfad ``runner-monitor-update.path`` verarbeitet, nicht hier
 """
 
@@ -220,7 +221,7 @@ class Sammler:
         """Aufträge aus der Einrichtung (#96): Zuordnung schreiben, neu erkennen, Verbindung prüfen."""
         jetzt = time.time() if jetzt is None else jetzt
         mono = time.monotonic() if mono is None else mono
-        if einrichtung.verarbeite_auftrag(self.k.auftraege_verz, self.k.zuordnung_datei):
+        if einrichtung.verarbeite_auftrag(self.k.auftraege_verz, self.k.zuordnung_datei, self.k.lauf_verz):
             self.erkennung_anfordern(mono)  # erkennung.json übernimmt Ignorieren und Zuordnung
         if einrichtung.lies_einfachen_auftrag(self.k.auftraege_verz, einrichtung.AUFTRAG_ERKENNUNG) is not None:
             LOG.info("Runner-Erkennung von Hand angestoßen")
@@ -228,11 +229,19 @@ class Sammler:
         auftrag = einrichtung.lies_einfachen_auftrag(self.k.auftraege_verz, einrichtung.AUFTRAG_PRUEFEN)
         if auftrag is not None:
             rid = zugangsdaten.github_id(self.k.runner_verz)
-            if not rid or auftrag.get("id") != rid:
-                return  # andere Runner fragt der Sammler noch nicht ab (die Oberfläche sagt das selbst)
+            ziel = auftrag.get("id")
+            if rid and ziel == rid:
+                art = "github"
+            elif isinstance(ziel, str) and any(a.k.id == ziel for a in self.anbindungen()):
+                art = "anbieter"  # angebundener Forgejo-/Gitea-Runner (#93): nächste Runde sofort
+            else:
+                return  # diesen Runner fragt der Sammler nicht ab (die Oberfläche sagt das selbst)
             start = max(jetzt, self.letzte_verbindungspruefung + PRUEFEN_MIN_ABSTAND)
             self.letzte_verbindungspruefung = start
-            self.naechste_github = min(self.naechste_github, start)
+            if art == "github":
+                self.naechste_github = min(self.naechste_github, start)
+            else:
+                self.naechste_anbieter = min(self.naechste_anbieter, start)
 
     def erkennung_anfordern(self, mono: float | None = None) -> None:
         """Erkennung bald starten – frühestens 10 s nach der letzten Anforderung; läuft gerade eine,

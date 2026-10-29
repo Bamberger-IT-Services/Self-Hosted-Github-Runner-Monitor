@@ -540,16 +540,16 @@ Die Einrichtung hat seit Design 0.8.0 fünf Schritte: **Code → Zugang → Runn
 | Endpunkt | Wer darf | Was geschieht |
 |---|---|---|
 | `GET /api/einrichtung/runner` | gültiger Einrichtungscode (Cookie `rm_einrichtung`) oder angemeldet | Funde aus `erkennung.json` (noch einmal geprüft, höchstens 50) mit der Zuordnung aus `runner.json` und einem noch nicht abgeholten Auftrag; ohne Pfade der Erkennung (`log`); `primaer` markiert den GitHub-Runner aus `MONITOR_RUNNER_VERZ`; dazu `github` (Organisation, letzte Abfrage, Ergebnisliste aus `github.json`) |
-| `POST /api/einrichtung/runner/zuordnung` | wie oben, dazu `Origin` = Host und JSON (CSRF) | `{"runner": [{id, stand, dienst?, name?, unit?, log?}]}`, höchstens 20 Einträge → Auftrag `auftraege/runner-zuordnung` (0600) |
+| `POST /api/einrichtung/runner/zuordnung` | wie oben, dazu `Origin` = Host und JSON (CSRF) | `{"runner": [{id, stand, dienst?, name?, unit?, log?}]}`, höchstens 20 Einträge → Auftrag `auftraege/runner-zuordnung` (0600); würde der offene Auftrag größer als 64 KB (die Lesegrenze des Sammlers), antwortet der Server mit 400 statt ihn später still zu verwerfen |
 | `POST /api/einrichtung/runner/erkennen` | wie oben | Auftrag `erkennung-neu` → der Sammler erkennt sofort neu (höchstens alle 10 s, läuft gerade eine Erkennung: gleich danach) |
-| `POST /api/einrichtung/runner/pruefen` | wie oben | `{"id"}`: beim GitHub-Runner Auftrag `verbindung-pruefen` → der Sammler fragt GitHub sofort mit dem auf der VM hinterlegten Token ab (höchstens alle 10 s), die Oberfläche liest das Ergebnis aus `github.json`; andere Runner fragt der Sammler noch nicht ab – Antwort sofort „noch nicht verfügbar“ (ehrlich, nicht grün) |
+| `POST /api/einrichtung/runner/pruefen` | wie oben | `{"id"}`: beim GitHub-Runner Auftrag `verbindung-pruefen` → der Sammler fragt GitHub sofort mit dem auf der VM hinterlegten Token ab (höchstens alle 10 s), die Oberfläche liest das Ergebnis aus `github.json`; bei einem angebundenen Forgejo-/Gitea-Runner (#93: Adapter, Unit, Server und Organisation in `runner.json`) ebenso, Ergebnis aus `anbieter.json`; fehlen Server oder Organisation, sofort „Server und Organisation fehlen in runner.json“; Runner ohne Adapter: „noch nicht verfügbar“ (ehrlich, nicht grün). Ist der Einrichtungscode abgelaufen, verweist die 401-Antwort auf `einrichten.sh zugang <runner>` |
 | `POST /api/einrichtung/github/pruefen`, `…/speichern` | **nur** gültiger Einrichtungscode (nicht mehr angemeldet) | wie seit 0.4.0: Prüfung im Webserver nur gegen `api.github.com`, Token als Auftrag `github-token` für den Sammler |
 
 **Prüfung einer Zuordnung** (`einrichtung.pruefe_eintrag`, im Webserver **und** noch einmal im Sammler):
 `id` wie aus der Erkennung (`a-z 0-9 . _ -`, höchstens 64 Zeichen); `stand` muss da sein: `grund`,
 `ignoriert` oder `null` (= wie erkannt, das Feld entfällt); `dienst` aus `github|forgejo|gitea|gitlab|unbekannt`;
 `name` wie ein Anzeigename der Erkennung; `unit` ein `.service`-Name, keine Systemdienste (`ssh`, `cron`,
-`systemd-*`, `getty@*`, `runner-monitor*` …); `log` nur eine `*.log`-Datei unter `/var/log`, `/opt` oder `/srv`,
+`systemd-*`, `getty@*`, `runner-monitor*` …) und **nur aus einer Positivliste** – Unit eines Funds oder vorhandene Unit-Datei in den root-eigenen systemd-Verzeichnissen (bei `name@x.service` auch `name@.service`), im Webserver (400) und im Sammler (Eintrag verworfen); `log` nur eine `*.log`-Datei unter `/var/log`, `/opt` oder `/srv`,
 ohne versteckte Bestandteile und nicht in Ordnern des Monitors. `null` oder leer entfernt ein Feld. **Jedes andere
 Feld** (`server`, `org`, `http_erlaubt`, Token …) ist ein Fehler – das gehört auf die VM.
 

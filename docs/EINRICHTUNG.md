@@ -102,7 +102,10 @@ Fast geschafft. Schließen Sie die Einrichtung im Browser ab:
    Organisation und **Fine-grained Token** (siehe unten); „Verbindung prüfen“ zeigt, welche Rechte ankommen
    (ohne eingegebenes Token prüft der Sammler das auf der VM hinterlegte), „Weiter“ prüft und speichert. Für
    alle anderen Runner (Forgejo, Gitea, GitLab, weitere GitHub-Runner) tragen Sie Zugangsdaten **auf der VM**
-   ein – der Block zeigt den Befehl `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (E-22).
+   ein – der Block zeigt den Befehl `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (E-22). Der Befehl
+   legt bisher **nur das Token** ab; Server und Organisation eines Forgejo-/Gitea-Runners gehören in
+   `/etc/runner-monitor/runner.json` (siehe „Forgejo- oder Gitea-Runner anbinden“; Abfrage im Skript folgt mit #120).
+   „Verbindung prüfen“ fragt dann über den Sammler mit genau diesen Angaben.
    Jeder Runner lässt sich mit „Überspringen – nur Grundüberwachung“ auslassen; mit nur einem Runner heißt der
    Knopf „Ohne Anbindung fortfahren“. Ohne übernommenen Runner geht es von Schritt 3 direkt zu 5.
 5. **Alles eingerichtet:** Zugang, Firewall und je Runner der Stand (angebunden, Grundüberwachung,

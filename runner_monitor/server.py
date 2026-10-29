@@ -49,6 +49,8 @@ SICHERHEITS_KOPF = {
 }
 STATISCH = re.compile(r"^[a-z0-9-]+\.(css|js|svg)$")
 RUNNER_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # /events?journal=<runner-id> (#95)
+# Einrichtungscode abgelaufen, Zugang schon angelegt (#96): Zugangsdaten nur noch auf der VM (E-22)
+ABGELAUFEN = "Die Einrichtung im Browser ist abgelaufen. Zugangsdaten jetzt auf der VM eintragen: sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner> (GitHub auch: einrichten.sh token)."
 
 
 class App:
@@ -325,7 +327,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _runner_daten(self) -> dict:
         k = self.app.k
-        daten = einrichtung.funde(k.lauf_verz, k.zuordnung_datei, k.auftraege_verz, self._github_id())
+        daten = einrichtung.funde(k.lauf_verz, k.zuordnung_datei, k.auftraege_verz, self._github_id(), k.zugang_verz)
+        # Ergebnis „Verbindung prüfen“ der angebundenen Forgejo-/Gitea-Runner aus anbieter.json (#93), ohne Token
+        weitere = (lies_json(k.lauf_verz / "anbieter.json", {}) or {})
+        weitere = weitere.get("runner") if isinstance(weitere, dict) and isinstance(weitere.get("runner"), dict) else {}
+        daten["anbieter"] = {f["id"]: {"abgefragt": (weitere.get(f["id"]) or {}).get("abgefragt"),
+                                       "pruefung": einrichtung.verbindung_anbieter(weitere[f["id"]]) if isinstance(weitere.get(f["id"]), dict) else None}
+                             for f in daten["runner"] if f.get("anbindung") == "angebunden"}
         gh = lies_json(k.lauf_verz / "github.json", {}) or {}
         einst = lies_json(k.einstellungen_datei, {}) or {}
         gh = gh if isinstance(gh, dict) else {}
@@ -513,16 +521,20 @@ class Handler(BaseHTTPRequestHandler):
             self._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")
             return
         if not self._runner_erlaubt():
-            self._fehler(HTTPStatus.UNAUTHORIZED, "Bitte zuerst den Einrichtungscode eingeben.")
+            if pfad == "/api/einrichtung/runner/pruefen":
+                self._fehler(HTTPStatus.UNAUTHORIZED, ABGELAUFEN)
+            else:
+                self._fehler(HTTPStatus.UNAUTHORIZED, "Bitte zuerst den Einrichtungscode eingeben.")
             return
         if pfad == "/api/einrichtung/runner/zuordnung":
             try:
-                eintraege = einrichtung.pruefe_liste(daten.get("runner"))
+                eintraege = einrichtung.pruefe_units(einrichtung.pruefe_liste(daten.get("runner")),
+                                                     einrichtung.bekannte_units(app.k.lauf_verz))
+                with app.sperre:
+                    einrichtung.lege_auftrag(app.k.auftraege_verz, eintraege)
             except einrichtung.EingabeFehler as fehler:
                 self._fehler(HTTPStatus.BAD_REQUEST, str(fehler))
                 return
-            with app.sperre:
-                einrichtung.lege_auftrag(app.k.auftraege_verz, eintraege)
             self._json(HTTPStatus.ACCEPTED, {"ok": True, "runner": len(eintraege)})
         elif pfad == "/api/einrichtung/runner/erkennen":
             seit = einrichtung.lege_auftrag_einfach(app.k.auftraege_verz, einrichtung.AUFTRAG_ERKENNUNG)
@@ -533,9 +545,17 @@ class Handler(BaseHTTPRequestHandler):
                 self._fehler(HTTPStatus.BAD_REQUEST, "Ungültige Runner-ID.")
                 return
             if rid != self._github_id():
-                # Andere Runner fragt der Sammler (noch) nicht ab: ehrlich sagen statt grün zeigen.
-                self._json(HTTPStatus.OK, einrichtung.ohne_abfrage())
-                return
+                k = app.k
+                fund = next((f for f in einrichtung.funde(k.lauf_verz, k.zuordnung_datei, k.auftraege_verz, None, k.zugang_verz)["runner"]
+                             if f["id"] == rid), None)
+                art = (fund or {}).get("anbindung")
+                if art == "ohne-server":
+                    self._json(HTTPStatus.OK, einrichtung.ohne_server())
+                    return
+                if art != "angebunden":
+                    # Diesen Runner fragt der Sammler nicht ab: ehrlich sagen statt grün zeigen.
+                    self._json(HTTPStatus.OK, einrichtung.ohne_abfrage())
+                    return
             seit = einrichtung.lege_auftrag_einfach(app.k.auftraege_verz, einrichtung.AUFTRAG_PRUEFEN, {"id": rid})
             self._json(HTTPStatus.ACCEPTED, {"ok": True, "fertig": False, "seit": seit})
 
@@ -619,7 +639,9 @@ def _github_routen(handler: Handler, pfad: str, daten: dict) -> bool:
         handler._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")  # noqa: SLF001
         return True
     if not erlaubt:
-        handler._fehler(HTTPStatus.UNAUTHORIZED, "Bitte zuerst den Einrichtungscode eingeben.")  # noqa: SLF001
+        # Zugang schon angelegt, Code abgelaufen: der Weg führt jetzt nur noch über die VM (E-22)
+        text = ABGELAUFEN if pfad != "/api/einrichtung/fertig" and app.zugang.eingerichtet() else "Bitte zuerst den Einrichtungscode eingeben."
+        handler._fehler(HTTPStatus.UNAUTHORIZED, text)  # noqa: SLF001
         return True
     if pfad == "/api/einrichtung/fertig":
         app.k.einrichtungscode_datei.unlink(missing_ok=True)

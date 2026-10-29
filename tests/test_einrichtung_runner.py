@@ -271,6 +271,7 @@ class SammlerTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_zuordnung_schreibt_runner_json_und_erkennt_neu(self):
+        schreibe_erkennung(self.k, [fund("buildagent", "unbekannt", "unbekannt", server=None)])
         einrichtung.lege_auftrag(self.k.auftraege_verz, [{"id": "buildagent", "stand": "grund", "unit": "buildagent.service"}])
         self.s.auftrag_einrichtung(jetzt=1000.0, mono=500.0)
         self.assertEqual(json.loads(self.k.zuordnung_datei.read_text())["runner"]["buildagent"]["unit"], "buildagent.service")
@@ -321,7 +322,7 @@ class SammlerTest(unittest.TestCase):
 # ---------------------------------------------------------------- Endpunkte
 
 
-class EndpunktTest(unittest.TestCase):
+class ServerBasis(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         d = Path(self.tmp.name)
@@ -366,6 +367,8 @@ class EndpunktTest(unittest.TestCase):
         r, _ = self.anfrage("POST", "/api/einrichtung/code", {"code": "abcd2345"})
         self.assertEqual(r.status, 200)
 
+
+class EndpunktTest(ServerBasis):
     def test_ohne_code_kein_zugriff(self):
         r, _ = self.anfrage("GET", "/api/einrichtung/runner")
         self.assertEqual(r.status, 401)
@@ -469,6 +472,117 @@ class EndpunktTest(unittest.TestCase):
         self.assertEqual(r.status, 200)
         self.assertEqual(d["runnerAnzahl"], 2)
         self.assertNotIn("runner", d)  # Funde erst nach dem Code
+
+
+# ---------------------------------------------------------------- Review #118
+
+
+class ReviewTest(ServerBasis):
+    """Nachträge aus dem Review: Forgejo-Prüfung über anbieter.json, 401-Text, Größe, Units, Einstufung."""
+
+    def forgejo(self, server=True):
+        schreibe_erkennung(self.k, [fund("runner-vm-01"), fund("runner-vm-02", "forgejo", "teil", server="https://git.example.org")])
+        self.k.zuordnung_datei.parent.mkdir(parents=True, exist_ok=True)
+        eintrag = {"server": "https://git.example.org", "org": "beispiel-org"} if server else {"name": "runner-vm-02"}
+        self.k.zuordnung_datei.write_text(json.dumps({"runner": {"runner-vm-02": eintrag}}))
+
+    def test_pruefen_forgejo_angebunden(self):
+        self.forgejo()
+        self.code()
+        r, d = self.anfrage("GET", "/api/einrichtung/runner")
+        self.assertEqual({f["id"]: f["anbindung"] for f in d["runner"]}, {"runner-vm-01": "github", "runner-vm-02": "angebunden"})
+        r, d = self.anfrage("POST", "/api/einrichtung/runner/pruefen", {"id": "runner-vm-02"})
+        self.assertEqual(r.status, 202)
+        seit = d["seit"]
+        self.assertEqual(json.loads((self.k.auftraege_verz / einrichtung.AUFTRAG_PRUEFEN).read_text())["id"], "runner-vm-02")
+        (self.k.lauf_verz / "anbieter.json").write_text(json.dumps({"zeit": seit + 1, "runner": {"runner-vm-02": {
+            "abfrage": "ok", "abgefragt": seit + 1, "org": "beispiel-org", "art": "forgejo", "serverVersion": "13.0.1",
+            "repos": [{}] * 6, "runner": {"zustand": "unbekannt"}}}}))
+        r, d = self.anfrage("GET", "/api/einrichtung/runner")
+        p = d["anbieter"]["runner-vm-02"]["pruefung"]
+        self.assertTrue(p["ok"])
+        self.assertEqual(p["ergebnisse"][0]["text"], "Server erreichbar · Forgejo 13.0.1")
+        self.assertTrue(p["ergebnisse"][-1]["warn"])
+        # Sammler: nächste Runde der weiteren Dienste sofort
+        s = sammler.Sammler(self.k)
+        s.naechste_anbieter = 1e12
+        s.auftrag_einrichtung(jetzt=1000.0, mono=1.0)
+        self.assertEqual(s.naechste_anbieter, 1000.0)
+
+    def test_pruefen_forgejo_ohne_server(self):
+        self.forgejo(server=False)
+        self.code()
+        r, d = self.anfrage("POST", "/api/einrichtung/runner/pruefen", {"id": "runner-vm-02"})
+        self.assertEqual(r.status, 200)
+        self.assertIn("Server und Organisation fehlen", d["ergebnisse"][0]["text"])
+        self.assertFalse((self.k.auftraege_verz / einrichtung.AUFTRAG_PRUEFEN).exists())
+
+    def test_verbindung_anbieter_fehler(self):
+        for art, teil in (("kein-token", "kein Token"), ("nicht-erreichbar", "nicht erreichbar"), ("token-ungueltig", "ungültig")):
+            e = einrichtung.verbindung_anbieter({"abfrage": art, "abgefragt": 1.0, "org": "o"})
+            self.assertFalse(e["ok"])
+            self.assertIn(teil, e["ergebnisse"][0]["text"])
+        self.assertFalse(einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0}, seit=5.0)["fertig"])
+
+    def test_abgelaufener_code_verweist_auf_die_vm(self):
+        self.code()
+        r, _ = self.anfrage("POST", "/api/einrichtung/zugang", {"nutzer": "admin", "passwort": "ein langer satz zum merken"})
+        self.assertEqual(r.status, 200)
+        with self.app.sperre:
+            self.app.einrichtung.clear()  # Code abgelaufen (60 min) oder Dienst neu gestartet
+        for pfad, daten in (("/api/einrichtung/github/pruefen", {"org": "beispiel-org", "token": "ghp_" + "a" * 36}),
+                            ("/api/einrichtung/github/speichern", {"org": "beispiel-org", "token": "ghp_" + "a" * 36}),
+                            ("/api/einrichtung/runner/pruefen", {"id": "runner-vm-01"})):
+            r, d = self.anfrage("POST", pfad, daten)
+            self.assertEqual(r.status, 401, pfad)
+            self.assertIn("einrichten.sh zugang <runner>", d["fehler"], pfad)
+        self.assertFalse((self.k.auftraege_verz / "github-token").exists())
+
+    def test_auftrag_zu_gross(self):
+        self.code()
+        lang = "/var/log/" + "/".join(["a" * 120] * 6) + "/agent.log"
+        self.assertTrue(einrichtung.pruefe_log(lang))
+        status, d = [], {}
+        for runde in range(10):  # je Anfrage höchstens 16 KB, der offene Auftrag wächst bis über 64 KB
+            eintraege = [{"id": f"r{runde}-{i}", "stand": "grund", "log": lang} for i in range(18)]
+            r, d = self.anfrage("POST", "/api/einrichtung/runner/zuordnung", {"runner": eintraege})
+            status.append(r.status)
+            if r.status != 202:
+                break
+        self.assertEqual(status[0], 202)
+        self.assertEqual(status[-1], 400)
+        self.assertIn("Zu viele offene Änderungen", d["fehler"])
+        self.assertLessEqual(os.path.getsize(self.k.auftraege_verz / einrichtung.AUFTRAG_ZUORDNUNG), einrichtung.MAX_AUFTRAG)
+
+    def test_unit_positivliste(self):
+        self.code()
+        r, d = self.anfrage("POST", "/api/einrichtung/runner/zuordnung", {"runner": [{"id": "x", "stand": "grund", "unit": "erfunden.service"}]})
+        self.assertEqual(r.status, 400)
+        self.assertIn("gibt es auf der VM nicht", d["fehler"])
+        r, _ = self.anfrage("POST", "/api/einrichtung/runner/zuordnung", {"runner": [{"id": "x", "stand": "grund", "unit": "buildagent.service"}]})
+        self.assertEqual(r.status, 202)  # Unit eines Funds
+        wurzel = Path(self.tmp.name) / "wurzel"
+        (wurzel / "etc/systemd/system").mkdir(parents=True)
+        (wurzel / "etc/systemd/system/agent@.service").write_text("[Service]\n")
+        self.assertTrue(einrichtung.unit_vorhanden("agent@2.service", set(), str(wurzel)))
+        self.assertFalse(einrichtung.unit_vorhanden("nicht.service", set(), str(wurzel)))
+        # Der Sammler verwirft eine unbekannte Unit, auch wenn der Auftrag am Webserver vorbei entstand
+        (self.k.auftraege_verz / einrichtung.AUFTRAG_ZUORDNUNG).write_text(json.dumps({"runner": [
+            {"id": "x", "stand": "grund", "unit": "erfunden.service"}, {"id": "y", "stand": "ignoriert"}]}))
+        self.k.zuordnung_datei.parent.mkdir(parents=True, exist_ok=True)
+        self.assertEqual(einrichtung.verarbeite_auftrag(self.k.auftraege_verz, self.k.zuordnung_datei, self.k.lauf_verz, str(wurzel)), 1)
+        self.assertEqual(json.loads(self.k.zuordnung_datei.read_text())["runner"], {"y": {"stand": "ignoriert"}})
+
+    def test_log_pfad_gross_klein(self):
+        self.assertIsNone(einrichtung.pruefe_log("/var/log/Runner-Monitor/a.log"))
+        self.assertIsNone(einrichtung.pruefe_log("/opt/RUNNER-MONITOR-alt/a.log"))
+
+    def test_einstufung_wird_geprueft(self):
+        from runner_monitor import erkennung
+        self.assertIsNotNone(erkennung.pruefe_ergebnis(json.dumps({"zeit": 1.0, "runner": [fund("a")]}).encode()))
+        for falsch in ("super", None, 3):
+            roh = json.dumps({"zeit": 1.0, "runner": [fund("a", einstufung=falsch)]}).encode()
+            self.assertIsNone(erkennung.pruefe_ergebnis(roh), falsch)
 
 
 if __name__ == "__main__":

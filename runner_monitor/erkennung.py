@@ -73,6 +73,7 @@ FAEHIG = {
     "unbekannt": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
 }
 EINSTUFUNG = {"github": "voll", "forgejo": "teil", "gitea": "teil", "gitlab": "teil", "unbekannt": "unbekannt"}
+EINSTUFUNGEN = ("voll", "teil", "unbekannt")  # alle erlaubten Werte (pruefe_ergebnis, #96)
 
 UNIT_VERZEICHNISSE = ("/etc/systemd/system", "/run/systemd/system", "/usr/local/lib/systemd/system",
                       "/usr/lib/systemd/system", "/lib/systemd/system")
@@ -1109,7 +1110,8 @@ def pruefe_ergebnis(roh: bytes | None) -> dict | None:
     for f in funde:
         if not isinstance(f, dict) or not isinstance(f.get("id"), str) or als_id(f["id"]) != f["id"]:
             return None
-        if f.get("dienst") not in DIENSTE or f.get("grad") not in GRADE or f.get("stand") not in STAENDE:
+        if f.get("dienst") not in DIENSTE or f.get("grad") not in GRADE or f.get("stand") not in STAENDE \
+                or f.get("einstufung") not in EINSTUFUNGEN:
             return None
         if not isinstance(f.get("merkmale"), list) or not isinstance(f.get("faehig"), dict):
             return None

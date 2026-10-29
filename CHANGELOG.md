@@ -66,7 +66,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   aus wie in 0.7), alle anderen mit dem Befehl `einrichten.sh zugang <runner>` (E-22). „Fertig“ fasst den
   Stand je Runner zusammen. Ab 390 px bedienbar (#96).
 - „Verbindung prüfen“ ohne eingegebenes Token prüft das auf der VM hinterlegte GitHub-Token über den
-  Sammler (#96).
+  Sammler; bei einem angebundenen Forgejo-/Gitea-Runner (Server und Organisation in `runner.json`) ebenso (#96).
 
 ### Behoben
 - Reiter und Karte zeigen für einen Runner ohne systemd-Dienst beide „Kein Dienst“ (der Reiter zeigte

@@ -83,7 +83,7 @@ def pruefe_log(pfad: object) -> str | None:
     if not sauber or sauber != pfad or not sauber.startswith(LOG_WURZELN):
         return None
     teile = PurePosixPath(sauber).parts[1:]
-    if any(t.startswith(".") or "runner-monitor" in t for t in teile):
+    if any(t.startswith(".") or "runner-monitor" in t.lower() for t in teile):
         return None
     return sauber if LOG_NAME.fullmatch(teile[-1]) else None
 
@@ -94,6 +94,37 @@ def pruefe_unit(unit: object) -> str | None:
     if not sauber or erkennung.AUSNAHMEN.fullmatch(sauber) or GESPERRTE_UNITS.fullmatch(sauber):
         return None
     return sauber
+
+
+def unit_vorhanden(unit: str, bekannte: set[str] | frozenset[str] = frozenset(), wurzel: str = "/") -> bool:
+    """Positivliste: eine Unit aus der Oberfläche muss ein Fund der Erkennung sein oder als Unit-Datei in
+    den root-eigenen systemd-Verzeichnissen liegen (bei ``name@x.service`` auch die Vorlage ``name@.service``).
+    So zeigt das Dashboard nie das Journal eines erfundenen oder beliebigen Namens."""
+    if unit in bekannte:
+        return True
+    namen = [unit]
+    if "@" in unit:
+        namen.append(unit.split("@", 1)[0] + "@.service")
+    for verz in erkennung.UNIT_VERZEICHNISSE:
+        for name in namen:
+            if os.path.lexists(os.path.join(wurzel, verz.lstrip("/"), name)):
+                return True
+    return False
+
+
+def pruefe_units(eintraege: list[dict], bekannte: set[str] | frozenset[str] = frozenset(), wurzel: str = "/") -> list[dict]:
+    """Einträge, deren Unit es auf der VM nicht gibt, als Fehler melden (Webserver) – siehe ``unit_vorhanden``."""
+    for e in eintraege:
+        if e.get("unit") and not unit_vorhanden(e["unit"], bekannte, wurzel):
+            raise EingabeFehler("Diese systemd-Unit gibt es auf der VM nicht.")
+    return eintraege
+
+
+def bekannte_units(lauf_verz: Path) -> set[str]:
+    """Units der Funde aus ``erkennung.json`` (geprüft)."""
+    roh = erkennung.Quelle("/").lies(str((Path(lauf_verz) / "erkennung.json").absolute()), erkennung.MAX_ERGEBNIS)
+    daten = erkennung.pruefe_ergebnis(roh) or {}
+    return {u for f in daten.get("runner", []) if (u := erkennung.pruefe_unit(f.get("unit")))}
 
 
 def pruefe_eintrag(roh: object) -> dict:
@@ -205,7 +236,11 @@ def lege_auftrag(auftraege_verz: Path, eintraege: list[dict]) -> None:
         alle.pop(e["id"], None)
         alle[e["id"]] = e
     liste = list(alle.values())[-MAX_EINTRAEGE:]
-    _schreibe_privat(pfad, {"zeit": time.time(), "runner": liste})
+    daten = {"zeit": time.time(), "runner": liste}
+    if len(json.dumps(daten, ensure_ascii=False).encode("utf-8")) > MAX_AUFTRAG:
+        # Sonst verwürfe der Sammler den Auftrag später still (Lesegrenze) – lieber jetzt ablehnen.
+        raise EingabeFehler("Zu viele offene Änderungen. Bitte kurz warten, bis der Monitor sie übernommen hat, und erneut speichern.")
+    _schreibe_privat(pfad, daten)
 
 
 def lege_auftrag_einfach(auftraege_verz: Path, name: str, daten: dict | None = None) -> float:
@@ -283,7 +318,7 @@ def schreibe_zuordnung(pfad: Path, daten: dict) -> None:
         raise
 
 
-def verarbeite_auftrag(auftraege_verz: Path, zuordnung_datei: Path) -> int:
+def verarbeite_auftrag(auftraege_verz: Path, zuordnung_datei: Path, lauf_verz: Path | None = None, wurzel: str = "/") -> int:
     """Sammler: Zuordnungs-Auftrag abholen, prüfen, in ``runner.json`` schreiben. Gibt die Zahl der
     übernommenen Einträge zurück (0: kein Auftrag, nichts Gültiges oder nicht geschrieben)."""
     pfad = Path(auftraege_verz) / AUFTRAG_ZUORDNUNG
@@ -292,6 +327,11 @@ def verarbeite_auftrag(auftraege_verz: Path, zuordnung_datei: Path) -> int:
         return 0
     eintraege = lies_auftrag(arbeit)
     arbeit.unlink(missing_ok=True)
+    bekannte = bekannte_units(lauf_verz) if lauf_verz else set()
+    vorher = len(eintraege)
+    eintraege = [e for e in eintraege if not e.get("unit") or unit_vorhanden(e["unit"], bekannte, wurzel)]
+    if len(eintraege) < vorher:
+        LOG.warning("Auftrag %s: %d Einträge mit unbekannter Unit verworfen", AUFTRAG_ZUORDNUNG, vorher - len(eintraege))
     if not eintraege:
         LOG.warning("Auftrag %s verworfen: keine gültigen Einträge", AUFTRAG_ZUORDNUNG)
         return 0
@@ -341,7 +381,8 @@ FUND_FELDER = ("id", "name", "dienst", "server", "version", "grad", "merkmale", 
                "unit", "faehig", "aktiv", "grund")
 
 
-def funde(lauf_verz: Path, zuordnung_datei: Path, auftraege_verz: Path, github_id: str | None) -> dict:
+def funde(lauf_verz: Path, zuordnung_datei: Path, auftraege_verz: Path, github_id: str | None,
+          zugang_verz: Path | None = None) -> dict:
     """Funde aus ``erkennung.json`` (noch einmal geprüft) mit der Zuordnung aus ``runner.json`` und
     einem noch nicht abgeholten Auftrag – so sieht die Oberfläche ihre Wahl auch nach dem Neuladen.
 
@@ -369,6 +410,7 @@ def funde(lauf_verz: Path, zuordnung_datei: Path, auftraege_verz: Path, github_i
         z = zuordnung.get(f["id"], {})
         eintrag["zuordnung"] = {k: z[k] for k in WEB_SCHLUESSEL if k in z}
         eintrag["primaer"] = bool(github_id) and f["id"] == github_id and f.get("dienst") == "github"
+        eintrag["anbindung"] = "github" if eintrag["primaer"] else anbindung(f, zuordnung, zugang_verz)
         if "stand" not in z and eintrag["stand"] in ("grund", "ignoriert"):
             # Die Erkennung selbst kennt nur „angebunden“ und „offen“; grund/ignoriert stammen aus einer
             # inzwischen zurückgenommenen Zuordnung. Bis der Sammler neu erkannt hat: „offen“.
@@ -414,6 +456,59 @@ def verbindung_aus(gh: dict | None, seit: float | None = None) -> dict:
     if art == "fehler" and not org:
         zeile = {"fehler": True, **meldung("Organisation fehlt. Bitte links eingeben.")}
     return {"fertig": True, "ok": False, "ergebnisse": [zeile]}
+
+
+def anbindung(fund: dict, zuordnung: dict, zugang_verz: Path | None) -> str:
+    """Wie fragt der Sammler diesen Runner ab? ``angebunden`` (Adapter, Unit, Server und – wenn nötig –
+    Organisation aus runner.json, #93), ``ohne-server`` (Adapter da, aber Server/Organisation fehlen) oder
+    ``ohne-adapter`` (Grundüberwachung). Der GitHub-Runner des Monitors hat seinen eigenen Weg."""
+    from . import anbieter  # spät: anbieter importiert erkennung und runner
+
+    k = anbieter.konfig_aus(fund, zuordnung.get(fund.get("id")), zugang_verz)
+    if anbieter.angebunden(k, fund.get("stand")):
+        return "angebunden"
+    if anbieter.klasse_fuer(k.dienst).ANBINDUNG and k.dienst != "github":
+        return "ohne-server"
+    return "ohne-adapter"
+
+
+def verbindung_anbieter(erg: dict | None, seit: float | None = None) -> dict:
+    """Ergebnis der letzten Abfrage eines weiteren Adapters (Forgejo/Gitea, ``anbieter.json`` › ``runner.<id>``)
+    als Ergebnisliste im Muster von :func:`verbindung_aus`. Server, Organisation und Token stammen aus
+    ``runner.json`` bzw. ``zugang/`` auf der VM (E-18, E-22)."""
+    erg = erg if isinstance(erg, dict) else {}
+    abgefragt = erg.get("abgefragt") if isinstance(erg.get("abgefragt"), (int, float)) else None
+    if seit is not None and (abgefragt is None or abgefragt < seit):
+        return {"fertig": False, "ok": False, "ergebnisse": []}
+    art = erg.get("abfrage")
+    org = str(erg.get("org") or "")
+    if art == "ok":
+        dienst = {"forgejo": "Forgejo", "gitea": "Gitea"}.get(erg.get("art"), "Server")
+        version = erkennung.pruefe_version(erg.get("serverVersion")) if erg.get("serverVersion") else None
+        repos = erg.get("repos") if isinstance(erg.get("repos"), list) else []
+        zeilen = [{"ok": True, **(meldung("Server erreichbar · {dienst} {version}", dienst=dienst, version=version)
+                                  if version else meldung("Server erreichbar · {dienst}", dienst=dienst))},
+                  {"ok": True, **meldung("Token gültig, Organisation {org} gefunden, {n} Repositories", org=org, n=len(repos))}]
+        zustand = (erg.get("runner") or {}).get("zustand") if isinstance(erg.get("runner"), dict) else None
+        if zustand in ("online", "offline"):
+            zeilen.append({"ok": True, "text": "Runner beim Server gefunden (Online-Status wird angezeigt)"})
+        else:
+            zeilen.append({"warn": True, "text": "Runner-Status nur mit Organisations-Recht: Online-Status bleibt „unbekannt“"})
+        return {"fertig": True, "ok": True, "ergebnisse": zeilen}
+    texte = {
+        "kein-token": meldung("Auf der VM ist noch kein Token hinterlegt. Bitte mit dem Befehl links eintragen."),
+        "token-ungueltig": meldung("Token ungültig oder abgelaufen."),
+        "keine-rechte": meldung("Organisation {org} nicht gefunden oder kein Zugriff.", org=org) if org else meldung("Token ohne Zugriff."),
+        "nicht-erreichbar": meldung("Der Server ist von der VM aus nicht erreichbar."),
+        "kontingent": meldung("API-Kontingent erschöpft, bitte später erneut prüfen."),
+    }
+    return {"fertig": True, "ok": False, "ergebnisse": [{"fehler": True, **texte.get(art, meldung("Prüfung fehlgeschlagen."))}]}
+
+
+def ohne_server() -> dict:
+    """„Verbindung prüfen“ für einen Runner mit Adapter, dem Server oder Organisation in runner.json fehlen."""
+    return {"fertig": True, "ok": False, "ergebnisse": [
+        {"warn": True, "text": "Server und Organisation fehlen in /etc/runner-monitor/runner.json – siehe Anleitung zu einrichten.sh zugang."}]}
 
 
 def ohne_abfrage() -> dict:
