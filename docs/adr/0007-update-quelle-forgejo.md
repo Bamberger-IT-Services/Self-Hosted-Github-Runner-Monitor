@@ -1,7 +1,7 @@
 # ADR-0007: Forgejo als wählbare Update-Quelle
 
 **Status:** vorgeschlagen – Entwurf und Anforderungen von Tobias (#138), Umsetzung und Abwägung Claude;
-die strenge Herkunftsregel (E-28) bitte bestätigen
+die strenge Herkunftsregel (E-29) von Tobias bestätigt (29.10.2026)
 **Datum:** 2026-10-29
 
 ## Ausgangslage
@@ -32,7 +32,7 @@ GitHub-API. Forgejo läuft derzeit im LAN über `http://`, wird eventuell öffen
   `gh attestation verify <archiv> --repo <release-repo> --signer-workflow <release-repo>/.github/workflows/release.yml`.
   Geprüft am 29.10.2026: Das Paket 0.8.1 von Forgejo ist byte-gleich mit dem von GitHub und besteht
   die Prüfung; 0.8.0 (nur Forgejo) hat keine Attestierung.
-- **Fehlende Attestierung = nicht bestätigt (E-28).** Mit GitHub-CLI und Token auf der VM bricht ein
+- **Fehlende Attestierung = nicht bestätigt (E-29).** Mit GitHub-CLI und Token auf der VM bricht ein
   Update ab, wenn es zu diesem SHA-256 keine Attestierung gibt – genau wie bei GitHub als Quelle. Ein
   „nicht gefunden“ lässt sich von „auf Forgejo verändert“ nicht unterscheiden: Ein verändertes Archiv
   hat nie eine Attestierung. Ohne CLI oder Token bleibt es wie bisher bei der Prüfsumme mit Warnung,
@@ -51,7 +51,7 @@ GitHub-API. Forgejo läuft derzeit im LAN über `http://`, wird eventuell öffen
 - **`browser_download_url` aus der Antwort mit Präfix-Prüfung** (wie bei GitHub) – verworfen: Forgejo
   baut die Adresse aus seiner `ROOT_URL`, die von der eingetragenen Adresse abweichen kann, und ein
   übernommener Server bestimmte sonst Pfad und Tag.
-- **Ohne Attestierung nur warnen** – verworfen (E-28): machte die Attestierung bei Forgejo wertlos.
+- **Ohne Attestierung nur warnen** – verworfen (E-29): machte die Attestierung bei Forgejo wertlos.
 - **Eigene Signatur (Ed25519/`ssh-keygen -Y verify`)** – nicht jetzt; Option, falls Releases künftig
   nicht mehr über GitHub laufen (siehe Folgen).
 
