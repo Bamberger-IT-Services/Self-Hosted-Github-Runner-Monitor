@@ -33,7 +33,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import VERSION, anbieter, aufraeumen, einrichtung, erkennung, github, runner
+from . import VERSION, anbieter, aufraeumen, einrichtung, erkennung, github, quelle, runner
 from .anbieter import github as gh_adapter
 from .anbieter import token as zugangsdaten
 from .konfig import Konfig, lade
@@ -554,11 +554,16 @@ class Sammler:
         self._aufraeumen_stand = stand
 
     def release(self) -> dict:
-        klient = github.Klient(self.token())
-        daten = github.neueste_version(klient, self.k.release_repo)
+        if self.k.update_quelle == "forgejo":
+            # Forgejo ohne Token, ohne Weiterleitungen, Download-Adressen selbst gebaut (#138, ADR-0007)
+            daten = quelle.forgejo_release(self.k, VERSION)
+        else:
+            klient = github.Klient(self.token())
+            daten = github.neueste_version(klient, self.k.release_repo)
+            if github.vergleiche(daten.get("version", ""), VERSION) > 0:
+                daten["aenderungen"] = github.aenderungen(klient, self.k.release_repo, VERSION, daten["version"])
         daten["installiert"] = VERSION
-        if github.vergleiche(daten.get("version", ""), VERSION) > 0:
-            daten["aenderungen"] = github.aenderungen(klient, self.k.release_repo, VERSION, daten["version"])
+        daten["quelle"] = self.k.update_quelle
         schreibe_oeffentlich(self.k.lauf_verz / "release.json", daten)
         return daten
 

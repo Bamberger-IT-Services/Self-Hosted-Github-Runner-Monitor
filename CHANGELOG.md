@@ -5,6 +5,13 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 ## [Unveröffentlicht]
 
 ### Neu
+- Update-Quelle wählbar (#138, ADR-0007): Neben GitHub (bleibt Vorgabe, für bestehende VMs ändert sich
+  nichts) kommen Updates auf Wunsch von einem Forgejo-Server – `sudo einrichten.sh quelle` bzw.
+  `MONITOR_UPDATE_QUELLE=forgejo` und `MONITOR_UPDATE_FORGEJO=https://…` in `konfig.env`. Ohne Token
+  (das Repository muss ohne Anmeldung lesbar sein), ohne Weiterleitungen, `http://` nur mit
+  `MONITOR_UPDATE_HTTP_ERLAUBT=1`. Die Herkunft prüft der Hilfsdienst auch dann per GitHub-Attestierung
+  gegen das GitHub-Repository. Info › Updates zeigt die Zeile „Quelle“, `einrichten.sh status` ebenso.
+  Das Update auf diese Version selbst kommt noch von GitHub (bzw. per Paket); danach `einrichten.sh quelle`.
 - Aufräumen der Platte für jeden Runner (#144): `sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen` richtet
   `/usr/local/bin/runner-aufraeumen`, den nächtlichen Lauf mit `fstrim` und neu `runner-aufraeumen.timer` (alle 15 Minuten
   unter 25 GB frei) ein – auch für Forgejo-, Gitea- und GitLab-Runner, die keinen Hook vor Jobs kennen; beim GitHub-Runner
@@ -14,6 +21,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   `einrichten.sh runner` nutzt denselben Ablauf, die Erstinstallation bietet ihn an.
 - Der Monitor meldet, ob das Aufräumen eingerichtet ist (neuer Bereich `aufraeumen` in `/events` und `/api/zustand`,
   additiv; der Sammler prüft als root ohne Symlinks zu folgen, S-AUFR-01).
+
+### Sicherheit
+- Update-Hilfsdienst: Anmeldeseiten (HTML, Weiterleitung auf `/user/login`, 401/403) enden als klarer
+  Fehler „Quelle verlangt Anmeldung“, ein Download muss ein gzip-Archiv sein, und die Datei `VERSION`
+  im Paket muss die Zielversion nennen – ein älteres Paket unter neuerer Nummer wird vor dem Neustart
+  verworfen (S-UPD-02).
+
+### Behoben
+- CI auf Forgejo (#133): Der Test „Live-Strom endet bei Überlauf“ sendete feste 2100 Nachrichten; auf einem
+  langsamen Runner las der Server schnell genug mit, die Schlange lief nie über, und der Test lief in eine
+  Zeitüberschreitung. Er sendet jetzt, bis die Schlange überläuft. Das Programm ist unverändert.
+- „Platte knapp“ empfahl `sudo runner-aufraeumen`, auch wo es den Befehl nicht gab („command not found“, #144).
 
 ### Geändert
 - Doku-Links in der Einrichtung (Anleitung zu Forgejo/Gitea, GitLab, Anbieter ergänzen) und im
@@ -28,12 +47,6 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   es das Skript auf der VM gibt – sonst den Befehl zum Einrichten. Die Meldung „Platte knapp“ sagt, was wirklich aufräumt.
 - Der Hook vor dem Job ruft `runner-aufraeumen --vor-dem-job 25` auf; ein Neustart des GitHub-Runners nach dem Eintragen
   geht über `systemctl try-restart` statt `svc.sh` aus dem Runner-Ordner. Hook und `.env` schreibt der Runner-Benutzer.
-
-### Behoben
-- CI auf Forgejo (#133): Der Test „Live-Strom endet bei Überlauf“ sendete feste 2100 Nachrichten; auf einem
-  langsamen Runner las der Server schnell genug mit, die Schlange lief nie über, und der Test lief in eine
-  Zeitüberschreitung. Er sendet jetzt, bis die Schlange überläuft. Das Programm ist unverändert.
-- „Platte knapp“ empfahl `sudo runner-aufraeumen`, auch wo es den Befehl nicht gab („command not found“, #144).
 
 ## [0.8.1] – 29.10.2026
 

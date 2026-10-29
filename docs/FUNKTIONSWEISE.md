@@ -874,17 +874,27 @@ dieselben Daten ohne Server (Entwicklung, Bildschirmfotos).
 
 ## Update
 
-1. Der Sammler fragt alle 6 Stunden `releases/latest` ab und legt das Ergebnis in
-   `/run/runner-monitor/release.json` (nur root kann es schreiben). Hängen Archiv und Prüfsumme
+1. Der Sammler fragt alle 6 Stunden `releases/latest` der Update-Quelle ab und legt das Ergebnis in
+   `/run/runner-monitor/release.json` (nur root kann es schreiben, Feld `quelle`: `github` oder
+   `forgejo`). Quelle ist GitHub (Vorgabe, mit dem GitHub-Token des Monitors) oder – mit
+   `MONITOR_UPDATE_QUELLE=forgejo` – ein Forgejo-Server unter `MONITOR_UPDATE_FORGEJO`
+   (`runner_monitor/quelle.py`, ADR-0007): ohne Token, ohne Weiterleitungen, `http://` nur mit
+   `MONITOR_UPDATE_HTTP_ERLAUBT=1`; Archiv- und Prüfsummen-Adresse baut der Sammler selbst aus Basis,
+   Repository und Tag `vX.Y.Z`. Hängen Archiv und Prüfsumme
    noch nicht am Release (der Release-Workflow lädt sie erst nach dem Veröffentlichen hoch), steht
    dort `bereit: false`; der Sammler fragt dann nach 2 Minuten erneut, die Oberfläche zeigt
    „wird gerade bereitgestellt“ statt des Knopfs, und es gibt kein automatisches Update (#63).
 2. Klick auf „Jetzt aktualisieren“ → der Webserver legt `auftraege/update` mit der Versionsnummer ab.
 3. `runner-monitor-update.path` startet den root-Hilfsdienst. Er nimmt Archiv- und
    Prüfsummen-Adresse **nur** aus `release.json` und nur von
-   `https://github.com/<release-repo>/releases/download/…`, prüft SHA-256 und – mit GitHub-CLI – die
-   Herkunft per `gh attestation verify` (ADR-0005), entpackt nach
-   `/opt/runner-monitor/versionen/X.Y.Z`, hängt `aktuell` um und startet beide Dienste neu.
+   `https://github.com/<release-repo>/releases/download/…` bzw. bei Forgejo genau
+   `<basis>/<release-repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz[.sha256]` (ohne
+   Weiterleitungen; `release.json` einer anderen Quelle wird abgelehnt), verwirft Anmeldeseiten und
+   alles, was kein tar.gz ist, prüft SHA-256 und – mit GitHub-CLI – die Herkunft per
+   `gh attestation verify` gegen das GitHub-Repository (ADR-0005, auch bei Forgejo), entpackt nach
+   `/opt/runner-monitor/versionen/X.Y.Z` (die Datei `VERSION` im Paket muss X.Y.Z nennen), hängt
+   `aktuell` um und startet beide Dienste neu. Den Stand liest die Oberfläche aus `/api/zustand` bzw.
+   `/events` (Typ `update`, dort auch `quelle {art, name, adresse, http, releases}`).
 4. Meldet `/api/health` binnen 30 s nicht die neue Version, hängt er zurück auf die alte und
    meldet „Update fehlgeschlagen“. Drei Versionen bleiben liegen (`./einrichten.sh zurueck`).
 

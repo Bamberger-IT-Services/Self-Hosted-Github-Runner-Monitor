@@ -7,10 +7,15 @@ das der root-Sammler vom offiziellen Release-Repository geholt hat.
 
 Ablauf (die Nummern sind die Schritte, die die Oberfläche anzeigt):
 
-1. Archiv und Prüfsumme herunterladen (nur https://github.com/<release-repo>/releases/…)
+1. Archiv und Prüfsumme herunterladen – nur von der eingestellten Quelle (ADR-0007): GitHub
+   (``https://github.com/<release-repo>/releases/download/…``, Vorgabe) oder Forgejo (genau
+   ``<MONITOR_UPDATE_FORGEJO>/<release-repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz[.sha256]``,
+   ohne Weiterleitungen)
 2. SHA-256 prüfen, dann die Herkunft: ``gh attestation verify`` bestätigt, dass das Archiv vom
-   Release-Workflow dieses Repositorys gebaut wurde (GitHub-Attestierung/Sigstore, ADR-0005)
-3. nach ``/opt/runner-monitor/versionen/<version>`` entpacken, ``aktuell`` umhängen
+   Release-Workflow dieses Repositorys auf GitHub gebaut wurde (GitHub-Attestierung/Sigstore, ADR-0005) –
+   auch bei Forgejo, denn die Attestierung hängt am SHA-256, nicht am Ort des Downloads
+3. nach ``/opt/runner-monitor/versionen/<version>`` entpacken, die Datei ``VERSION`` im Paket muss die
+   Zielversion nennen, ``aktuell`` umhängen
 4. ``runner-monitor`` und ``runner-monitor-sammler`` neu starten
 5. ``/api/health`` muss binnen 30 s die neue Version melden – sonst zurück zur alten
 
@@ -29,10 +34,11 @@ import sys
 import tarfile
 import tempfile
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import VERSION, konfig as konfig_modul
+from . import VERSION, konfig as konfig_modul, quelle
 from .konfig import Konfig
 
 LOG = logging.getLogger("runner_monitor.aktualisierer")
@@ -98,14 +104,65 @@ def erlaubte_url(url: str, repo: str) -> bool:
     return url.startswith(f"https://github.com/{repo}/releases/download/")
 
 
-def lade(url: str, ziel: Path, max_bytes: int = 50 * 1024 * 1024) -> None:
+def erlaubte_urls(k: Konfig, ziel: str, archiv_url: str, summe_url: str) -> bool:
+    """GitHub wie bisher (Präfix des Release-Repositorys). Forgejo: genau die zwei Adressen, die sich aus
+    Basis, Repository und Zielversion ergeben – nichts aus der Antwort des Servers (ADR-0007)."""
+    if k.update_quelle == "forgejo":
+        return (archiv_url, summe_url) == quelle.download_urls(k, ziel) != ("", "")
+    return erlaubte_url(archiv_url, k.release_repo) and erlaubte_url(summe_url, k.release_repo)
+
+
+def pruefe_version(verz: Path, ziel: str) -> None:
+    """Das Paket muss die Zielversion enthalten. Schützt davor, dass ein älteres, echtes (attestiertes)
+    Paket unter einer neueren Versionsnummer angeboten und kurz gestartet wird (ADR-0007)."""
+    try:
+        drin = (verz / "VERSION").read_text(encoding="utf-8").strip()
+    except OSError:
+        drin = ""
+    if drin != ziel:
+        shutil.rmtree(verz, ignore_errors=True)
+        raise UpdateFehler(3, f"Paket enthält Version {drin or '?'} statt {ziel} – verworfen")
+
+
+ANMELDUNG = ("Quelle verlangt Anmeldung – statt der Datei kam eine Anmeldeseite. Das Repository muss ohne "
+             "Anmeldung lesbar sein (öffentlich, bei Forgejo REQUIRE_SIGNIN_VIEW aus)")
+
+
+def lade(url: str, ziel: Path, max_bytes: int = 50 * 1024 * 1024,
+         oeffner: urllib.request.OpenerDirector | None = None) -> None:
+    """Datei laden, höchstens ``max_bytes``. ``oeffner`` (Forgejo, ADR-0007): ohne Weiterleitungen – eine
+    3xx-Antwort ist ein Fehler. Eine HTML-Seite (Anmeldeseite eines nicht öffentlichen Servers, auch mit
+    Status 200) endet als klarer Fehler „Quelle verlangt Anmeldung“, nie als kaputtes Archiv."""
     anfrage = urllib.request.Request(url, headers={"User-Agent": f"runner-monitor/{VERSION}"})
-    with urllib.request.urlopen(anfrage, timeout=60) as antwort, open(ziel, "wb") as datei:  # noqa: S310 – nur https, geprüft
+    oeffne = oeffner.open if oeffner is not None else urllib.request.urlopen
+    try:
+        antwort = oeffne(anfrage, timeout=60)  # noqa: S310 – Adresse vorher gegen die Quelle geprüft
+    except urllib.error.HTTPError as fehler:
+        ziel_adresse = (fehler.headers or {}).get("Location", "") or ""
+        fehler.close()
+        if fehler.code in (401, 403) or (300 <= fehler.code < 400 and "/user/login" in ziel_adresse):
+            raise UpdateFehler(1, ANMELDUNG) from None
+        if 300 <= fehler.code < 400:
+            raise UpdateFehler(1, f"Download fehlgeschlagen: Weiterleitung ({fehler.code}) – die Quelle muss die Datei "
+                                  "selbst ausliefern") from None
+        raise
+    with antwort, open(ziel, "wb") as datei:
+        art = (antwort.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        if art in ("text/html", "application/xhtml+xml"):
+            raise UpdateFehler(1, ANMELDUNG)
+        try:
+            laenge = int(antwort.headers.get("Content-Length") or 0)
+        except ValueError:
+            laenge = 0
+        if laenge > max_bytes:
+            raise UpdateFehler(1, "Archiv ist unerwartet groß")
         gelesen = 0
         while True:
             block = antwort.read(65536)
             if not block:
                 break
+            if not gelesen and block.lstrip()[:1] == b"<":  # HTML ohne passenden Content-Type
+                raise UpdateFehler(1, ANMELDUNG)
             gelesen += len(block)
             if gelesen > max_bytes:
                 raise UpdateFehler(1, "Archiv ist unerwartet groß")
@@ -188,21 +245,28 @@ def aktualisiere(k: Konfig, ziel: str) -> None:
     release = json.loads((k.lauf_verz / "release.json").read_text(encoding="utf-8"))
     if release.get("version") != ziel or not VERSION_MUSTER.match(ziel):
         raise UpdateFehler(1, f"Version {ziel} ist nicht das neueste offizielle Release")
+    if release.get("quelle", "github") != k.update_quelle:
+        raise UpdateFehler(1, "Die Release-Information stammt noch von der vorigen Update-Quelle – "
+                              "in Info › Updates „Jetzt prüfen“, dann erneut versuchen")
     archiv_url, summe_url = release.get("archiv", ""), release.get("pruefsumme", "")
     if not archiv_url or not summe_url:
         raise UpdateFehler(1, f"Version {ziel} wird noch bereitgestellt (Paket noch nicht am Release) – "
                               "in ein bis zwei Minuten erneut versuchen")
-    if not (erlaubte_url(archiv_url, k.release_repo) and erlaubte_url(summe_url, k.release_repo)):
+    if not erlaubte_urls(k, ziel, archiv_url, summe_url):
         raise UpdateFehler(1, "Release enthält kein Archiv mit Prüfsumme")
+    oeffner = quelle.oeffner(k)
     alt = aktuelle_version()
     with tempfile.TemporaryDirectory(prefix="runner-monitor-update-") as tmp:
         status(k, zustand="laeuft", schritt=1, version=ziel)
         archiv, summe = Path(tmp) / "archiv.tar.gz", Path(tmp) / "archiv.sha256"
         try:
-            lade(archiv_url, archiv)
-            lade(summe_url, summe, max_bytes=4096)
+            lade(archiv_url, archiv, oeffner=oeffner)
+            lade(summe_url, summe, max_bytes=4096, oeffner=oeffner)
         except OSError as fehler:
             raise UpdateFehler(1, f"Download fehlgeschlagen: {fehler}") from fehler
+        with open(archiv, "rb") as datei:
+            if datei.read(2) != b"\x1f\x8b":  # gzip – vor jeder weiteren Verwendung, Prüfsumme gleich danach
+                raise UpdateFehler(1, "Download ist kein tar.gz-Archiv – verworfen")
         status(k, zustand="laeuft", schritt=2, version=ziel)
         erwartet = summe.read_text(encoding="utf-8").split()[0].lower() if summe.stat().st_size else ""
         if not re.fullmatch(r"[0-9a-f]{64}", erwartet) or sha256(archiv) != erwartet:
@@ -213,6 +277,7 @@ def aktualisiere(k: Konfig, ziel: str) -> None:
         if ziel_verz.exists():
             shutil.rmtree(ziel_verz)
         entpacke(archiv, ziel_verz)
+        pruefe_version(ziel_verz, ziel)
     haenge_um(ziel)
     status(k, zustand="laeuft", schritt=4, version=ziel)
     neustart()
@@ -222,7 +287,7 @@ def aktualisiere(k: Konfig, ziel: str) -> None:
             haenge_um(alt)
             neustart()
         raise UpdateFehler(5, "die neue Version hat nach dem Neustart nicht geantwortet")
-    status(k, zustand="erfolg", version=ziel, vorher=alt, herkunft=herkunft)
+    status(k, zustand="erfolg", version=ziel, vorher=alt, herkunft=herkunft, quelle=k.update_quelle)
     aufraeumen()
 
 

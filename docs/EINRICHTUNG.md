@@ -293,7 +293,10 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `MONITOR_ADRESSE` | `0.0.0.0` | `127.0.0.1`, wenn ein Proxy davor sitzt |
 | `MONITOR_UPDATE_HERKUNFT` | – | `pflicht`: Update nur mit bestätigter GitHub-Attestierung ([UPDATE.md](UPDATE.md)) |
 | `RUNNER_LABELS` | `self-hosted,linux,x64` | Labels, falls GitHub nicht abgefragt werden kann |
-| `MONITOR_RELEASE_REPO` | dieses Repository | Quelle für Updates (nur für Forks ändern) |
+| `MONITOR_RELEASE_REPO` | dieses Repository | Repository der Updates, auf GitHub und Forgejo gleich (nur für Forks ändern) |
+| `MONITOR_UPDATE_QUELLE` | `github` | `forgejo`: Updates vom Forgejo-Server unter `MONITOR_UPDATE_FORGEJO` (`einrichten.sh quelle`, [UPDATE.md](UPDATE.md)) |
+| `MONITOR_UPDATE_FORGEJO` | – | Adresse des Forgejo-Servers, z. B. `https://git.example.org` (nur mit `MONITOR_UPDATE_QUELLE=forgejo`) |
+| `MONITOR_UPDATE_HTTP_ERLAUBT` | aus | `1`: `MONITOR_UPDATE_FORGEJO` darf `http://` sein (nur im vertrauenswürdigen LAN) |
 
 ## Weitere Befehle
 
@@ -306,6 +309,7 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `sudo ./einrichten.sh runner` | GitHub-Runner einrichten |
 | `sudo ./einrichten.sh aufraeumen` | Aufräumen der Platte einrichten oder auf den Stand bringen – für jeden Runner (GitHub, Forgejo, Gitea, GitLab): `/usr/local/bin/runner-aufraeumen`, jede Nacht gründlich mit `fstrim`, alle 15 Minuten unter 25 GB frei (`runner-aufraeumen.timer`), beim GitHub-Runner auch vor jedem Job. Idempotent, stört keinen laufenden Job ([RUNNER.md](RUNNER.md), Abschnitt 6a) |
 | `sudo ./einrichten.sh aktualisieren` | neueste Version installieren ([UPDATE.md](UPDATE.md)) |
+| `sudo ./einrichten.sh quelle` | Update-Quelle wählen: GitHub (Vorgabe) oder Forgejo ([UPDATE.md](UPDATE.md#quelle-github-oder-forgejo)) |
 | `sudo ./einrichten.sh zurueck` | zur vorherigen Version |
 | `sudo ./einrichten.sh entfernen` | Dienste und Firewall-Regel entfernen, Daten bleiben (`--alles` löscht auch Daten) |
 

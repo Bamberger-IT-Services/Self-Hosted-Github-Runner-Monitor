@@ -16,6 +16,7 @@ eigene Netz zu.
 | S-HOST-01 | Jobs laufen als `github-runner` mit `sudo` ohne Passwort und in der Gruppe `docker` – faktisch root. Ein bösartiger Workflow kann das GitHub-Token des Monitors lesen und den Monitor verändern | hoch (Eigenschaft der Runner-VM, nicht des Monitors) | akzeptiert: Token nur lesend und kurzlebig; Runner nur für eigene, private Repositories, nie für Pull Requests aus Forks | 23.10.2026 |
 | S-CSP-01 | CSP ohne Nonce/`strict-dynamic` (Anweisung 04 verlangt sie); stattdessen streng `script-src 'self'` ohne Inline-Skripte | niedrig | akzeptiert – gleich streng, da keine Inline-Skripte und keine fremden Quellen | 23.10.2026 |
 | S-UPD-01 | Updates wurden nur per SHA-256 aus demselben Release geprüft. Wer das Repository oder den Release-Prozess übernimmt, kann ein Update ausliefern | mittel | behoben ab 0.6: GitHub-Attestierung des Pakets, Prüfung mit `gh attestation verify` gegen Repository und Release-Workflow ([ADR-0005](../adr/0005-herkunft-per-github-attestierung.md), Issue #18); ohne GitHub-CLI auf der VM weiter nur Prüfsumme, mit `MONITOR_UPDATE_HERKUNFT=pflicht` dann kein Update | 23.10.2026 |
+| S-UPD-02 | Forgejo als Update-Quelle (#138): der root-Sammler fragt einen selbst betriebenen, ggf. per `http://` erreichbaren Server nach Releases, der root-Hilfsdienst lädt und installiert von dort. Risiken: ein übernommener Forgejo-Server oder jemand im LAN (bei `http://`) liefert ein passendes Paar aus Archiv und Prüfsumme; Weiterleitungen oder Adressen aus der Antwort lenken den Download an einen anderen Ort; ein älteres, echtes Paket wird unter neuerer Nummer angeboten; ein nicht öffentlicher Server liefert eine Anmeldeseite statt des Pakets | mittel (bei `http://` ohne Herkunftsprüfung hoch) | behandelt: Quelle nur aus `konfig.env` (root), GitHub bleibt Vorgabe; `https://` Pflicht, `http://` nur mit `MONITOR_UPDATE_HTTP_ERLAUBT=1` und ohne Proxy aus der Umgebung (wie E-21), ungültige Adresse = kein Start; kein Token auf der VM für Forgejo; **keiner Weiterleitung gefolgt** (API und Download, Test mit zweitem Server); Download-Adressen baut der Monitor selbst aus Basis, Repository, Tag `vX.Y.Z` und festem Namen, der Hilfsdienst vergleicht exakt (`browser_download_url`/`html_url` aus der Antwort ungenutzt); `release.json` einer anderen Quelle abgelehnt; Anmeldeseite (HTML, `/user/login`, 401/403) = „Quelle verlangt Anmeldung“, Download muss gzip sein, SHA-256 vor jeder weiteren Verwendung; Herkunft per `gh attestation verify` gegen das **GitHub**-Repository und den Release-Workflow (die Attestierung hängt am SHA-256, geprüft mit 0.8.1 von Forgejo); fehlt die Attestierung, bricht das Update ab (E-29); `VERSION` im Paket muss der Zielversion entsprechen. Akzeptiert: ohne GitHub-CLI/Token auf der VM schützt bei Forgejo nur die Prüfsumme aus derselben Quelle (wie S-UPD-01 ohne CLI) – bei `http://` deshalb `MONITOR_UPDATE_HERKUNFT=pflicht` empfohlen; die Prüfung trägt nur, solange jedes Release auch über den GitHub-Release-Workflow attestiert wird ([ADR-0007](../adr/0007-update-quelle-forgejo.md)) | 29.10.2026 |
 | S-ZAP-01 | Ohne JavaScript schickte das Anmeldeformular Benutzername und Passwort per GET in der Adresse (ZAP-Regel 10024) – landet in Verlauf und Proxy-Logs | niedrig | behoben: Formular mit `method="post"` (Issue #20) | 23.10.2026 |
 | S-HTTP-01 | Wurde ein POST vor dem Lesen des Körpers abgelehnt (Herkunft, Inhaltstyp, Größe), blieb der Körper in der Verbindung und wurde als nächste Anfrage gelesen; Fehlerseiten der Standardbibliothek (kaputte Anfragezeile, unbekannte Methode) kamen ohne Sicherheits-Kopfzeilen | niedrig | behoben: Verbindung wird dann geschlossen (`Connection: close`), alle Fehler als JSON mit CSP und den übrigen Kopfzeilen (Issue #20) | 23.10.2026 |
 | S-DOS-01 | Ein angemeldeter Browser konnte beliebig viele SSE-Verbindungen öffnen (Threads) | niedrig | behoben: höchstens 6 Live-Verbindungen je Sitzung, weitere bekommen 429 (Issue #19); hängende Verbindungen enden nach 60 s, übergelaufene Warteschlangen beenden den Strom (seit 0.3.1) | 23.10.2026 |
@@ -93,15 +94,19 @@ Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), 
 ## V9 Kommunikation
 
 - Zu GitHub nur HTTPS mit Zertifikatsprüfung der Standardbibliothek. Zum Browser HTTP (S-NET-01).
+- Zur Update-Quelle Forgejo (#138) HTTPS mit Zertifikatsprüfung oder – nur mit `MONITOR_UPDATE_HTTP_ERLAUBT=1` –
+  HTTP ohne Proxy; ohne Token, keine Weiterleitungen, nur GET (S-UPD-02).
 - Zu Forgejo/Gitea (#93) HTTPS mit Zertifikatsprüfung oder – wenn `runner.json` es so nennt – HTTP im
   lokalen Netz; keine Weiterleitungen, nur GET (S-FORGEJO-01). Ebenso zu GitLab (S-GITLAB-01), im Sammler
   seit #115; je Runner ein eigener Faden mit Frist, höchstens 4 zugleich (S-SAMMLER-01).
 
 ## V10 Schadcode / Updates
 
-- Update-Hilfsdienst lädt nur von `https://github.com/<release-repo>/releases/download/`,
-  Adresse aus root-eigener Datei, prüft SHA-256, entpackt nur reguläre Dateien und Ordner
-  (keine Links, kein `..`), automatischer Rückweg (S-UPD-01).
+- Update-Hilfsdienst lädt nur von `https://github.com/<release-repo>/releases/download/` oder – mit
+  Forgejo als Quelle – genau von `<basis>/<release-repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz[.sha256]`
+  ohne Weiterleitungen (S-UPD-02), Adresse aus root-eigener Datei, verwirft Anmeldeseiten und
+  Nicht-gzip, prüft SHA-256 und die GitHub-Attestierung, entpackt nur reguläre Dateien und Ordner
+  (keine Links, kein `..`), prüft `VERSION` im Paket, automatischer Rückweg (S-UPD-01).
 
 ## V13/V14 HTTP und Konfiguration
 
