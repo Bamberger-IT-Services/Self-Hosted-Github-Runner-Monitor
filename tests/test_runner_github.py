@@ -24,6 +24,24 @@ class JournalTest(unittest.TestCase):
         self.assertEqual(e.art, "dienst-gestartet")
         self.assertIsNone(runner.deute_journalzeile(self.eintrag("irgendwas anderes")))
 
+    def test_dienst_nur_von_der_unit_des_runners(self):
+        # zwei GitHub-Runner auf einer VM: systemd meldet über UNIT, welche Unit gemeint ist (#131)
+        eins, zwei = "actions.runner.beispiel-org.runner-vm-01.service", "actions.runner.beispiel-org.runner-vm-02.service"
+        gestoppt = lambda u: self.eintrag("Stopped GitHub Actions Runner.", _COMM="systemd", _PID="1", UNIT=u)
+        self.assertEqual(runner.deute_journalzeile(gestoppt(eins), eins).art, "dienst-gestoppt")
+        self.assertIsNone(runner.deute_journalzeile(gestoppt(zwei), eins))
+        self.assertEqual(runner.deute_journalzeile(gestoppt(zwei), zwei).art, "dienst-gestoppt")
+        self.assertIsNone(runner.deute_journalzeile(gestoppt(eins), zwei))
+        gestartet = self.eintrag("Started GitHub Actions Runner.", _COMM="systemd", _PID="1", UNIT=zwei)
+        self.assertIsNone(runner.deute_journalzeile(gestartet, eins))
+        self.assertEqual(runner.deute_journalzeile(gestartet, zwei).art, "dienst-gestartet")
+        # ohne UNIT oder ohne bekannte Unit wird nichts zugeordnet
+        ohne = self.eintrag("Stopped GitHub Actions Runner.", _COMM="systemd", _PID="1")
+        self.assertIsNone(runner.deute_journalzeile(ohne, eins))
+        self.assertIsNone(runner.deute_journalzeile(gestoppt(eins), ""))
+        # Job-Ereignisse bleiben unberührt
+        self.assertEqual(runner.deute_journalzeile(self.eintrag("Running job: x"), eins).art, "start")
+
     def test_gefaelschte_kennung_taeuscht_keinen_dienst_vor(self):
         # SYSLOG_IDENTIFIER setzt der Absender (ein Job), _COMM/_PID setzt journald (#119)
         for extra in ({"SYSLOG_IDENTIFIER": "systemd"},

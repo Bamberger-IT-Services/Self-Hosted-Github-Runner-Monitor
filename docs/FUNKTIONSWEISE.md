@@ -68,7 +68,7 @@ für `runner.json`, „Neu erkennen“ und „Verbindung prüfen“) und prüfen
 | Platten | `/proc/mounts` + `statvfs`; nur echte Dateisysteme ab 1 GiB, ohne Snap/Docker-Overlays. Netzlaufwerke (NFS, CIFS) mit 2 s Frist in eigenem Thread; antwortet eines nicht, fehlt es, bis es wieder antwortet (Journal: „Netzlaufwerk … antwortet nicht“) | 10 s |
 | Runner-Dienst aktiv/gestoppt | `systemctl show actions.runner.*` | 2 s |
 | Runner-Name, Version | `/opt/actions-runner/.runner`, `bin/Runner.Listener.deps.json` (Eintrag `Runner.Listener/x.y.z`; Rückfall `bin/Runner.Listener --version`) | gefunden: 10 min, nicht gefunden: nach 30 s erneut |
-| Job gestartet/beendet, Ergebnis | Journal des Runner-Dienstes: „Running job: …“, „Job … completed with result: …“. „Dienst gestartet/gestoppt“ gilt nur für Meldungen von systemd selbst (`_COMM=systemd` und `_PID=1`), nie nach dem `SYSLOG_IDENTIFIER`, den ein Job setzen kann | sofort |
+| Job gestartet/beendet, Ergebnis | Journal des Runner-Dienstes: „Running job: …“, „Job … completed with result: …“. „Dienst gestartet/gestoppt“ gilt nur für Meldungen von systemd selbst (`_COMM=systemd` und `_PID=1`), nie nach dem `SYSLOG_IDENTIFIER`, den ein Job setzen kann; zusätzlich muss das Feld `UNIT` der Unit des überwachten Runners entsprechen, damit das Stoppen eines zweiten Runners auf der VM nicht beim ersten erscheint (#131) | sofort |
 | Live-Log | `/opt/actions-runner/_diag/pages/*.log` – der Runner schreibt je Schritt eine neue Datei; der Monitor liest sie wie `tail -f` | sofort |
 | Repository, Workflow, Schritte des Jobs | GitHub-API: Läufe der Repositories, Jobs mit `runner_name` dieses Runners | 30 s |
 | Online bei GitHub | GitHub-API `orgs/{org}/actions/runners` (Recht „Self-hosted runners: Read“, optional) | 30 s |
