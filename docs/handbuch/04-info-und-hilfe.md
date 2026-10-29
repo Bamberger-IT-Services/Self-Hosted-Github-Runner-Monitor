@@ -1,6 +1,6 @@
 # 4 Info & Hilfe
 
-**Stand: 29.10.2026 · Version 0.8.0 (in Arbeit)**
+**Stand: 29.10.2026 · Version 0.8.0**
 
 „Info“ oben rechts öffnet ein Blatt von rechts. Schließen mit „Schließen“, Escape oder einem
 Klick daneben.

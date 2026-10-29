@@ -34,7 +34,7 @@ Bereichslabels: `area:monitor`, `area:einrichtung`, `area:runner`, `area:docs`.
 - Nur Python-Standardbibliothek und Vanilla-JS. Keine Pakete ohne ADR.
 - Oberfläche: Ansprache „Sie“ in Anmeldung und Einrichtung, neutral im Dashboard, nie „du“.
 - CSP: keine Inline-Skripte, keine `style="…"`-Attribute; Werte per `element.style` setzen.
-- Design-Grundlage: Design v0.4.0 (`docs/design/v0.4.0/`, pixelgenau umsetzen). Bei Widerspruch gelten die Anweisungen; Abgleich
+- Design-Grundlage: Design v0.8.0 (`docs/design/v0.8.0/`, pixelgenau umsetzen). Bei Widerspruch gelten die Anweisungen; Abgleich
   in `docs/design/README.md` pflegen.
 - Produktive Schritte (Release veröffentlichen, VM umstellen, Einstellungen bei Forgejo oder GitHub) nur nach OK von Tobias.
 
