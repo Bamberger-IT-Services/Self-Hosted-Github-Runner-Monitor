@@ -103,6 +103,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Rückfall bestehen (#92).
 
 ### Geändert
+- Forgejo und GitLab gelten als vollständig unterstützt (Einstufung „voll“): Forgejo mit Status, Jobs, Schritten
+  und Logs, GitLab mit Status, Jobs und Logs (die GitLab-API hat keine Schrittliste). In der Einrichtung lassen
+  sich solche Runner übernehmen und über `einrichten.sh zugang` anbinden; Gitea bleibt „teil“
+  (Grundüberwachung), bis der Adapter an einem echten Server geprüft ist. „Verbindung prüfen“ nennt bei
+  GitLab den Dienst und keine Organisation; der Hinweis im Schritt „Anbinden“ beschreibt, dass der Befehl
+  Server, Organisation (nicht bei GitLab) und Token abfragt (#126, E-20, E-23, E-27).
 - CI: Prüfungen laufen auch bei Pull Requests nach `develop` und bei Push auf `develop`/`main`;
   shellcheck wird bei Bedarf nachinstalliert, davor `bash -n` (#108).
 - Ein Token nimmt die Weboberfläche nur noch in der Einrichtung an (gültiger Einrichtungscode), nicht mehr

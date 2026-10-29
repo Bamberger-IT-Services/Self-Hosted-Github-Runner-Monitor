@@ -332,7 +332,7 @@ class Handler(BaseHTTPRequestHandler):
         weitere = (lies_json(k.lauf_verz / "anbieter.json", {}) or {})
         weitere = weitere.get("runner") if isinstance(weitere, dict) and isinstance(weitere.get("runner"), dict) else {}
         daten["anbieter"] = {f["id"]: {"abgefragt": (weitere.get(f["id"]) or {}).get("abgefragt"),
-                                       "pruefung": einrichtung.verbindung_anbieter(weitere[f["id"]]) if isinstance(weitere.get(f["id"]), dict) else None}
+                                       "pruefung": einrichtung.verbindung_anbieter(weitere[f["id"]], dienst=f.get("dienst")) if isinstance(weitere.get(f["id"]), dict) else None}
                              for f in daten["runner"] if f.get("anbindung") == "angebunden"}
         gh = lies_json(k.lauf_verz / "github.json", {}) or {}
         einst = lies_json(k.einstellungen_datei, {}) or {}

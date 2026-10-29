@@ -116,9 +116,12 @@ Unit enthält „runner“, „agent“, „build“ …, startet Container). Be
 oder aktiv sind. Zwischen Forgejo und Gitea entscheidet die Antwort des Servers.
 
 **Einstufung und Fähigkeiten** richten sich nach dem, was diese Version liefern kann (Tabelle
-`FAEHIG` in `erkennung.py`): GitHub `voll` (Status, Jobs, Schritte, Logs); Forgejo, Gitea und GitLab
-`teil` (ausgeliefert als Dienst und Journal – ihre Adapter können mehr, die Tabelle hebt erst mit der
-Anbindung in Einrichtung und Sammler an, E-20, E-23); unbekannt `unbekannt` (Grundüberwachung).
+`FAEHIG` in `erkennung.py`): GitHub und Forgejo `voll` (Status, Jobs, Schritte, Logs), GitLab `voll` ohne
+Schritte (Status, Jobs, Logs – die API hat keine Schrittliste); Gitea `teil` (Dienst und Journal, der
+Adapter ist nur nach der OpenAPI-Beschreibung umgesetzt und noch nicht an einem echten Server geprüft);
+unbekannt `unbekannt` (Grundüberwachung). Seit #126, weil Sammler (#115) und Einrichtung (#96, #120)
+die Adapter tragen (E-20, E-23, E-27). Ein Test erlaubt, dass die Adapter-Klasse mehr kann als die Tabelle,
+nie umgekehrt.
 `updates` ist überall `false` (E-16). Ein Fund ohne Unit hat weder `status` noch `logs`.
 
 Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README):
@@ -126,8 +129,8 @@ Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README)
 ```json
 { "id": "runner-vm-02", "name": "runner-vm-02", "dienst": "forgejo", "server": "https://git.example.org",
   "version": "13.0 / Runner 9.1", "grad": "sicher", "merkmale": ["systemd-Unit forgejo-runner.service", "…"],
-  "einstufung": "teil", "stand": "offen", "unit": "forgejo-runner.service", "log": null,
-  "faehig": { "status": true, "jobs": false, "schritte": false, "logs": true, "updates": false },
+  "einstufung": "voll", "stand": "offen", "unit": "forgejo-runner.service", "log": null,
+  "faehig": { "status": true, "jobs": true, "schritte": true, "logs": true, "updates": false },
   "aktiv": true, "grund": null }
 ```
 
@@ -268,9 +271,9 @@ REST-Klient (auch für Releases und die Prüfung in der Einrichtung) und reicht 
 | Dienst | Adapter | status | jobs | schritte | logs | updates |
 |---|---|---|---|---|---|---|
 | GitHub | `GitHub` | ✓ | ✓ | ✓ | ✓ | – |
-| Forgejo | `Forgejo` (#93), ausgeliefert als Grundüberwachung bis #96/#115 (E-23); von Hand angebunden: | ✓ | ✓ (ausgeliefert: –) | ✓ ab Forgejo 17 (ausgeliefert: –) | ✓ (Journal) | – |
-| Gitea | `Gitea` (#93, nur nach OpenAPI), ausgeliefert als Grundüberwachung (E-23) | ✓ | ✓ (ausgeliefert: –) | ✓ (ausgeliefert: –) | ✓ (Journal) | – |
-| GitLab | `GitLab` (#99, im Sammler seit #115), ausgeliefert als Grundüberwachung bis #96 (E-20); von Hand angebunden: | ✓ | ✓ (ausgeliefert: –) | – | ✓ | – |
+| Forgejo | `Forgejo` (#93), ausgeliefert „voll“ seit #126 (E-27) | ✓ | ✓ | ✓ ab Forgejo 17 | ✓ (Journal) | – |
+| Gitea | `Gitea` (#93, nur nach OpenAPI), ausgeliefert als Grundüberwachung bis zur Prüfung an einem echten Server (E-23, E-27) | ✓ | ✓ (ausgeliefert: –) | ✓ (ausgeliefert: –) | ✓ (Journal) | – |
+| GitLab | `GitLab` (#99, im Sammler seit #115), ausgeliefert „voll“ ohne Schritte seit #126 (E-20, E-27) | ✓ | ✓ | – | ✓ | – |
 | unbekannt | Grundüberwachung | ✓ | – | – | ✓ | – |
 
 Ohne Unit gibt es weder `status` noch `logs` (außer beim GitHub-Runner aus `MONITOR_RUNNER_VERZ`,
@@ -279,9 +282,9 @@ GitHub-Runner neben dem aus `MONITOR_RUNNER_VERZ` laufen bis #94 in der Grundüb
 **Angebunden** ist ein Forgejo-, Gitea- oder GitLab-Runner, wenn er eine Unit hat, `runner.json` Server
 (mit `https://`, `http://` nur mit `http_erlaubt`) und – nur Forgejo/Gitea – Organisation nennt und sein
 Stand nicht `grund`/`ignoriert` ist (`anbieter.angebunden`, `ANBINDUNG`, `BRAUCHT_ORG`; GitLab seit
-#115). Sonst gilt die Grundüberwachung. Ausgeliefert ist die Einstufung bis zur Anbindung in der
-Einrichtung (#96) `teil` (E-20, E-23); ein von Hand angebundener Runner meldet in `runner[]` die
-Fähigkeiten seines Adapters. Liefert der Server keine Schritte (Forgejo vor 17), meldet der Eintrag
+#115). Sonst gilt die Grundüberwachung. Ausgeliefert ist die Einstufung seit #126 für Forgejo
+und GitLab `voll` (E-27), für Gitea `teil` (erst nach Prüfung an einem echten Server); ein von Hand
+angebundener Gitea-Runner meldet in `runner[]` die Fähigkeiten seines Adapters. Liefert der Server keine Schritte (Forgejo vor 17), meldet der Eintrag
 `faehig.schritte: false` – die Oberfläche zeigt dann „Schritte nicht verfügbar“ (Design ›
 „Teilweise“). **Ehrlich statt „Bereit“:** Ist der Runner beim Dienst beschäftigt, der Job aber in
 keinem Repository der Organisation zu finden, ist der Zustand `job` mit `job.zuordenbar: false`
@@ -455,8 +458,8 @@ Runner-API steht (bei fehlendem Namen steht „Projekt <Nummer>“). (3) `GET /p
 ab GitLab 15.5. (4) Der Runner wird über den Namen gefunden, nicht über die Runner-Nummer, weil die
 Nummer in `config.toml` nicht steht und das Runner-Token nie gelesen wird. Diese Punkte sind mit einem
 echten GitLab-Server zu bestätigen, bevor GitLab als „vollständig unterstützt“ eingestuft wird
-(`erkennung.EINSTUFUNG["gitlab"]` bleibt bis dahin und bis zur Anbindung im Sammler/in der Einrichtung
-(#96) auf „teil“, `erkennung.FAEHIG["gitlab"]` auf Grundüberwachung – E-20).
+(seit #126 steht `erkennung.EINSTUFUNG["gitlab"]` auf „voll“ und `erkennung.FAEHIG["gitlab"]` auf Status,
+Jobs und Logs – E-20, E-27; die Unsicherheiten bleiben offen und stehen oben).
 
 **Anbindung im Sammler (#115):** Ein GitLab-Runner mit Unit und `server` in `runner.json` (keine
 Organisation nötig) wird wie Forgejo/Gitea in seinem eigenen Faden abgefragt (siehe „Abfrage im

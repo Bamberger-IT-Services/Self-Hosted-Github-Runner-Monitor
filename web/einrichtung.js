@@ -13,6 +13,7 @@
   const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
   const DOKU = 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/FUNKTIONSWEISE.md';
   const DOKU_ANBINDEN = 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/EINRICHTUNG.md#forgejo--oder-gitea-runner-anbinden-93';
+  const DOKU_GITLAB = 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/EINRICHTUNG.md#gitlab-anbinden';
   const E = {
     codeOk: false, schritt: 1, pruefung: {}, runnerAnzahl: null, nutzer: 'admin', zugang: false, fertig: false,
     // Schritt 3
@@ -274,8 +275,8 @@
         ${knopf}`;
     }
     return `<div class="feld"><label for="server-${id}">${t('Server')}</label><input id="server-${id}" class="mono" readonly value="${esc(f.server || '')}" placeholder="–"><span class="feld-hinweis">${f.dienst === 'forgejo' || f.dienst === 'gitea'
-        ? t('Vorschlag aus der Erkennung. Server, Organisation und Token tragen Sie aus Sicherheitsgründen auf der VM ein: Server und Organisation in {datei} (Anleitung: {doku}), das Token mit diesem Befehl – er legt nur das Token ab:', { datei: '<code>/etc/runner-monitor/runner.json</code>', doku: `<a href="${DOKU_ANBINDEN}" rel="noopener" target="_blank">${t('Forgejo- oder Gitea-Runner anbinden ↗')}</a>` })
-        : t('Vorschlag aus der Erkennung. Zugangsdaten tragen Sie aus Sicherheitsgründen auf der VM ein; dieser Befehl legt das Token ab:')}</span></div>
+        ? t('Vorschlag aus der Erkennung. Server, Organisation und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt alle drei ab und prüft sie (Anleitung: {doku}):', { doku: `<a href="${DOKU_ANBINDEN}" rel="noopener" target="_blank">${t('Forgejo- oder Gitea-Runner anbinden ↗')}</a>` })
+        : t('Vorschlag aus der Erkennung. Server und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt beides ab und prüft sie; eine Organisation gibt es bei GitLab nicht (Anleitung: {doku}):', { doku: `<a href="${DOKU_GITLAB}" rel="noopener" target="_blank">${t('GitLab-Runner anbinden ↗')}</a>` })}</span></div>
       ${codeblock(`${SKRIPT} zugang ${f.id}`)}
       ${knopf}`;
   }

@@ -526,6 +526,27 @@ class ReviewTest(ServerBasis):
         # neu angebunden (#115, E-25): noch keine Runde – „läuft“, nicht „fehlgeschlagen“
         self.assertEqual(einrichtung.verbindung_anbieter({"abfrage": "ausstehend", "abgefragt": None}), {"fertig": False, "ok": False, "ergebnisse": []})
 
+    def test_verbindung_anbieter_gitlab(self):
+        """#126: GitLab nennt den Dienst, kennt keine Organisation und keine Repository-Zahl."""
+        ok = einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0, "org": "", "repos": [],
+                                              "runner": {"zustand": "online"}}, dienst="gitlab")
+        self.assertTrue(ok["ok"])
+        texte = [z["text"] for z in ok["ergebnisse"]]
+        self.assertEqual(texte[:2], ["Server erreichbar · GitLab", "Token gültig"])
+        self.assertTrue(all("Organisation" not in t and "Repositories" not in t for t in texte))
+        self.assertIn("Runner beim Server gefunden", texte[2])
+        nicht = einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0, "org": "", "runner": {"zustand": "unbekannt"}}, dienst="gitlab")
+        self.assertTrue(nicht["ergebnisse"][2]["warn"])
+        self.assertIn("nicht gefunden oder nicht eindeutig", nicht["ergebnisse"][2]["text"])
+        self.assertNotIn("Organisations-Recht", nicht["ergebnisse"][2]["text"])
+        # keine leere Organisation in der Fehlermeldung
+        rechte = einrichtung.verbindung_anbieter({"abfrage": "keine-rechte", "abgefragt": 1.0, "org": ""}, dienst="gitlab")
+        self.assertEqual(rechte["ergebnisse"][0]["text"], "Token ohne Zugriff.")
+        # Forgejo unverändert
+        fj = einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0, "org": "beispiel-org", "art": "forgejo", "repos": [1, 2]}, dienst="forgejo")
+        self.assertEqual(fj["ergebnisse"][0]["text"], "Server erreichbar · Forgejo")
+        self.assertIn("Organisation beispiel-org gefunden, 2 Repositories", fj["ergebnisse"][1]["text"])
+
     def test_abgelaufener_code_verweist_auf_die_vm(self):
         self.code()
         r, _ = self.anfrage("POST", "/api/einrichtung/zugang", {"nutzer": "admin", "passwort": "ein langer satz zum merken"})

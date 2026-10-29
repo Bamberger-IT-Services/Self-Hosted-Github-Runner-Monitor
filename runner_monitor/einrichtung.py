@@ -472,10 +472,12 @@ def anbindung(fund: dict, zuordnung: dict, zugang_verz: Path | None) -> str:
     return "ohne-adapter"
 
 
-def verbindung_anbieter(erg: dict | None, seit: float | None = None) -> dict:
-    """Ergebnis der letzten Abfrage eines weiteren Adapters (Forgejo/Gitea, ``anbieter.json`` › ``runner.<id>``)
-    als Ergebnisliste im Muster von :func:`verbindung_aus`. Server, Organisation und Token stammen aus
-    ``runner.json`` bzw. ``zugang/`` auf der VM (E-18, E-22)."""
+def verbindung_anbieter(erg: dict | None, seit: float | None = None, dienst: str | None = None) -> dict:
+    """Ergebnis der letzten Abfrage eines weiteren Adapters (Forgejo/Gitea/GitLab, ``anbieter.json`` ›
+    ``runner.<id>``) als Ergebnisliste im Muster von :func:`verbindung_aus`. Server, Organisation und Token
+    stammen aus ``runner.json`` bzw. ``zugang/`` auf der VM (E-18, E-22). ``dienst`` ist der erkannte Dienst
+    des Runners; bei GitLab gibt es keine Organisation (der Runner wird über seinen Namen gefunden, #126)."""
+    gitlab = dienst == "gitlab"
     erg = erg if isinstance(erg, dict) else {}
     abgefragt = erg.get("abgefragt") if isinstance(erg.get("abgefragt"), (int, float)) else None
     if seit is not None and (abgefragt is None or abgefragt < seit):
@@ -485,22 +487,25 @@ def verbindung_anbieter(erg: dict | None, seit: float | None = None) -> dict:
         return {"fertig": False, "ok": False, "ergebnisse": []}
     org = str(erg.get("org") or "")
     if art == "ok":
-        dienst = {"forgejo": "Forgejo", "gitea": "Gitea"}.get(erg.get("art"), "Server")
+        name = "GitLab" if gitlab else {"forgejo": "Forgejo", "gitea": "Gitea"}.get(erg.get("art"), "Server")
         version = erkennung.pruefe_version(erg.get("serverVersion")) if erg.get("serverVersion") else None
         repos = erg.get("repos") if isinstance(erg.get("repos"), list) else []
-        zeilen = [{"ok": True, **(meldung("Server erreichbar · {dienst} {version}", dienst=dienst, version=version)
-                                  if version else meldung("Server erreichbar · {dienst}", dienst=dienst))},
-                  {"ok": True, **meldung("Token gültig, Organisation {org} gefunden, {n} Repositories", org=org, n=len(repos))}]
+        zeilen = [{"ok": True, **(meldung("Server erreichbar · {dienst} {version}", dienst=name, version=version)
+                                  if version else meldung("Server erreichbar · {dienst}", dienst=name))},
+                  {"ok": True, **(meldung("Token gültig") if gitlab else
+                                  meldung("Token gültig, Organisation {org} gefunden, {n} Repositories", org=org, n=len(repos)))}]
         zustand = (erg.get("runner") or {}).get("zustand") if isinstance(erg.get("runner"), dict) else None
         if zustand in ("online", "offline"):
             zeilen.append({"ok": True, "text": "Runner beim Server gefunden (Online-Status wird angezeigt)"})
+        elif gitlab:
+            zeilen.append({"warn": True, **meldung("Runner beim Server nicht gefunden oder nicht eindeutig: Online-Status bleibt „unbekannt“")})
         else:
             zeilen.append({"warn": True, "text": "Runner-Status nur mit Organisations-Recht: Online-Status bleibt „unbekannt“"})
         return {"fertig": True, "ok": True, "ergebnisse": zeilen}
     texte = {
         "kein-token": meldung("Auf der VM ist noch kein Token hinterlegt. Bitte mit dem Befehl links eintragen."),
         "token-ungueltig": meldung("Token ungültig oder abgelaufen."),
-        "keine-rechte": meldung("Organisation {org} nicht gefunden oder kein Zugriff.", org=org) if org else meldung("Token ohne Zugriff."),
+        "keine-rechte": meldung("Organisation {org} nicht gefunden oder kein Zugriff.", org=org) if org and not gitlab else meldung("Token ohne Zugriff."),
         "nicht-erreichbar": meldung("Der Server ist von der VM aus nicht erreichbar."),
         "kontingent": meldung("API-Kontingent erschöpft, bitte später erneut prüfen."),
     }

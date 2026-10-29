@@ -152,8 +152,10 @@ Organisation › Settings › Personal access tokens › **Pending requests**.
 Gilt für einen erkannten GitLab-Runner (`gitlab-runner.service`, `config.toml`); der Sammler fragt ihn
 seit #115 ab ([Funktionsweise](FUNKTIONSWEISE.md#gitlab-adapter-99)), sobald Token und Server auf der VM
 liegen. Zugangsdaten für GitLab (und Forgejo/Gitea) nimmt die Weboberfläche bewusst nicht an (E-22): Sie
-gehören auf die VM. Ausgeliefert gilt er als „teil“ (E-20) und erscheint im Schritt „Runner“ als „erkannt,
-noch nicht unterstützt“; von Hand angebunden zeigt er Jobs.
+gehören auf die VM. Er gilt seit #126 als vollständig unterstützt (E-20): Im Schritt „Runner“ lässt er sich übernehmen,
+im Schritt „Anbinden“ steht der Befehl `einrichten.sh zugang`, und das Dashboard zeigt Jobs (ohne Schritte –
+die GitLab-API hat keine Schrittliste). Eine Organisation gibt es bei GitLab nicht: „Verbindung prüfen“ nennt
+den Dienst („Server erreichbar · GitLab“, „Token gültig“) und sagt, ob der Runner beim Server gefunden wurde.
 
 1. **Token erstellen:** GitLab › Gruppe (oder Projekt) › Settings › **Access tokens** › „Add new token“ –
    Rolle **Maintainer** (bei Gruppen-Runnern ggf. **Owner**), Bereich **`read_api`** (nur lesen), Ablaufdatum z. B. 90 Tage (der Monitor warnt
@@ -182,8 +184,9 @@ Instanz-Verwaltung angelegt) kann der Monitor nicht abfragen (dafür braucht Git
 ### Forgejo- oder Gitea-Runner anbinden (#93)
 
 Erkennt der Monitor einen Forgejo- oder Gitea-Runner (System prüfen › „Runner auf dieser VM“),
-überwacht er ihn zunächst nur über Dienst und Journal (ausgeliefert gilt er als „teil“, bis die
-Einrichtung im Browser ihn anbindet, E-23). Von Hand angebunden zeigt er zusätzlich, ob der
+überwacht er einen **Gitea**-Runner nur über Dienst und Journal (er gilt als „teil“, bis der Adapter an einem
+echten Server geprüft ist, E-23); ein **Forgejo**-Runner gilt seit #126 als vollständig unterstützt und
+lässt sich in der Einrichtung übernehmen. Angebunden zeigt er zusätzlich, ob der
 Runner beim Server online ist, Jobs je Repository, den laufenden Job mit Schritten (Forgejo ab 17,
 Gitea) und die letzten Jobs. Server, Organisation und Token tragen Sie auf der VM ein, nicht im Browser (E-22):
 

@@ -461,9 +461,9 @@ def workflows_aus(ergebnis: dict | None) -> dict:
 @registriere
 class GitLab(Anbieter):
     dienst = "gitlab"
-    # Was der Adapter kann. Ausgeliefert wird bis zur Anbindung in der Einrichtung (#96) die Tabelle
-    # ``erkennung.FAEHIG`` – sie darf weniger versprechen als diese Klasse (E-20). Ein von Hand in
-    # runner.json angebundener Runner (Server, Unit) meldet in runner[] die Fähigkeiten dieser Klasse.
+    # Was der Adapter kann. Seit #126 liefert ``erkennung.FAEHIG["gitlab"]`` dasselbe; die Tabelle darf nie
+    # mehr versprechen als diese Klasse (E-20). Ein in runner.json angebundener Runner (Server, Unit)
+    # meldet in runner[] die Fähigkeiten dieser Klasse.
     # Schritte: GitLab liefert keine Schrittliste (nur Jobs in Stages) – nicht als verfügbar zeigen.
     FAEHIG = {"status": True, "jobs": True, "schritte": False, "logs": True, "updates": False}
     ANBINDUNG = True   # der Sammler fragt ihn ab (#115), sobald runner.json den Server nennt
