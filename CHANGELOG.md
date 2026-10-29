@@ -11,6 +11,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   der Rückfall (#132, E-28). Die Links bleiben auf GitHub, weil die Forgejo-Spiegelung `main`,
   `develop`, `release/*` und alle Tags dorthin schiebt. Neuer Test `tests/test_doku_links.py`
   prüft Dateien und Anker gegen die Überschriften in `docs/`.
+- CI-Takt (E-30): Die volle Prüfung läuft nur noch vor dem Release (PRs nach `main`, Push auf `main`, von Hand);
+  PRs nach `develop` prüfen nur auf Geheimnisse (gitleaks), die Tests laufen vor dem Merge lokal.
 
 ## [0.8.1] – 29.10.2026
 
