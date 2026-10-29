@@ -55,9 +55,12 @@ ERGEBNIS = {"success": "erfolg", "failed": "fehler", "canceled": "abgebrochen", 
 
 
 class GitLabFehler(Exception):
-    def __init__(self, art: str, text: str = "") -> None:
+    def __init__(self, art: str, text: str = "", ursache: str | None = None) -> None:
         super().__init__(text or art)
         self.art = art  # nicht-erreichbar | token-ungueltig | kontingent | keine-rechte | fehler
+        # Warum die Adresse nicht passt (für „Server nicht gefunden“ in einrichten.sh zugang, #120):
+        # kein-dienst (antwortet nicht wie GitLab) | weiterleitung (3xx) | None
+        self.ursache = ursache
 
 
 class _KeineWeiterleitung(urllib.request.HTTPRedirectHandler):
@@ -127,7 +130,7 @@ class Klient:
         try:
             daten = json.loads(roh.decode("utf-8"), parse_constant=_verwerfe_konstante)
         except (UnicodeDecodeError, ValueError, RecursionError) as fehler:
-            raise GitLabFehler("fehler", "GitLab antwortet nicht mit JSON (falsche Adresse oder Proxy?)") from fehler
+            raise GitLabFehler("fehler", "GitLab antwortet nicht mit JSON (falsche Adresse oder Proxy?)", ursache="kein-dienst") from fehler
         return gh.Antwort(daten, kopf)
 
     @staticmethod
@@ -140,7 +143,7 @@ class Klient:
             # GitLab antwortet 404, wenn die Ressource für dieses Token nicht sichtbar ist.
             raise GitLabFehler("keine-rechte", f"Keine Berechtigung für {pfad} ({code})")
         if 300 <= code < 400:
-            raise GitLabFehler("fehler", f"GitLab leitet weiter ({code}) – Adresse des Servers prüfen")
+            raise GitLabFehler("fehler", f"GitLab leitet weiter ({code}) – Adresse des Servers prüfen", ursache="weiterleitung")
         raise GitLabFehler("fehler", f"GitLab antwortet mit {code}")
 
     def _hole(self, url: str, ende: float, ergebnis: list) -> None:
@@ -347,6 +350,8 @@ def abfrage(klient: Klient, name: str, letzter_erfolg: float | None = None, spei
     except GitLabFehler as fehler:
         ergebnis["abfrage"] = "nicht-erreichbar" if fehler.art in ("nicht-erreichbar", "fehler") else fehler.art
         ergebnis["fehler"] = str(fehler)
+        if fehler.ursache:
+            ergebnis["ursache"] = fehler.ursache
         if fehler.art == "token-ungueltig":
             speicher.pop("token_geprueft", None)
     except (TypeError, ValueError, AttributeError, OverflowError, KeyError, IndexError, RecursionError):

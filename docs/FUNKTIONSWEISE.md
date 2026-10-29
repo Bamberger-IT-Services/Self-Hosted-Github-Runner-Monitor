@@ -169,7 +169,55 @@ verworfen. Ein Eintrag mit `unit`, der nicht gefunden wurde, erscheint als „vo
 und `org` (Organisation oder Benutzer beim Dienst, `A-Z a-z 0-9 . _ -`) binden einen Forgejo- oder
 Gitea-Runner an (#93); sie sind die **einzige** Quelle, wohin der Sammler mit Token fragt (E-18).
 Mit Token nur `https://`; `http://` nur mit `"http_erlaubt": true` beim selben Runner (E-21).
-Bis die Einrichtung im Browser sie schreibt (#96/#97), trägt root sie von Hand ein (EINRICHTUNG.md).
+Die Oberfläche setzt `server`, `org` und `http_erlaubt` nie (E-22). Gesetzt werden sie auf der VM mit
+`sudo einrichten.sh zugang <runner>` (#120) oder von Hand.
+
+**`einrichten.sh zugang <runner>` für Forgejo, Gitea, GitLab (#120, E-26):** Das Skript fragt nur ab;
+geprüft und geschrieben wird in `runner_monitor/anbieter/anbindung.py`, nach denselben Regeln, mit denen
+Erkennung und Sammler lesen:
+
+- Den Dienst bestimmt `runner.json` (`dienst`) bzw. der Fund in `erkennung.json`. Nur für `forgejo`,
+  `gitea` und `gitlab` fragt das Skript nach dem Server. Für den GitHub-Runner und alle anderen bleibt es
+  beim Token.
+- **Server** (`anbindung.pruefe_server`): wie `erkennung.pruefe_url`, dazu abgelehnt statt still gekürzt:
+  Zugangsdaten (`@`), Abfrage, Anker, Pfadteile `.`/`..`, `%`-Kodierung und `/api…` am Ende. `http://`
+  nur nach ausdrücklicher Rückfrage → `"http_erlaubt": true`. Steht dieselbe `http://`-Adresse schon mit
+  `http_erlaubt` in der Datei, bleibt die Erlaubnis ohne neue Rückfrage. Als Vorgabe (Enter) gilt der
+  bisherige Server. Ohne bisherigen Server wird die Adresse aus dem Fund nur vorgeschlagen, und das nur
+  bei einem Fund mit Unit (E-17).
+- **Organisation** nur, wenn der Adapter sie braucht (`BRAUCHT_ORG`: Forgejo, Gitea), geprüft mit
+  `erkennung.pruefe_org`.
+- **Token** verdeckt von `/dev/tty`. An Python geht es über die Standardeingabe (`printf` ist eingebaut,
+  steht also in keiner Prozessliste); abgelegt wird es mit `token.schreibe` (`zugang/` 0700,
+  Datei 0600). **Neue Adresse:** Ändert sich der Server eines Runners, der schon ein Token hat, ist ein
+  neues Token Pflicht. Das gilt auch für das erste Eintragen eines Servers und für `https` → `http`.
+  Nur bei gleicher Adresse darf das Token bleiben (Enter). Ohne Token wird nichts geändert.
+- **Schreiben** (`anbindung.setze`, nur als root): `runner.json` wird gelesen wie in der Einrichtung
+  (`einrichtung.lies_roh`). Ist die Datei kaputt oder ein Symlink, wird nichts geschrieben. Geschrieben
+  wird mit `einrichtung.schreibe_zuordnung` (atomar, 0640, root, Gruppe des Ordners, der Ordner muss ein
+  echtes Verzeichnis von root sein). Geändert werden nur `server`, `org`, `http_erlaubt` und, auf Wunsch,
+  `stand: "grund"` dieses Runners. Bei `grund` fragt der Monitor den Dienst nicht ab, und die Einrichtung
+  im Browser setzt diesen Stand als Vorgabe für „erkannt, noch nicht unterstützt“. Alle anderen Felder
+  und Runner bleiben. Reihenfolge bei neuer Adresse: altes Token löschen → `runner.json` → neues Token.
+  Scheitert ein Schritt, bleibt höchstens „kein Token“, nie das alte Token an der neuen Adresse. Der
+  Sammler ruht während des Schreibens (`systemctl stop`/`start`), damit keine Runde Adresse und Token aus
+  verschiedenen Ständen liest. Der Neustart löst zugleich eine neue Erkennung aus.
+- **Verbindung prüfen** (`anbindung.pruefe_verbindung`): eine Abfrage des vorhandenen Adapters mit
+  Server, Organisation und Token aus der Konfiguration. Sie ist nur lesend: nur GET, keine Weiterleitung,
+  Fristen des Adapters, dazu insgesamt 40 s in einem eigenen Faden und 60 s `timeout` im Skript.
+  Ausgabe: „Server erreichbar · Forgejo 13.0“, „Token gültig, Organisation … gefunden“,
+  „Token ungültig“, „Keine Rechte“, „Server nicht erreichbar“ oder „Server nicht gefunden“. Letzteres
+  kommt nur aus dem Feld `ursache` der Adapter, nie aus einem Fehlertext: `kein-dienst` (unter der
+  Adresse antwortet kein Forgejo/Gitea/GitLab, z. B. `/api/v1/version` fehlt oder keine JSON-Antwort)
+  bzw. `weiterleitung` (3xx). Dazu kommt ein Hinweis, falls der Monitor den Runner trotzdem nicht
+  abfragt (Stand `grund`/`ignoriert`, keine Unit).
+- **Grenzen:** Wartet im Browser noch ein nicht abgeholter Auftrag `runner-zuordnung` mit
+  `stand: "grund"` für diesen Runner, übernimmt der Sammler ihn nach dem Neustart und setzt den eben
+  aufgehobenen Stand wieder; das Skript weist darauf hin. Ein Token, das vor #120 ohne Server abgelegt
+  wurde (alter Weg „erst Token, dann runner.json“), zählt als Token ohne Adresse: Beim ersten Lauf mit
+  Server verlangt das Skript ein neues Token und verwirft das alte (E-26). Ist ein Runner weder erkannt
+  noch in `runner.json` eingetragen, ist sein Dienst unbekannt; das Skript sagt das und legt nur nach
+  Rückfrage allein ein Token ab.
 
 **Sicherheit (S-ERK-01):** Bei Funden mit Unit-Datei kommen Name, Server und Dienst nur aus Registrierungen, die die Unit vorgibt
 (`--config` im ExecStart, Programmordner, WorkingDirectory); was nur ein Prozess in der cgroup nennt
@@ -302,7 +350,8 @@ Ergebnis je Runner in `/run/runner-monitor/anbieter.json` (0644, ohne Token):
 
 `abfrage`: `ok`, `kein-token`, `token-ungueltig` (401), `keine-rechte` (403, Organisation nicht
 gefunden), `nicht-erreichbar` (Verbindung, Frist, 5xx), `kontingent` (429), `fehler` (Weiterleitung,
-keine JSON-Antwort, zu groß, kein Forgejo/Gitea, Server oder Organisation fehlt). Bei einem Fehler
+keine JSON-Antwort, zu groß, kein Forgejo/Gitea, Server oder Organisation fehlt). Passt die Adresse nicht,
+steht zusätzlich `ursache`: `kein-dienst` (kein Forgejo/Gitea, keine JSON-Antwort) bzw. `weiterleitung` (#120). Bei einem Fehler
 bleibt der letzte gute Stand (Repositories, Runner, Job, letzte Jobs) stehen; `stand` ist nur bei
 `ok`, `nicht-erreichbar` und `kontingent` „angebunden“. Die Meldungen (`token`, `abfrage`) entstehen
 wie beim GitHub-Runner. Ist der Runner beim Dienst „beschäftigt“, der Job aber keinem Repository der
@@ -380,7 +429,8 @@ Ergebnis (öffentlich, ohne Token) im selben Format wie `github.json`, dazu `let
 `keine-rechte` (403, 404 oder Token ohne `read_api`), `kontingent` (429; `RateLimit-*` werden gezeigt,
 wenn der Server sie sendet), `kein-token`, `fehler` (Server fehlt, keine Adresse, nicht `https://` ohne
 Erlaubnis, oder „unerwartete Antwort“: Felder in falscher Form, `NaN`/`Infinity`, ungültige Daten – die Runde zeigt dann
-nichts Halbes). Fremde Antworten werden Feld für Feld geprüft (Typ, Wertebereich, Länge); Nummer und Name des
+nichts Halbes). Passt die Adresse nicht, steht zusätzlich `ursache`: `kein-dienst` (keine JSON-Antwort) bzw.
+`weiterleitung` (#120). Fremde Antworten werden Feld für Feld geprüft (Typ, Wertebereich, Länge); Nummer und Name des
 Runners bleiben die aus der Liste, auch wenn die Einzelantwort etwas anderes behauptet.
 
 **Was GitLab nicht hergibt (steht so in der Oberfläche als „nicht verfügbar“):**

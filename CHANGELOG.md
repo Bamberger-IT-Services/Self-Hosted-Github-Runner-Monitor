@@ -76,6 +76,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   angebundener Runner zeigt bis zur ersten Abfrage „Wird abgefragt …“ statt „Kein Token“ (E-25). Bei einem Fehler
   bleibt der letzte gute Stand nur für denselben Server und dasselbe Token stehen. Ausgeliefert bleiben
   Forgejo, Gitea und GitLab als „teil“, bis die Einrichtung im Browser sie anbindet (#96, E-20, E-23) (#115).
+- `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` bindet Forgejo-, Gitea- und GitLab-Runner
+  ohne Handarbeit an. Das Skript fragt Server (`https://`; `http://` nur nach ausdrücklicher Rückfrage, dann
+  `"http_erlaubt": true`), Organisation (nicht bei GitLab) und Token ab. Es prüft streng mit denselben
+  Regeln wie der Monitor, schreibt `runner.json` atomar (andere Felder bleiben) und das Token nach
+  `zugang/<runner>.token`. Danach prüft es die Verbindung nur lesend, mit klarer Antwort (Verbindung in
+  Ordnung, Token ungültig, keine Rechte, Server nicht erreichbar, Server nicht gefunden). Ändert sich die
+  Adresse eines Runners mit Token, verlangt es ein neues Token; das bisherige geht nie an die neue
+  Adresse. Ein Stand „Grundüberwachung“ aus der Einrichtung lässt sich dabei aufheben. Von Hand geht
+  es weiterhin (#120, E-26).
+  Hinweis: Ein Token, das bisher ohne Server in `zugang/` lag, wird beim ersten Lauf mit Server neu
+  abgefragt und das alte verworfen. Eine im Browser noch nicht übernommene Auswahl „Grundüberwachung“ kann
+  den aufgehobenen Stand wieder setzen.
 
 ### Behoben
 - Reiter und Karte zeigen für einen Runner ohne systemd-Dienst beide „Kein Dienst“ (der Reiter zeigte
