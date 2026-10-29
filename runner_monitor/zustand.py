@@ -402,7 +402,7 @@ class Zustand:
         """Ein Eintrag je Runner über seinen Adapter (Format: FUNKTIONSWEISE.md › Anbieter-Adapter).
 
         Der GitHub-Runner aus ``MONITOR_RUNNER_VERZ`` bekommt den GitHub-Adapter und dieselben Werte
-        wie der Bereich ``status`` (unverändert). Weitere erkannte Runner laufen bis #93/#94/#99 in der
+        wie der Bereich ``status`` (unverändert). Weitere erkannte Runner laufen bis #93/#94 in der
         Grundüberwachung (Dienst und Journal). Ignorierte Funde fehlen. Server und Log-Pfad kommen nie
         aus dem Fund (E-18): GitHub fest, Log-Datei nur aus ``runner.json``."""
         jetzt = time.time() if jetzt is None else jetzt

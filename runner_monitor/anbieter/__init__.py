@@ -4,8 +4,9 @@ Die Oberfläche richtet sich nach den **Fähigkeiten** eines Runners, nicht nach
 Dienstes (README › „Nicht verfügbar“ ehrlich zeigen). Jeder Dienst hat einen Adapter:
 
 * ``github``     – :class:`runner_monitor.anbieter.github.GitHub` (voll: Status, Jobs, Schritte, Logs)
+* ``gitlab``     – :class:`runner_monitor.anbieter.gitlab.GitLab` (Status, Jobs, Log; ohne Schritte)
 * alle anderen   – :class:`Grundueberwachung` (nur Dienst und Journal), bis ihr Adapter kommt
-  (Forgejo/Gitea #93, GitLab #99)
+  (Forgejo/Gitea #93)
 
 Schnittstelle (je Runner eine Instanz, gebaut aus :class:`RunnerKonfig`):
 
@@ -168,7 +169,7 @@ class Anbieter:
 
 
 class Grundueberwachung(Anbieter):
-    """Für Dienste ohne eigenen Adapter (Forgejo, Gitea, GitLab bis #93/#99, unbekannte Runner)."""
+    """Für Dienste ohne eigenen Adapter (Forgejo, Gitea bis #93, unbekannte Runner)."""
 
     dienst = "unbekannt"
 
@@ -205,3 +206,4 @@ def faehigkeiten_tabelle() -> dict[str, dict[str, bool]]:
 registriere(Grundueberwachung)
 
 from . import github as _github  # noqa: E402,F401 – registriert den GitHub-Adapter
+from . import gitlab as _gitlab  # noqa: E402,F401 – registriert den GitLab-Adapter

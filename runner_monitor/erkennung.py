@@ -60,13 +60,14 @@ STAENDE = ("angebunden", "grund", "ignoriert", "offen")
 GEPRUEFT = ["systemd-Units", "Prozesse", ".runner-Dateien", "Server-API"]
 
 # Was der Monitor in dieser Version je Dienst liefern kann (README › „Nicht verfügbar“ ehrlich zeigen).
-# Forgejo, Gitea und GitLab sind erkannt, aber noch ohne Adapter (#92, #93, #99): nur Grundüberwachung
-# (Dienst und Journal). Kommt ein Adapter dazu, ändert sich nur diese Tabelle.
+# Forgejo und Gitea sind erkannt, aber noch ohne Adapter (#93): nur Grundüberwachung (Dienst und
+# Journal). GitLab hat seit #99 einen Adapter (Status und Jobs, ohne Schritte: die API hat keine).
+# Kommt ein Adapter dazu, ändert sich nur diese Tabelle.
 FAEHIG = {
     "github": {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False},
     "forgejo": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
     "gitea": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
-    "gitlab": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
+    "gitlab": {"status": True, "jobs": True, "schritte": False, "logs": True, "updates": False},
     "unbekannt": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
 }
 EINSTUFUNG = {"github": "voll", "forgejo": "teil", "gitea": "teil", "gitlab": "teil", "unbekannt": "unbekannt"}

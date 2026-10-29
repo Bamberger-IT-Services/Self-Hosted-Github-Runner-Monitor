@@ -24,6 +24,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Die Oberfläche nutzt die neuen Felder ab #94 (#92, E-19, ADR-0006).
 - Zugangsdaten je Runner in `/etc/runner-monitor/zugang/<runner>.token` (nur root), gesetzt mit
   `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (#92).
+- GitLab-Adapter: Status, aktueller Job, letzte Jobs und laufende Jobs je Projekt eines GitLab-Runners
+  über die GitLab-REST-API (Token mit Bereich `read_api`, nur lesend, ohne Weiterleitungen). Ehrlich
+  „nicht verfügbar“: Schritte und wartende Jobs (die API liefert sie nicht). Anleitung unter
+  Einrichtung › „GitLab anbinden“ und im Runbook `gitlab-nicht-erreichbar`; der Sammler ruft den Adapter
+  mit #94/#96 auf (#99).
 
 ### Behoben
 - Dashboard lud nicht (Syntaxfehler in `web/dashboard.js` seit dem Review zu #90: ein Zeilenkommentar
