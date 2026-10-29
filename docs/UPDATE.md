@@ -1,6 +1,6 @@
 # Update und Rückweg
 
-**Stand: 25.10.2026 · Version 0.7.0**
+**Stand: 29.10.2026 · Version 0.8.0**
 
 Der Monitor prüft alle 6 Stunden, ob es auf GitHub ein neueres Release gibt – sofort geht es mit
 **Info › Updates › „Jetzt prüfen“** (höchstens einmal je Minute, auf der VM alternativ

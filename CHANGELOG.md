@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.8.0] – 29.10.2026
+
 ### Neu
 - Verlauf mit festen Zeitfenstern: Auslastung hat einen Zeitraum-Umschalter (30 s, 2, 5 oder 10 Min.);
   die Werte werden in Eimer mit festen Grenzen gruppiert, die Kurve wandert ruhig nach links (#89).
