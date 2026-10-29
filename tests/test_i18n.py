@@ -55,6 +55,14 @@ def server_meldungen() -> list[str]:
     z = (WURZEL / "runner_monitor" / "zugang.py").read_text(encoding="utf-8")
     texte += re.findall(r'ZugangFehler\("([^"]+)"\)', z)
     texte += re.findall(r'return "(Dieses[^"]+)"', z)
+    # Gründe, die Info › Runner übersetzt anzeigt (#145): „wahrscheinlich – {grund}“ der Erkennung und
+    # runnerGrund des Forgejo-/Gitea-Adapters
+    er = (WURZEL / "runner_monitor" / "erkennung.py").read_text(encoding="utf-8")
+    texte += re.findall(r'\(None, None, "([^"]+)"\)', er)
+    texte += re.findall(r'grund = "([^"]+)"', er)
+    texte += re.findall(r'grund = "[^"]+" if widerspruch else "([^"]+)"', er)
+    fj = (WURZEL / "runner_monitor" / "anbieter" / "forgejo.py").read_text(encoding="utf-8")
+    texte += re.findall(r'^GRUND_\w+ = "([^"]+)"', fj, re.M)
     texte += [f"Das Passwort braucht mindestens {zugang.PASSWORT_MIN} Zeichen.",
               f"Das Passwort darf höchstens {zugang.PASSWORT_MAX} Zeichen haben."]
     return texte

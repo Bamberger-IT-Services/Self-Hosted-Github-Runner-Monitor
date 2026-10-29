@@ -27,7 +27,8 @@ Sicherheit (E-18, S-ADAPTER-01): Server, Organisation, Log-Pfad und Token-Datei 
 der Konfiguration (``konfig.env``, ``einstellungen.json``, ``/etc/runner-monitor/runner.json``,
 ``/etc/runner-monitor/zugang/<runner>.token``), nie aus einem Fund der Erkennung. Vom Fund werden nur
 ID, Anzeigename, Unit (aus den root-eigenen systemd-Verzeichnissen), Version, Einstufung und Stand
-übernommen – zum Anzeigen, nie als Ziel einer Anfrage.
+übernommen – zum Anzeigen, nie als Ziel einer Anfrage. Dazu (#145) Name und UUID beim Dienst aus der
+``.runner``-Datei der Unit (``kennung``): nur zum Vergleich mit Runner-Listen und Job-Logs des Servers.
 """
 
 from __future__ import annotations
@@ -64,6 +65,10 @@ class RunnerKonfig:
     token_rueckfall: Path | None = None    # alter Ort (/etc/runner-monitor/github-token) bis #94/#96
     runner_verz: Path | None = None        # GitHub: Verzeichnis des Runners (MONITOR_RUNNER_VERZ)
     http_erlaubt: bool = False             # nur aus runner.json: Token darf über http:// gehen (E-21)
+    # Forgejo/Gitea (#145): Name und UUID beim Dienst aus der .runner-Datei der Unit (Fund der Erkennung).
+    # Nur zum Vergleich mit Runner-Listen und Job-Logs (Anzeige), nie Ziel einer Anfrage (E-18).
+    name_beim_dienst: str | None = None
+    uuid: str | None = None
 
 
 class Anbieter:
@@ -228,12 +233,14 @@ def konfig_aus(fund: dict, eintrag: dict | None, zugang_verz: Path | None) -> Ru
     eintrag = eintrag or {}
     rid = str(fund.get("id") or "")
     dienst = fund.get("dienst") if fund.get("dienst") in DIENSTE else "unbekannt"
+    kennung = erkennung.pruefe_kennung(fund.get("kennung")) or {}
     return RunnerKonfig(
         id=rid, name=erkennung.pruefe_name(fund.get("name")) or rid, dienst=dienst,
         unit=erkennung.pruefe_unit(fund.get("unit")), log=eintrag.get("log"),
         server=erkennung.pruefe_url(eintrag.get("server")), org=erkennung.pruefe_org(eintrag.get("org")) or "",
         token_datei=token_pfad(zugang_verz, rid) if zugang_verz and pruefe_id(rid) else None,
-        http_erlaubt=eintrag.get("http_erlaubt") is True)  # E-21: nur ein ausdrückliches true zählt
+        http_erlaubt=eintrag.get("http_erlaubt") is True,  # E-21: nur ein ausdrückliches true zählt
+        name_beim_dienst=kennung.get("name"), uuid=kennung.get("uuid"))
 
 
 def angebunden(k: RunnerKonfig, stand: str | None = None) -> bool:

@@ -200,7 +200,29 @@ Anwendungen › „Zugriffstoken erstellen“ (Gitea: „Neues Token generieren�
 | `repository` | **Lesen** – Repositories, Läufe, Jobs, Schritte, Log-Anfang |
 | `organization` | **Lesen** – Organisation und Runner-Liste („Online“) |
 | `user` | **Lesen**, nur wenn die Runner einem Benutzer statt einer Organisation gehören |
+| `admin` | freiwillig **Lesen** (`read:admin`), nur Administratoren, nur für globale Runner ohne Besitzerrechte – Abwägung unten, Empfehlung: weglassen |
 | alles andere | keine Rechte |
+
+**Globale Runner und `read:admin` (#145).** Ein Runner auf **Instanz-Ebene** (registriert mit einem
+Token aus der Administration, nicht aus der Organisation) steht in der Runner-Liste der Organisation mit
+(der Monitor fragt mit `visible=true`), aber nur für deren Besitzer. Zugeordnet wird er über UUID und Name
+aus seiner `.runner`-Datei, nicht über die ID im Monitor – der Name beim Server darf also anders lauten als
+die Unit. Findet der Monitor die `.runner` nicht (Info › Runner: Sicherheitsgrad „wahrscheinlich – keine
+Registrierung gefunden“), tragen Sie unter Einrichtung › Runner › „Zuordnung ändern“ als Namen den Namen
+beim Server ein. Fehlt der Runner in allen Listen, die das Token lesen darf, zeigt die Karte „Dienst
+aktiv“ mit „Forgejo: nicht sichtbar“ – Dienst, Log und laufende Jobs (über die UUID) bleiben sichtbar.
+
+Wer den Online-Status eines globalen Runners **ohne Besitzerrechte** sehen will, kann einem Token eines
+**Administrators** zusätzlich `read:admin` geben; dann liest der Monitor `/admin/actions/runners` (nur
+lesend; ohne das Recht antwortet der Server mit 403, der Monitor versucht es erst nach einer Stunde wieder).
+**Abwägung:** `read:admin` gilt für alle lesenden Admin-Schnittstellen der Instanz – wer das Token hat,
+sieht u. a. alle Benutzer mit E-Mail-Adressen, Organisationen, Cron-Aufgaben und Hooks, und das Konto
+muss Administrator sein (ein Konto mit Administratorrechten, dessen Passwort die ganze Instanz öffnet).
+Das Token liegt zwar nur für root lesbar auf der VM (`zugang/<id>.token`) und geht nur per GET an den
+Server aus `runner.json`, ein Leck wöge aber deutlich schwerer als bei `read:repository`/`read:organization`.
+**Empfehlung:** ohne `read:admin` – den Runner lieber in der Organisation registrieren oder das Konto des
+Monitors in deren Team „Owners“ aufnehmen; `read:admin` nur, wenn beides nicht geht und der Online-Status
+gebraucht wird.
 
 Die Runner-Liste der Organisation zeigt Forgejo und Gitea nur ihren **Besitzern**. Gehört das Konto
 des Tokens nicht zu den Besitzern, bleibt „beim Dienst“ unbekannt, und bei Forgejo lassen sich
