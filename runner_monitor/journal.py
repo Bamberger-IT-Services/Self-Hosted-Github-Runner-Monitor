@@ -38,7 +38,7 @@ LOG = logging.getLogger("runner_monitor")
 
 MAX_FOLGER = 4        # gleichzeitig verfolgte Units (je Unit ein journalctl)
 RUECKBLICK = 200      # Zeilen beim ersten Start (--lines)
-PUFFER = 500          # so viele Zeilen bekommt ein neu verbundenes Fenster
+PUFFER = 200          # so viele Zeilen bekommt ein neu verbundenes Fenster (Review #117: kleiner Anfangsstand)
 MAX_ZEILE = 4000      # Zeichen je Zeile (wie das Seiten-Log des GitHub-Runners)
 MAX_ROH = 64 * 1024   # Bytes je Rohzeile (JSON) von journalctl
 STAPEL = 200          # höchstens so viele Zeilen je Nachricht; mehr in einem Takt = Lücke
@@ -215,6 +215,9 @@ class Folger:
             self.cursor = c
         zeilen, ereignis = deute(eintrag)
         self._neu.extend(zeilen)
+        if len(self._neu) > STAPEL:  # Flut: zwischen zwei Takten wächst der Speicher nicht (Review #117)
+            self._luecke += len(self._neu) - STAPEL
+            del self._neu[:-STAPEL]
         if ereignis:
             self._neu_ereignisse.append(ereignis)
 
@@ -264,7 +267,10 @@ class Folger:
             self._halt.wait(NEUSTART_PAUSE)
 
     def _lies(self, prozess) -> None:
+        """Lesen, bis journalctl endet. Verschickt wird höchstens einmal je TAKT – auch bei einer Flut, in
+        der select() sofort zurückkehrt (Review #117); das letzte Stück verschickt _lauf() nach dem Ende."""
         fd = prozess.stdout.fileno()
+        geleert = time.monotonic()
         while not self._halt.is_set():
             bereit, _, _ = select.select([fd], [], [], TAKT)
             if bereit:
@@ -272,7 +278,9 @@ class Folger:
                 if not stueck:
                     return  # journalctl beendet
                 self.verarbeite(stueck)
-            self.leere()
+            if time.monotonic() - geleert >= TAKT:
+                self.leere()
+                geleert = time.monotonic()
 
     def _beende_prozess(self) -> None:
         p, self.prozess = self.prozess, None

@@ -227,6 +227,38 @@ class FolgerTest(unittest.TestCase):
             f.leere()
         self.assertEqual(len(f.zeilen), journal.PUFFER)  # neu verbundene Fenster bekommen höchstens PUFFER Zeilen
 
+    def test_flut_mit_attrappe_hoechstens_eine_nachricht_je_takt(self):
+        """Review #117: Eine Flut (select kehrt sofort zurück) erzeugt höchstens etwa Dauer/TAKT+1 Nachrichten,
+        der Speicher zwischen zwei Takten bleibt bei STAPEL Zeilen, die übrigen werden als Lücke gezählt – und
+        eine Schlange in Größe des Verteilers läuft nicht über."""
+        fabrik = Fabrik()
+        j = journal.Journale(starte=fabrik)
+        q = queue.Queue(maxsize=2000)  # wie zustand.Verteiler
+        f = j.anmelden("buildagent.service", q)
+        self.assertTrue(warte(lambda: fabrik.prozesse))
+        p = fabrik.prozesse[0]
+        n, stueck = 0, roh(*[eintrag(f"z{i}") for i in range(100)])
+        beginn = time.monotonic()
+        while time.monotonic() - beginn < 1.5:
+            p.schreibe(stueck)
+            n += 100
+            self.assertLessEqual(len(f._neu), journal.STAPEL)  # noqa: SLF001
+        dauer = time.monotonic() - beginn
+        p.ende()
+        self.assertTrue(warte(lambda: not f._neu and f._luecke == 0, 5))  # noqa: SLF001
+        alle = nachrichten(q)
+        self.assertNotIn({"_bereich": zustand.ENDE[0]}, alle)
+        neu = [m for m in alle[1:] if "zeilen" in m]
+        # je Takt eine Nachricht, dazu höchstens eine nach dem Ende von journalctl
+        self.assertLessEqual(len(neu), dauer / journal.TAKT + 3)
+        gezeigt = sum(1 for m in neu for z in m["zeilen"] if "text" in z)
+        ausgelassen = sum(z["n"] for m in neu for z in m["zeilen"] if z.get("art") == "luecke")
+        self.assertGreater(ausgelassen, 0)
+        self.assertEqual(gezeigt + ausgelassen, n)  # nichts verschwindet ungezählt
+        for m in neu:
+            self.assertLessEqual(len([z for z in m["zeilen"] if "text" in z]), journal.STAPEL)
+        j.abmelden(f, q)
+
     def test_volle_schlange_beendet_den_strom(self):
         f = journal.Folger("buildagent.service", Fabrik())
         q = queue.Queue(maxsize=1)

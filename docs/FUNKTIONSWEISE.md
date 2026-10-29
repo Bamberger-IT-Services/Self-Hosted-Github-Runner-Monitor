@@ -515,13 +515,16 @@ Ereignis `runner` an bzw. um.
   `--output-fields` nur Nachricht, Kennung, PID, Zeit), geteilt von allen Fenstern und nur, solange eines
   zusieht; höchstens 4 Units gleichzeitig (sonst Ereignis `journal` mit `hinweis: "grenze"`).
 - Grenzen: 4000 Zeichen je Zeile, 64 KiB je Rohzeile (längere werden verworfen), höchstens 200 Zeilen je
-  Nachricht (der Rest einer Flut wird als `{art: "luecke", n}` gezählt), die letzten 500 Zeilen für neu
-  verbundene Fenster; Zeilen alle 0,3 s gebündelt.
+  Nachricht (der Rest einer Flut wird als `{art: "luecke", n}` gezählt, auch zwischen zwei Takten bleiben
+  höchstens 200 Zeilen im Speicher), die letzten 200 Zeilen für neu verbundene Fenster; Zeilen alle 0,3 s
+  gebündelt, höchstens eine Nachricht je 0,3 s – auch bei einer Flut (Review #117).
 - Beenden: `terminate()`, nach 2 s `kill()`; endet `journalctl` von selbst, startet es nach 5 s neu ab dem
   letzten Cursor (`--after-cursor`, keine doppelten Zeilen).
 - Zeilen von systemd (PID 1) stehen ohne Vorsatz und werden zu den Ereignissen „Dienst gestartet“/„Dienst
   gestoppt“; alle anderen wie im Journal als `kennung[pid]: text`. Bekannte Token-Muster (GitHub, GitLab,
-  40 Hex-Zeichen, `Authorization: …`) werden durch `***` ersetzt (S-JOURNAL-01).
+  40 Hex-Zeichen, `Authorization: …`) werden durch `***` ersetzt (S-JOURNAL-01). Die 40-Hex-Regel trifft
+  auch vollständige Commit-SHAs – ein bewusster Kompromiss, weil Forgejo/Gitea-Tokens genauso aussehen;
+  kurze Hashes bleiben stehen.
 
 Ereignis `journal`: `{unit, neu?, zeilen[{zeit, text} | {zeit, art: "luecke", n}], ereignisse[{zeit, art}], hinweis?}`
 – `neu` leert die Ansicht (erst der Stand, dann neue Zeilen).
