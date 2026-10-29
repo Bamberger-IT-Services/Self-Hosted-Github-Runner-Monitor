@@ -302,7 +302,7 @@
      weiter aus dem Browser. */
   function serverMeldungen() {
     const mehrere = mehrereRunner(), jetzt = Date.now(), M = [];
-    const ANLEITUNG = { gestoppt: 'gestoppt', fehlt: 'runner', offline: 'offline', abfrage: 'github', token: 'token' };
+    const ANLEITUNG = { gestoppt: 'gestoppt', fehlt: 'runner', offline: 'offline', pausiert: 'offline', abfrage: 'github', token: 'token' };
     for (const m of S.meldungenSrv) {
       if (m.id === 'platte' || !ANLEITUNG[m.id]) continue;
       const r = (S.runner || []).find((x) => x.id === m.runner), d = m.daten || {}, j = r && r.jobsJeRepository;
@@ -319,6 +319,10 @@
           : { cls: 'warn', ic: IC.warn(18), titel: t('Kein Runner eingerichtet'), text: t('auf dieser VM wurde kein GitHub-Runner gefunden') };
       } else if (m.id === 'offline') {
         e = { cls: 'fehler', ic: IC.x(18), titel: vor ? t('Offline bei {dienst}', { dienst: RUNNER.dienstName(m.dienst) || 'GitHub' }) : t('Runner offline bei GitHub'), text: `${d.seit ? t('seit {z}', { z: zeit(d.seit) }) + ' · ' : ''}${t('Jobs werden nicht zugestellt')}` };
+      } else if (m.id === 'pausiert') {
+        // GitLab: bewusst pausiert – kein „Offline“, ein laufender Job wird noch fertig (Review #121)
+        e = { cls: 'warn', ic: IC.warn(18), titel: t('Pausiert bei {dienst}', { dienst: dn }),
+          text: d.job ? t('nimmt keine neuen Jobs an, der laufende Job läuft weiter') : t('nimmt keine neuen Jobs an') };
       } else if (m.id === 'abfrage') {
         // Forgejo, Gitea, GitLab (#115): Dienst im Titel statt „GitHub“; GitHub-Texte wie in 0.4.0
         const stand = { z: d.abgefragt ? zeit(d.abgefragt) : '–' };
@@ -522,7 +526,11 @@
     el.dataset.letzte = String(Date.now());
     const jetzt = Date.now();
     let inhalt = '', fuss = '', zeitText = '';
-    if (w.abfrage === 'kein-token') {
+    if (w.abfrage === 'ausstehend') {
+      // E-25: neu angebunden, die erste Abfrage beim Dienst läuft noch – keine Meldung „Kein Token“
+      inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.uhr(26, 1.2)}</span><div class="leer-titel">${t('Wird abgefragt …')}</div><div class="leer-text">${t('Die erste Abfrage beim Dienst läuft. Das dauert höchstens eine halbe Minute.')}</div></div>`;
+      fuss = `<div class="wf-zeit">${t('Abfrage läuft')}</div>`;
+    } else if (w.abfrage === 'kein-token') {
       inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">${t('Kein GitHub-Token eingerichtet')}</div><div class="leer-text">${t('Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.')}</div><div class="leer-pfad">/etc/runner-monitor/github-token</div><button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">${t('Anleitung: Token einrichten ›')}</button></div>`;
       fuss = `<div class="wf-zeit">${t('Abfrage aus')}</div>`;
     } else {
@@ -551,7 +559,7 @@
       zeitText = alt ? t('Letzte erfolgreiche Abfrage {z}', { z: w.abgefragt ? zeit(w.abgefragt) : '–' }) : t('Abgefragt {z}', { z: zeit(w.abgefragt) }) + (S.verbindung === 'verbunden' && nx != null ? ' · ' + t('nächste in {n} s', { n: nx }) : '');
       fuss += '<div class="wf-zeit"></div>';
     }
-    const meta = w.abfrage === 'kein-token' ? esc(w.org) : `${esc(w.org)} · ${t('{n} Repositories', { n: w.repos.length })}`;
+    const meta = ['kein-token', 'ausstehend'].includes(w.abfrage) ? esc(w.org) : `${esc(w.org)} · ${t('{n} Repositories', { n: w.repos.length })}`;
     const html = `<div class="karte-kopf"><span class="karte-titel">${t('Jobs je Repository')}</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
     // nur bei Änderung neu schreiben; die sekündlich wechselnde Zeitzeile per textContent
     if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
@@ -985,7 +993,7 @@
       ['Token', w.abfrage === 'kein-token' ? t('nicht eingerichtet') : w.abfrage === 'token-ungueltig' ? t('ungültig oder abgelaufen') : t('hinterlegt, nur lesend'), ['kein-token', 'token-ungueltig'].includes(w.abfrage) ? 'warn' : ''],
       [t('Rechte'), t('Actions, Metadata, Self-hosted runners – je Read-only') + (w.runnerGrund ? ` <span class="warn">(${esc(w.runnerGrund)})</span>` : '')],
       [t('Ablauf'), w.tokenAblauf ? t('{d} (in {n} {tage})', { d: datum(w.tokenAblauf), n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }) : '–', tage != null && tage <= 14 ? 'warn' : ''],
-      [t('Letzte Abfrage'), w.abfrage === 'kein-token' ? t('aus') : w.abfrage === 'ok' ? t('{z} · erfolgreich', { z: zeit(w.abgefragt) }) : t('fehlgeschlagen · letzte erfolgreiche {z}', { z: w.abgefragt ? zeit(w.abgefragt) : '–' }), w.abfrage !== 'ok' && w.abfrage !== 'kein-token' ? 'warn' : ''],
+      [t('Letzte Abfrage'), w.abfrage === 'kein-token' ? t('aus') : w.abfrage === 'ausstehend' ? t('wird abgefragt') : w.abfrage === 'ok' ? t('{z} · erfolgreich', { z: zeit(w.abgefragt) }) : t('fehlgeschlagen · letzte erfolgreiche {z}', { z: w.abgefragt ? zeit(w.abgefragt) : '–' }), !['ok', 'kein-token', 'ausstehend'].includes(w.abfrage) ? 'warn' : ''],
       [t('Nächste Abfrage'), '<span data-tick="naechste"></span>'],
       [t('API-Kontingent'), kont.limit ? t('{a} von {b} frei, Reset {z}', { a: zahl(kont.frei), b: zahl(kont.limit), z: hm(kont.reset) }) : '–'],
       [t('Token-Datei'), '/etc/runner-monitor/github-token'],

@@ -325,11 +325,22 @@ kann länger brauchen, begrenzt durch die Wartezeit des Resolvers). Das Ergebnis
 sofort in `anbieter.json`; Runner, die nicht mehr angebunden sind, verschwinden daraus, und nach einem
 Neustart des Sammlers bleibt der letzte Stand aus der Datei der „letzte gute Stand“.
 
+**Letzter guter Stand und „ausstehend“ (E-25):** Jedes Ergebnis nennt sein `ziel` (`server`, `org`,
+`name`, nie das Token). Bei einem Fehler bleiben Repositories, Runner (mit Labels und Version), Job,
+letzte Jobs, Art, Server-Version und Token-Ablauf aus der letzten guten Runde stehen und `letzterErfolg`
+kommt aus ihr – aber nur, wenn es eine gab (`letzterErfolg`, auch ohne laufenden Job) und sie zum
+selben Ziel gehört; nach einem Wechsel von Server, Organisation oder Token beginnt der Runner ohne
+Altstand. Ein neu angebundener Runner (oder einer mit neuem Ziel) steht bis zu seiner ersten Runde auf
+`abfrage: "ausstehend"` (Platzhalter in `anbieter.json`; der Monitor nimmt ihn auch ohne Eintrag an):
+keine Meldung, die Karte „Jobs je Repository“ zeigt „Wird abgefragt …“, der Zustand ist `unbekannt`.
+
 **Fehler als Meldung mit Runner:** Aus `jobsJeRepository.abfrage` jedes Runners entstehen in
 `meldungen[]` `token` (`token-ungueltig`, `keine-rechte`: Stufe Fehler; `kein-token`: neutral; Ablauf in
 14 Tagen: Warnung) und `abfrage` (`nicht-erreichbar`, `kontingent`, `fehler`: Warnung), jeweils mit
 `runner` und `dienst`. Das Dashboard nennt dann den Dienst („GitLab nicht erreichbar“,
-„Forgejo-Token ungültig oder abgelaufen“), bei mehreren Runnern davor den Runner.
+„Forgejo-Token ungültig oder abgelaufen“), bei mehreren Runnern davor den Runner. Ein bei GitLab
+pausierter Runner meldet `pausiert` (Warnung, `daten.job`: läuft noch ein Job) statt `offline`
+(„Pausiert bei GitLab · nimmt keine neuen Jobs an“). `ausstehend` erzeugt keine Meldung.
 
 **Woher ein Adapter seine Werte nimmt (E-18):** Server, Organisation, Log-Pfad und Token-Datei nur
 aus der Konfiguration – GitHub: Server fest `https://github.com`, Organisation aus

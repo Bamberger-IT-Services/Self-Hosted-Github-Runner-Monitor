@@ -17,6 +17,8 @@ from runner_monitor.anbieter import gitlab
 from runner_monitor.anbieter import token as zugangsdaten
 from tests.test_anbieter import fund, lade_konfig, registriere_runner
 from tests.test_forgejo import TOKEN, Attrappe, lade, starte_troepfelnd
+from tests.test_gitlab import LAUFEND as GL_LAUFEND
+from tests.test_gitlab import RUNNER_42 as GL_RUNNER_42
 from tests.test_gitlab import TOKEN as GL_TOKEN
 from tests.test_gitlab import Testserver as GitLabServer
 
@@ -91,7 +93,7 @@ class FaedenTest(Basis):
             self.assertTrue(warte(lambda: self.datei().get("runner-vm-04", {}).get("abfrage") == "ok", 3))
             self.assertLess(time.monotonic() - beginn, 2.0, "B wartet nicht auf A")
             self.assertTrue(faeden("runner-vm-02"), "A läuft noch in seinem eigenen Faden")
-            self.assertNotIn("runner-vm-02", self.datei())
+            self.assertEqual(self.datei()["runner-vm-02"]["abfrage"], "ausstehend")  # E-25: bis zur ersten Runde
             self.assertTrue(warte(lambda: not faeden("runner-vm-02"), 10))
         erg = self.datei()
         self.assertEqual(erg["runner-vm-02"]["abfrage"], "nicht-erreichbar")
@@ -248,6 +250,143 @@ class GitLabImSammlerTest(Basis):
         s.anbieter_abfragen()
         m = [m for m in self.zustand().bereiche["meldungen"] if m["runner"] == "runner-vm-03"]
         self.assertEqual([(x["id"], x["daten"]["abfrage"]) for x in m], [("abfrage", "nicht-erreichbar")])
+
+    def test_guter_stand_ohne_laufenden_job_bleibt(self):
+        """Review #121, Befund 1: Runner ohne laufenden Job (repos leer) – nach einer guten Runde bleiben bei einem
+        Fehler letzte Jobs, Labels und Version stehen, ``letzterErfolg`` kommt aus der guten Runde."""
+        self.gl.antworten[GL_LAUFEND] = (200, [])
+        s = sammler.Sammler(self.k)
+        s.anbieter_abfragen()
+        gut = self.datei()["runner-vm-03"]
+        self.assertEqual((gut["abfrage"], gut["repos"]), ("ok", []))
+        self.gl.antworten = {}  # alles 404 → keine Rechte
+        s.anbieter_abfragen()
+        erg = self.datei()["runner-vm-03"]
+        self.assertEqual(erg["abfrage"], "keine-rechte")
+        self.assertEqual(len(erg["letzteJobs"]), 3)
+        self.assertEqual((erg["runner"]["labels"], erg["runner"]["version"]), (["self-hosted", "linux"], "17.5.1"))
+        self.assertEqual(erg["letzterErfolg"], gut["letzterErfolg"])
+        # auch nach einem Neustart des Sammlers (Stand aus anbieter.json)
+        s2 = sammler.Sammler(self.k)
+        s2.anbieter_abfragen()
+        erg = self.datei()["runner-vm-03"]
+        self.assertEqual((len(erg["letzteJobs"]), erg["letzterErfolg"]), (3, gut["letzterErfolg"]))
+
+    def test_neues_ziel_uebernimmt_keinen_altstand(self):
+        """Befund 6: Wechselt der Server in runner.json, gilt der Stand des alten Servers nicht als letzter guter Stand."""
+        s = sammler.Sammler(self.k)
+        s.anbieter_abfragen()
+        self.assertEqual(self.datei()["runner-vm-03"]["abfrage"], "ok")
+        anderer = GitLabServer()  # neuer Server antwortet 404 auf alles
+        self.addCleanup(anderer.schliessen)
+        self.k.zuordnung_datei.write_text(json.dumps({"version": 1, "runner": {"runner-vm-03": {"server": anderer.url, "http_erlaubt": True}}}))
+        s.anbieter_abfragen()
+        erg = self.datei()["runner-vm-03"]
+        self.assertEqual(erg["abfrage"], "keine-rechte")
+        self.assertEqual((erg["job"], erg["letzteJobs"], erg["letzterErfolg"]), (None, [], None))
+        self.assertEqual(erg["ziel"]["server"], anderer.url)
+        # ebenso ein neues Token beim selben Server
+        self.k.zuordnung_datei.write_text(json.dumps({"version": 1, "runner": {"runner-vm-03": {"server": self.gl.url, "http_erlaubt": True}}}))
+        s.anbieter_abfragen()
+        self.assertEqual(self.datei()["runner-vm-03"]["abfrage"], "ok")
+        zugangsdaten.schreibe(self.k.zugang_verz, "runner-vm-03", "glpat-anderes-token-0000000")
+        self.gl.antworten = {"/api/v4/personal_access_tokens/self": (401, {}), "/api/v4/runners": (401, {})}
+        s.anbieter_abfragen()
+        erg = self.datei()["runner-vm-03"]
+        self.assertEqual((erg["abfrage"], erg["job"], erg["letzterErfolg"]), ("token-ungueltig", None, None))
+
+    def test_ausstehend_statt_kein_token(self):
+        """Befund 2 (E-25): neu angebunden, noch keine Runde → „ausstehend“, keine Token- oder Abfrage-Meldung."""
+        s = sammler.Sammler(self.k)
+        frei = threading.Event()
+        with mock.patch.object(gitlab.GitLab, "abfrage", lambda *a, **k: (frei.wait(10), None)[1]):
+            s.anbieter_takt(1000.0)
+            self.assertEqual(self.datei()["runner-vm-03"]["abfrage"], "ausstehend")
+            z = self.zustand()
+            frei.set()
+        r = next(r for r in z.bereiche["runner"] if r["id"] == "runner-vm-03")
+        self.assertEqual(r["jobsJeRepository"]["abfrage"], "ausstehend")
+        self.assertEqual(r["status"]["zustand"], "unbekannt")
+        self.assertFalse([m for m in z.bereiche["meldungen"] if m["runner"] == "runner-vm-03"])
+        # Monitor ohne anbieter.json (Sammler noch nicht so weit): ebenso „ausstehend“
+        (self.k.lauf_verz / "anbieter.json").unlink()
+        z = self.zustand()
+        r = next(r for r in z.bereiche["runner"] if r["id"] == "runner-vm-03")
+        self.assertEqual(r["jobsJeRepository"]["abfrage"], "ausstehend")
+        self.assertFalse([m for m in z.bereiche["meldungen"] if m["runner"] == "runner-vm-03"])
+        self.assertTrue(warte(lambda: not s._anbieter_laeufe, 3))
+
+    def test_pausiert_eigene_meldung(self):
+        """Befund 7: pausierter Runner mit laufendem Job – „pausiert“, nicht „offline“."""
+        self.gl.antworten["/api/v4/runners/42"] = (200, {**GL_RUNNER_42, "paused": True})
+        sammler.Sammler(self.k).anbieter_abfragen()
+        z = self.zustand()
+        m = [(x["id"], x["stufe"], x["daten"]) for x in z.bereiche["meldungen"] if x["runner"] == "runner-vm-03"]
+        self.assertEqual(m, [("pausiert", "warn", {"job": True})])
+
+    def test_rundenfrist_bei_langsamem_server(self):
+        """Befund 5: Jede Antwort kommt erst nach 0,6 s – die Runde endet zur Frist (hier 1 s), nicht nach allen Anfragen."""
+        server, anfragen = starte_langsam(0.6)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        k = gitlab.Klient(f"http://127.0.0.1:{server.server_address[1]}", GL_TOKEN, http_erlaubt=True, frist=1.0)
+        beginn = time.monotonic()
+        e = gitlab.abfrage(k, "runner-vm-03")
+        self.assertEqual(e["abfrage"], "nicht-erreichbar")
+        self.assertLess(time.monotonic() - beginn, 1.5)
+        self.assertLessEqual(len(anfragen), 2)
+        with mock.patch.object(gitlab, "FRIST", 1.0):  # der Adapter nutzt die Frist des Moduls
+            beginn = time.monotonic()
+            self.k.zuordnung_datei.write_text(json.dumps({"version": 1, "runner": {"runner-vm-03": {
+                "server": f"http://127.0.0.1:{server.server_address[1]}", "http_erlaubt": True}}}))
+            s = sammler.Sammler(self.k)
+            s.anbieter_abfragen()
+            self.assertLess(time.monotonic() - beginn, 2.0)
+        self.assertEqual(self.datei()["runner-vm-03"]["abfrage"], "nicht-erreichbar")
+
+
+def starte_langsam(verzoegerung: float):
+    """HTTP-Server, der jede Anfrage erst nach ``verzoegerung`` Sekunden mit ``[]`` beantwortet."""
+    import http.server
+
+    anfragen: list[str] = []
+
+    class Langsam(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802
+            anfragen.append(self.path)
+            time.sleep(verzoegerung)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Length", "2")
+                self.end_headers()
+                self.wfile.write(b"[]")
+            except OSError:
+                pass
+
+        def log_message(self, *a):  # noqa: ANN002
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Langsam)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, anfragen
+
+
+class AufraeumenTest(Basis):
+    def test_entfernter_runner_legt_nichts_wieder_an(self):
+        """Befund 4: Endet die Runde eines inzwischen entfernten Runners, entstehen weder Speicher noch Erfolg neu."""
+        self.runner({"runner-vm-02": {"server": "https://git.example.org", "org": "beispiel-org"}})
+        s = sammler.Sammler(self.k)
+        frei = threading.Event()
+        with mock.patch.object(fj.Forgejo, "abfrage", lambda *a, **k: (frei.wait(10), ergebnis_ok())[1]):
+            s.anbieter_takt(1000.0)
+            self.assertTrue(warte(lambda: faeden("runner-vm-02"), 2))
+            self.k.zuordnung_datei.write_text(json.dumps({"version": 1, "runner": {}}))
+            s.anbieter_takt(1031.0)
+            frei.set()
+            self.assertTrue(warte(lambda: not faeden("runner-vm-02"), 3))
+        self.assertEqual((s._anbieter_erfolg, self.datei()), ({}, {}))
+        self.assertNotIn("runner-vm-02", s._anbieter_ergebnis)
 
 
 if __name__ == "__main__":

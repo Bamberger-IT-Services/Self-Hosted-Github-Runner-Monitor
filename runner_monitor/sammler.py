@@ -44,6 +44,8 @@ TAKT_ANBIETER = 30        # weitere Dienste (Forgejo, Gitea, GitLab): wie GitHub
 MAX_ANBINDUNGEN = 20      # höchstens so viele Runner fragt der Sammler beim Dienst ab (wie runner[] im Monitor)
 MAX_GLEICHZEITIG = 4      # so viele Runner-Abfragen laufen höchstens zugleich (je Runner ein Faden, #115)
 RUNDENFRIST = 35.0        # harte Grenze einer Runde je Runner (Adapter selbst: 25 s); danach „nicht erreichbar“
+# Was bei einem Fehler aus dem letzten guten Stand stehen bleibt (Runner enthält Labels und Version)
+GUTER_STAND = ("repos", "runner", "job", "letzteJobs", "art", "serverVersion", "tokenAblauf", "wartetUnbekannt")
 TAKT_RELEASE = 6 * 3600
 TAKT_ERKENNUNG = 6 * 3600  # Runner auf der VM erkennen: beim Start und alle 6 Stunden (#91)
 MAX_STDERR = 2000         # so viel Fehlerausgabe der Erkennung kommt ins Journal
@@ -142,7 +144,7 @@ class Sammler:
         self._anbieter_ergebnis: dict[str, dict] | None = None  # je Runner das letzte Ergebnis (None: noch nicht geladen)
         self._anbieter_ids: set[str] = set()                     # gerade angebundene Runner
         self._anbieter_wartend: dict[str, anbieter.Anbieter] = {}  # fällig, noch nicht gestartet (Reihenfolge = Ankunft)
-        self._anbieter_laeufe: dict[str, tuple[threading.Thread, float]] = {}  # je Runner: (Faden, Start monoton)
+        self._anbieter_laeufe: dict[str, tuple[threading.Thread, float, anbieter.Anbieter]] = {}  # je Runner: (Faden, Start monoton, Adapter)
         self._anbieter_haengend: set[str] = set()                # Runde über RUNDENFRIST, Ergebnis schon „nicht erreichbar“
 
     def github_adapter(self) -> gh_adapter.GitHub:
@@ -338,7 +340,7 @@ class Sammler:
             self._anbieter_pruefen()
             self._anbieter_starten()
             with self._anbieter_sperre:
-                laeufe = [f for rid, (f, _) in self._anbieter_laeufe.items() if rid not in self._anbieter_haengend]
+                laeufe = [lauf[0] for rid, lauf in self._anbieter_laeufe.items() if rid not in self._anbieter_haengend]
                 offen = bool(self._anbieter_wartend)
             if not laeufe and not offen:
                 return
@@ -347,8 +349,29 @@ class Sammler:
             else:
                 time.sleep(0.05)
 
+    @staticmethod
+    def _ziel(a: anbieter.Anbieter) -> dict:
+        """Wohin die Abfrage geht (steht im Ergebnis, ohne Token): ein Stand gilt nur für dasselbe Ziel."""
+        return {"server": a.k.server, "org": a.k.org, "name": a.k.name}
+
+    @staticmethod
+    def _guter_stand(vorher: dict, ziel: dict) -> dict:
+        """Der letzte gute Stand eines Runners – nur, wenn es einen gab (``letzterErfolg``) und er zum
+        selben Ziel gehört (Server, Organisation, Name; Review #121). Sonst ``{}``."""
+        erfolg = vorher.get("letzterErfolg")
+        gab_es = isinstance(erfolg, (int, float)) and not isinstance(erfolg, bool) and erfolg > 0
+        return vorher if gab_es and vorher.get("ziel") == ziel else {}
+
+    def _ausstehend(self, a: anbieter.Anbieter) -> dict:
+        """Platzhalter für einen neu angebundenen Runner bis zu seiner ersten Runde (E-25): keine Meldung
+        „Kein Token“, die Karte zeigt „wird abgefragt“."""
+        return {"org": a.k.org, "abfrage": "ausstehend", "abgefragt": None, "letzterErfolg": None, "tokenAblauf": None,
+                "kontingent": {}, "repos": [], "runner": {"zustand": "unbekannt"}, "job": None, "letzteJobs": [],
+                "fehler": "", "ziel": self._ziel(a)}
+
     def _anbieter_planen(self) -> None:
-        """Angebundene Runner neu lesen und als fällig vormerken; nicht mehr angebundene verwerfen."""
+        """Angebundene Runner neu lesen und als fällig vormerken; nicht mehr angebundene verwerfen, neue
+        (oder mit neuem Ziel) bekommen bis zur ersten Runde den Platzhalter „ausstehend“."""
         liste = self.anbindungen()
         ids = {a.k.id for a in liste}
         with self._anbieter_sperre:
@@ -359,16 +382,28 @@ class Sammler:
                 alt = alt if isinstance(alt, dict) else {}
                 self._anbieter_ergebnis = {rid: e for rid, e in alt.items() if rid in ids and isinstance(e, dict)}
                 geaendert = len(self._anbieter_ergebnis) != len(alt)
+                je_id = {a.k.id: a for a in liste}
+                for rid, e in self._anbieter_ergebnis.items():
+                    if "ziel" not in e and e.get("org", "") == je_id[rid].k.org:
+                        e["ziel"] = self._ziel(je_id[rid])  # Datei vor #121 ohne Ziel: einmal übernehmen
+                    erfolg = e.get("letzterErfolg")
+                    if isinstance(erfolg, (int, float)) and not isinstance(erfolg, bool) and erfolg > 0:
+                        self._anbieter_erfolg[rid] = erfolg
             self._anbieter_ids = ids
             for rid in set(self._anbieter_ergebnis) - ids:
                 del self._anbieter_ergebnis[rid]
                 geaendert = True
             for rid in set(self._anbieter_speicher) - ids:
-                self._anbieter_speicher.pop(rid, None)
-                self._anbieter_erfolg.pop(rid, None)
+                del self._anbieter_speicher[rid]
+            for rid in set(self._anbieter_erfolg) - ids:
+                del self._anbieter_erfolg[rid]
             for rid in set(self._anbieter_wartend) - ids:
                 del self._anbieter_wartend[rid]
             for a in liste:
+                e = self._anbieter_ergebnis.get(a.k.id)
+                if e is None or ("ziel" in e and e["ziel"] != self._ziel(a)):
+                    self._anbieter_ergebnis[a.k.id] = self._ausstehend(a)
+                    geaendert = True
                 if a.k.id not in self._anbieter_laeufe:  # läuft noch: diese Runde auslassen
                     self._anbieter_wartend[a.k.id] = a   # wartet schon: Platz bleibt, Konfiguration wird frisch
         if geaendert:
@@ -383,7 +418,7 @@ class Sammler:
                 if rid in self._anbieter_laeufe:
                     continue
                 faden = threading.Thread(target=self._anbieter_runde, args=(a,), name=f"anbieter-{rid}"[:60], daemon=True)
-                self._anbieter_laeufe[rid] = (faden, time.monotonic())
+                self._anbieter_laeufe[rid] = (faden, time.monotonic(), a)
                 try:
                     faden.start()
                 except RuntimeError:  # kein Faden mehr möglich (Systemgrenze): im nächsten Takt erneut
@@ -398,30 +433,38 @@ class Sammler:
         jetzt = time.monotonic()
         neu = False
         with self._anbieter_sperre:
-            for rid, (_, start) in self._anbieter_laeufe.items():
+            for rid, (_, start, a) in self._anbieter_laeufe.items():
                 if rid in self._anbieter_haengend or jetzt - start < RUNDENFRIST:
                     continue
                 self._anbieter_haengend.add(rid)
                 if rid in self._anbieter_ids and self._anbieter_ergebnis is not None:
                     self._anbieter_ergebnis[rid] = self._fehler_ergebnis(
-                        rid, f"Keine Antwort innerhalb der Frist ({RUNDENFRIST:.0f} s)")
+                        a, f"Keine Antwort innerhalb der Frist ({RUNDENFRIST:.0f} s)")
                     neu = True
                 LOG.warning("Abfrage von %s hängt seit %.0f s – nächste Runde erst, wenn sie endet", rid, jetzt - start)
         if neu:
             self._anbieter_schreiben()
 
-    def _fehler_ergebnis(self, rid: str, text: str) -> dict:
+    def _fehler_ergebnis(self, a: anbieter.Anbieter, text: str) -> dict:
         """„nicht erreichbar“ ohne Antwort des Adapters (unter der Sperre); der letzte gute Stand bleibt."""
-        vorher = (self._anbieter_ergebnis or {}).get(rid) or {}
-        ergebnis = {"org": vorher.get("org", ""), "abfrage": "nicht-erreichbar", "abgefragt": time.time(),
-                    "letzterErfolg": vorher.get("letzterErfolg"), "tokenAblauf": None, "kontingent": {},
-                    "repos": [], "runner": {"zustand": "unbekannt"}, "job": None, "letzteJobs": [], "fehler": text}
+        ziel = self._ziel(a)
+        vorher = (self._anbieter_ergebnis or {}).get(a.k.id) or {}
+        ergebnis = {"org": a.k.org, "abfrage": "nicht-erreichbar", "abgefragt": time.time(), "letzterErfolg": None,
+                    "tokenAblauf": None, "kontingent": {}, "repos": [], "runner": {"zustand": "unbekannt"}, "job": None,
+                    "letzteJobs": [], "fehler": text, "ziel": ziel}
         if "wartetUnbekannt" in vorher:
             ergebnis["wartetUnbekannt"] = vorher["wartetUnbekannt"]
-        if vorher.get("repos"):
-            for feld in ("repos", "runner", "job", "letzteJobs", "art", "serverVersion"):
-                ergebnis[feld] = vorher.get(feld)
+        self._uebernimm_guten_stand(ergebnis, self._guter_stand(vorher, ziel))
         return ergebnis
+
+    @staticmethod
+    def _uebernimm_guten_stand(ergebnis: dict, gut: dict) -> None:
+        """Fehlerrunde: den letzten guten Stand zeigen (Repositories, Runner mit Labels und Version, Job,
+        letzte Jobs …); ``letzterErfolg`` kommt immer aus ihm (ohne guten Stand: ``None``)."""
+        ergebnis["letzterErfolg"] = gut.get("letzterErfolg")
+        for feld in GUTER_STAND:
+            if feld in gut:
+                ergebnis[feld] = gut[feld]
 
     def _anbieter_runde(self, a: anbieter.Anbieter) -> None:
         """Eine Runde für einen Runner (eigener Faden). Fehler bleiben bei diesem Runner."""
@@ -448,23 +491,29 @@ class Sammler:
         Stand (Repositories, Runner, Job) stehen. Den Speicher eines Runners nutzt nur sein Faden."""
         token = a.token()
         schluessel = (a.k.server, a.k.org, a.k.name, token)
+        ziel = self._ziel(a)
         with self._anbieter_sperre:
+            if a.k.id not in self._anbieter_ids:
+                return None  # inzwischen nicht mehr angebunden: nichts anlegen (Review #121)
             gemerkt = self._anbieter_speicher.get(a.k.id)
-            speicher = gemerkt[1] if gemerkt and gemerkt[0] == schluessel else {}  # neues Token/Ziel: neu anfangen
+            neu = gemerkt is not None and gemerkt[0] != schluessel  # neues Token oder Ziel: neu anfangen
+            if neu:
+                self._anbieter_erfolg.pop(a.k.id, None)
+            speicher = gemerkt[1] if gemerkt and not neu else {}
             self._anbieter_speicher[a.k.id] = (schluessel, speicher)
             letzter_erfolg = self._anbieter_erfolg.get(a.k.id)
+            vorher = {} if neu else (self._anbieter_ergebnis or {}).get(a.k.id) or {}
         ergebnis = a.abfrage(speicher, letzter_erfolg, token=token)
         if not isinstance(ergebnis, dict):
             return None
+        ergebnis["ziel"] = ziel
         with self._anbieter_sperre:
+            if a.k.id not in self._anbieter_ids:
+                return None
             if ergebnis.get("abfrage") == "ok":
                 self._anbieter_erfolg[a.k.id] = ergebnis["abgefragt"]
-            else:
-                vorher = (self._anbieter_ergebnis or {}).get(a.k.id) or {}
-                if vorher.get("repos") and ergebnis.get("abfrage") != "kein-token":
-                    for feld in ("repos", "runner", "job", "letzteJobs", "art", "serverVersion"):
-                        ergebnis[feld] = vorher.get(feld)
-                    ergebnis["letzterErfolg"] = vorher.get("letzterErfolg")
+            elif ergebnis.get("abfrage") != "kein-token":
+                self._uebernimm_guten_stand(ergebnis, self._guter_stand(vorher, ziel))
         return ergebnis
 
     def _anbieter_schreiben(self) -> None:

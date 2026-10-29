@@ -87,7 +87,7 @@ class Klient:
     die ganze Runde (``frist``, ab Erzeugen des Klienten, #115): Keine Anfrage läuft über sie hinaus."""
 
     def __init__(self, server: str, token: str = "", zeitlimit: float = ZEITLIMIT, http_erlaubt: bool = False,
-                 frist: float = FRIST) -> None:
+                 frist: float | None = None) -> None:
         adresse = erkennung.pruefe_url(server) or ""
         if adresse.startswith("http://") and http_erlaubt is not True:
             adresse = ""  # Token nur über https, außer runner.json erlaubt http ausdrücklich
@@ -96,7 +96,7 @@ class Klient:
         self.zeitlimit = zeitlimit
         self.zaehler = {"anfragen": 0}
         self.letzter_kopf: dict = {}
-        self._ende = time.monotonic() + frist
+        self._ende = time.monotonic() + (FRIST if frist is None else frist)
 
     def hole(self, pfad: str, parameter: dict | None = None) -> gh.Antwort:
         if not self.server:

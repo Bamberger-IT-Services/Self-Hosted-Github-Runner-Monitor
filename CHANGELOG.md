@@ -72,7 +72,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   vier zugleich, mit Frist je Runde (Adapter 25 s, Sicherheitsnetz 35 s). Ein hängender oder tröpfelnder
   Server verzögert weder GitHub, Docker und Updates noch die anderen Runner; je Runner läuft höchstens
   eine Runde. Fehler (nicht erreichbar, Token ungültig, keine Rechte) erscheinen als Meldung mit Runner
-  und Dienst („GitLab nicht erreichbar“, „Forgejo-Token ungültig oder abgelaufen“). Ausgeliefert bleiben
+  und Dienst („GitLab nicht erreichbar“, „Forgejo-Token ungültig oder abgelaufen“, „Pausiert bei GitLab“); ein neu
+  angebundener Runner zeigt bis zur ersten Abfrage „Wird abgefragt …“ statt „Kein Token“ (E-25). Bei einem Fehler
+  bleibt der letzte gute Stand nur für denselben Server und dasselbe Token stehen. Ausgeliefert bleiben
   Forgejo, Gitea und GitLab als „teil“, bis die Einrichtung im Browser sie anbindet (#96, E-20, E-23) (#115).
 
 ### Behoben
