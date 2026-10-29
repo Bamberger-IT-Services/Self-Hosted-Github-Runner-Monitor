@@ -37,6 +37,9 @@
     // Mehrere Runner (#94): runner[]/meldungen[] aus dem Server; status/workflows sind dann die Ansicht des
     // gewählten Runners, sonst (Altformat ohne runner) die Bereiche „status“/„workflows“ selbst.
     runner: null, meldungenSrv: null, wahl: RUNNER.wahl(), statusAlt: null, workflowsAlt: null, mehrOffen: false, logFremd: false,
+    // Live-Log je Runner (#95): Quelle des gewählten Runners ('seiten' | 'journal' | 'datei' | null) und die
+    // Runner-ID, deren Journal der aktuelle Live-Strom liefert (/events?journal=…; null = keins).
+    logQuelle: 'seiten', journalUnit: '', stromJournal: null, journalFehler: null,
   };
 
   /* ------------------------------------------------------------ ANSI → Segmente */
@@ -98,11 +101,36 @@
       const r = gewaehlterRunner(), b = S.statusAlt || {};
       S.status = RUNNER.ansicht(r, { vm: b.vm, monitorVersion: b.monitorVersion, system: b.system });
       S.workflows = r.jobsJeRepository || null;
-      // Das Live-Log kommt vom Server nur für den Runner mit Seiten-Log (GitHub, _diag/pages); für andere gibt es hier noch keine Ausgabe
-      S.logFremd = !(r.log && r.log.art === 'seiten');
+      setzeLogQuelle(S.status.logQuelle, RUNNER.journalZiel(r), S.status.journalUnit);
+      if (S.status.ohneSchritte) ohneTrenner();
     } else {
-      S.status = S.statusAlt; S.workflows = S.workflowsAlt; S.wahl.gewaehlt = null; S.logFremd = false;
+      S.status = S.statusAlt; S.workflows = S.workflowsAlt; S.wahl.gewaehlt = null;
+      setzeLogQuelle('seiten', null, '');
     }
+  }
+
+  /* Live-Log des gewählten Runners: Ausgabe der Schritte (Ereignis „log“) oder Journal der Unit (Ereignis
+     „journal“, nur für die Runner-ID im Live-Strom). Wechselt die Quelle, wird das Log geleert; wechselt der
+     Runner mit Journal, verbindet sich der Strom mit dem neuen Ziel neu (Server schickt dann den Stand). */
+  function setzeLogQuelle(quelle, ziel, unit) {
+    const alt = S.logQuelle;
+    S.logQuelle = quelle; S.journalUnit = unit || '';
+    S.logFremd = quelle !== 'seiten' && quelle !== 'journal';
+    if (alt !== quelle && (alt === 'journal' || quelle === 'journal')) leereLog();
+    if (ziel !== S.stromJournal) { S.stromJournal = ziel; S.journalFehler = null; if (quelle === 'journal') leereLog(); wechsleJournal(); }
+  }
+  /* Liefert der Runner keine Schritte, gibt es auch keine Trenner – auch nicht solche, die vor runner[] kamen. */
+  function ohneTrenner() {
+    for (const tr of $('term-innen').querySelectorAll('.trenner')) { tr.remove(); S.zeilenN--; }
+    S.puffer = RUNNER.logZeilen(S.puffer, false);
+  }
+  function leereLog() {
+    S.ereignisse = []; $('term-innen').replaceChildren(); S.zeilenN = 0; S.puffer = [];
+    renderEreignisse(); renderPause();
+  }
+  function zeilenAn(zeilen) {
+    if (!zeilen.length) return;
+    if (S.angehalten || S.hoch) { S.puffer.push(...zeilen); if (S.puffer.length > MAX_ZEILEN) S.puffer.splice(0, S.puffer.length - MAX_ZEILEN); renderPause(); } else haengeAn(zeilen);
   }
   function renderAlles() { renderReiter(); renderKopf(); renderStatus(); renderWorkflows(); renderLogKopf(); }
 
@@ -224,10 +252,15 @@
         if (S.pruefung && S.pruefung.zustand === 'laeuft' && d.neueste && d.neueste.geprueft && d.neueste.geprueft !== S.pruefung.vorher) S.pruefung = { zustand: 'fertig', bis: Date.now() + 8000 };
         renderKopf(); if (S.info) renderInfo(); break;
       case 'log':
-        if (d.neu) { S.ereignisse = []; $('term-innen').replaceChildren(); S.zeilenN = 0; S.puffer = []; }
+      case 'journal': {
+        // „log“ = Ausgabe der Schritte (GitHub-Runner), „journal“ = Journal der Unit des gewählten Runners (#95).
+        // Angezeigt wird nur die Quelle des gewählten Runners; Trenner nur, wenn er Schritte liefert.
+        if ((bereich === 'journal') !== (S.logQuelle === 'journal')) break;
+        if (d.neu) { leereLog(); S.journalFehler = bereich === 'journal' ? (d.hinweis || null) : null; }
         if (d.ereignisse && d.ereignisse.length) { S.ereignisse.push(...d.ereignisse); S.ereignisse = S.ereignisse.slice(-20); renderEreignisse(); }
-        if (d.zeilen && d.zeilen.length) { if (S.angehalten || S.hoch) { S.puffer.push(...d.zeilen); if (S.puffer.length > MAX_ZEILEN) S.puffer.splice(0, S.puffer.length - MAX_ZEILEN); renderPause(); } else haengeAn(d.zeilen); }
+        zeilenAn(RUNNER.logZeilen(d.zeilen, bereich === 'log' && !(S.status && S.status.ohneSchritte)));
         renderLeer(); break;
+      }
       default: break;
     }
   }
@@ -352,8 +385,9 @@
     const st = S.status; if (!st) return;
     const jetzt = Date.now(), ref = bezug(), w = S.workflows;
     const dn = RUNNER.dienstName(st.anbieter) || 'GitHub';  // Dienst des Runners (ohne runner[]: GitHub)
-    // Grundüberwachung (Runner ohne Jobs, #94): nur Dienst; die ehrliche Darstellung mit Neustarts und Journal folgt mit #95
-    const grund = !!st.nurGrund;
+    // Grundüberwachung (faehig.jobs false, #95): Dienst, Neustarts und Journal; ohne „Online bei …“ und „Letzte Jobs“.
+    // Teilweise (Jobs ja, Schritte nein): „Schritte nicht verfügbar“. Gesteuert nur über faehig (RUNNER.ansicht).
+    const grund = !!st.nurGrund, ohneSchritte = !!st.ohneSchritte;
     // „unbekannt“ (#93): Runner-Liste oder Läufe beim Dienst nicht lesbar – dann nie „Bereit“ behaupten
     const unbekannt = st.zustand === 'unbekannt' && st.dienst.zustand === 'aktiv';
     const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : unbekannt ? 'unbekannt' : 'bereit';
@@ -361,8 +395,9 @@
     const pillD = st.dienst.zustand === 'aktiv' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Dienst aktiv')}</span>` : st.dienst.zustand === 'fehlt' ? `<span class="pill neutral">${IC.unklar()}${t('Kein Dienst')}</span>` : `<span class="pill fehler">${IC.x(13, 1.7)}${t('Dienst gestoppt')}</span>`;
     const g = st.github.zustand;
     const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei {dienst}', { dienst: dn })}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei {dienst}', { dienst: dn })}</span>` : `<span class="pill neutral">${IC.unklar()}${t('{dienst}: unbekannt', { dienst: dn })}</span>`;
-    // Runner ohne Dienst, der kein GitHub-Runner ist: neutral, ohne GitHub-Text und ohne Einrichtungsbefehl (Rest: #95)
-    const keinDienst = art === 'fehlt' && (grund || !istGitHub(st));
+    // Runner aus runner[] ohne Dienst (keine Unit, Unit weg): neutral „Kein Dienst“ wie sein Reiter (Review #114).
+    // „Kein Runner“ mit Einrichtungsbefehl nur, wenn es gar keinen Runner gibt (Altformat ohne runner[], ohne id).
+    const keinDienst = art === 'fehlt' && !!st.id;
     const kopf = keinDienst ? ['neutral', IC.unklar(28), t('Kein Dienst')] : {
       aktiv: ['ok', IC.ok(28, 1.3), t('Dienst aktiv')],
       job: ['laeuft', IC.play(28, 1.3), t('Job läuft')], bereit: ['ok', IC.ok(28, 1.3), t('Bereit')], fehlt: ['warn', IC.warn(28, 1.3), t('Kein Runner')],
@@ -384,17 +419,20 @@
       // direkt – so wird der Block beim Nachtragen nicht neu aufgebaut und die Übergänge wirken.
       const j = st.job, { nr, von } = schrittVon(j), segN = von || nr + 1;
       const segs = '<span class="seg"></span>'.repeat(segN);
-      dyn = { ...schrittVon(j), segN, laufzeit: j.start ? dauer((ref - ms(j.start)) / 1000) : '–' };
+      dyn = { ...schrittVon(j), segN, ohneSchritte, laufzeit: j.start ? dauer((ref - ms(j.start)) / 1000) : '–' };
       mitte = `
         <div>
           <div class="job-repo">${esc(j.repo || j.name)}${j.privat ? IC.schloss() : ''}</div>
           ${j.workflow ? `<div class="job-pfad">${t('Workflow')} <b>${esc(j.workflow)}</b><span class="sep">›</span>${t('Job')} <b>${esc(j.name)}</b></div>` : `<div class="job-pfad">${t('Job')} <b>${esc(j.name)}</b></div>`}
           ${j.ref ? `<div class="job-ref"><span>${esc(j.ref.art)}</span><span class="ref">${esc(j.ref.name)}</span><span class="ref-titel">${esc(j.ref.titel || '')}</span></div>` : ''}
         </div>
-        <div class="schritt">
+        ${ohneSchritte ? `<div class="schritt">
+          <div class="zeile-k"><span>${t('Aktueller Schritt')}</span></div>
+          <div class="schritt-name mut">${t('Schritte nicht verfügbar')}</div>
+          <div class="zeile-k ohne-schritte">${t('Der Dienst meldet keine Schritte – Job und Laufzeit bleiben sichtbar.')}</div>` : `<div class="schritt">
           <div class="zeile-k"><span>${t('Aktueller Schritt')}</span><span class="schritt-zahl"></span></div>
           <div class="schritt-name"></div>
-          <div class="segmente" data-spalten="${segN}">${segs}</div>
+          <div class="segmente" data-spalten="${segN}">${segs}</div>`}
         </div>
         <div class="zahlen">
           <div><div class="zeile-k">${t('Laufzeit')}</div><div class="zahl-gross laufzeit"></div></div>
@@ -404,7 +442,7 @@
       const text = {
         aktiv: t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.'),
         bereit: t('Wartet auf den nächsten Job. Neue Jobs starten automatisch.'),
-        gestoppt: grund ? t('Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.') : t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.')
+        gestoppt: grund ? t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.') : t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.')
           + (st.dienst.grund === 'oom-kill' ? ' ' + t('Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.') : ''),
         offline: t('Der Dienst läuft, aber {dienst} sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.', { dienst: dn }),
         unbekannt: t('Der Dienst läuft, aber {dienst} liefert gerade keinen lesbaren Stand – ob ein Job läuft, ist unbekannt. Verbindung und Rechte des Tokens prüfen.', { dienst: dn }),
@@ -412,10 +450,15 @@
       }[art];
       const wartend = w && w.abfrage === 'ok' ? w.repos.reduce((a, r) => a + r.wartet, 0) : null;
       const dienstSeit = st.dienst.seit ? (art === 'gestoppt' ? t('gestoppt seit {z} ({vor})', { z: zeit(st.dienst.seit), vor: vor((jetzt - ms(st.dienst.seit)) / 1000) }) : t('aktiv seit {d}', { d: seit((jetzt - ms(st.dienst.seit)) / 1000) })) : (art === 'gestoppt' ? t('gestoppt') : art === 'fehlt' ? t('nicht vorhanden') : t('aktiv'));
-      const kv = grund ? [[t('Dienst'), dienstSeit], ...(art === 'gestoppt' && stoppGrund(st) ? [[t('Grund'), esc(stoppGrund(st))]] : [])]
+      // Grundüberwachung: Dienst (Unit · aktiv seit …), Neustarts (NRestarts) und Letzter Stopp (InactiveEnterTimestamp)
+      const ns = RUNNER.neustarts(st.dienst), stopp = st.dienst.letzterStopp;
+      const kv = keinDienst ? (st.unit ? [[t('Dienst'), `${esc(st.unit)} · ${dienstSeit}`]] : [])
+        // gestoppt: wann, steht unter „Letzter Stopp“ – die Dienstzeile bleibt kurz
+        : grund ? [[t('Dienst'), (st.unit ? esc(st.unit) + ' · ' : '') + (art === 'gestoppt' && stopp ? t('gestoppt') : dienstSeit)], ...(art === 'gestoppt' && stoppGrund(st) ? [[t('Grund'), esc(stoppGrund(st))]] : []),
+        [t('Neustarts'), ns.art === 'keine' ? t('keine') : ns.art === 'zahl' ? t('{n} automatisch', { n: ns.n }) : '–'],
+        [t('Letzter Stopp'), stopp ? `${tm(stopp)} ${hm(stopp)} (${vor((jetzt - ms(stopp)) / 1000)})` : '–']]
         : art === 'gestoppt' ? [[t('Dienst'), dienstSeit], ...(stoppGrund(st) ? [[t('Grund'), esc(stoppGrund(st))]] : []), [t('Wartende Jobs'), wartend == null ? t('unbekannt') : t('{n} in der Warteschlange', { n: wartend })], [t('Letzter Job'), letzter]]
         : art === 'offline' ? [[t('Dienst'), dienstSeit], [t('Bei {dienst}', { dienst: dn }), st.github.seit ? t('offline seit {z} ({vor})', { z: zeit(st.github.seit), vor: vor((jetzt - ms(st.github.seit)) / 1000) }) : t('offline')], [t('Letzter Job'), letzter]]
-        : keinDienst ? []
         : art === 'fehlt' ? [['Runner', t('nicht gefunden in /opt/actions-runner')], [t('Einrichten'), `${SKRIPT} runner`]]
         : [[t('Dienst'), dienstSeit], [t('Letzter Job'), letzter], [t('Runner-Version'), esc(st.version || '–')]];
       mitte = `<p class="zustand-text">${text}</p><dl class="kv">${kv.map(([k, v]) => `<div class="kv-z"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
@@ -442,13 +485,14 @@
     }
     if (dyn) {
       const setze = (el, x) => { if (el && el.textContent !== x) el.textContent = x; };
+      setze(karte.querySelector('.laufzeit'), dyn.laufzeit);
+      if (dyn.ohneSchritte) return;  // „Schritte nicht verfügbar“ bleibt stehen
       setze(karte.querySelector('.schritt-zahl'), t('{nr} von {von}', { nr: dyn.nr, von: dyn.von || '–' }));
       const nm = karte.querySelector('.schritt-name');
       setze(nm, dyn.name || t('Schritt {nr}', { nr: dyn.nr })); if (nm) nm.classList.toggle('mut', !dyn.name);
       karte.querySelectorAll('.segmente .seg').forEach((sg, i) => {
         sg.className = `seg${i < dyn.nr - 1 ? ' fertig' : i === dyn.nr - 1 ? ' aktiv' : dyn.von ? '' : ' unbekannt'}`;
       });
-      setze(karte.querySelector('.laufzeit'), dyn.laufzeit);
     }
   }
 
@@ -456,8 +500,10 @@
   function renderWorkflows() {
     const w = S.workflows, el = $('workflows');
     if (S.status && S.status.nurGrund) {
-      // Runner ohne Jobs (Grundüberwachung): ruhiger Leerzustand statt leerer Liste; „Runner zuordnen“ folgt mit #95
-      const leer = `<div class="karte-kopf"><span class="karte-titel">${t('Jobs je Repository')}</span><span class="karte-meta">${t('keine Anbindung')}</span></div><div class="leerzustand"><div class="leer-titel">${t('Jobs nicht verfügbar')}</div><div class="leer-text">${t('Für diesen Runner gibt es keine Anbindung an den Dienst. Dienst, Auslastung und Log laufen normal weiter.')}</div></div>`;
+      // Runner ohne Jobs (faehig.jobs false, Grundüberwachung): ruhiger Leerzustand wie im Design (Aufbau wie „Kein Token“),
+      // Unit als Pfad, „Runner zuordnen ›“ öffnet Info & Hilfe (Zuordnung ändern kommt mit dem Info-Blatt, #97)
+      const unit = S.status.unit ? `<div class="leer-pfad">${esc(S.status.unit)}</div>` : '';
+      const leer = `<div class="karte-kopf"><span class="karte-titel">${t('Jobs je Repository')}</span><span class="karte-meta">${t('keine Anbindung')}</span></div><div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">${t('Jobs nicht verfügbar')}</div><div class="leer-text">${t('Für diesen Runner gibt es keine Anbindung an den Dienst. Dienst, Auslastung und Log laufen normal weiter.')}</div>${unit}<button type="button" class="link-knopf" data-aktion="info" data-anleitung="alle">${t('Runner zuordnen ›')}</button></div><div class="wf-fuss"><div class="wf-zeit">${t('Abfrage aus')}</div></div>`;
       if (el.dataset.html !== leer) { el.innerHTML = leer; el.dataset.html = leer; }
       return;
     }
@@ -614,12 +660,17 @@
 
   /* ------------------------------------------------------------ Live-Log */
   function renderLogKopf() {
-    const j = S.status && S.status.job, chip = $('schritt-chip');
+    const st = S.status, j = st && st.job, chip = $('schritt-chip');
     $('ereignisse').hidden = S.logFremd; $('term').hidden = S.logFremd;
-    if (j && j.zuordenbar !== false && S.status.dienst.zustand === 'aktiv' && !S.logFremd) {
+    if (S.logQuelle === 'journal') {
+      // Journal der Unit (Grundüberwachung, „teilweise“): Chip nennt die Quelle, keine Schritte
+      chip.hidden = false; chip.textContent = t('Journal · {unit}', { unit: S.journalUnit });
+    } else if (j && j.zuordenbar !== false && st.dienst.zustand === 'aktiv' && !S.logFremd && !st.ohneSchritte) {
       const { nr, von, name } = schrittVon(j);
       chip.hidden = false; chip.textContent = t('Schritt {nr}/{von}', { nr, von: von || '–' }) + (name ? ' · ' + name : '');
     } else chip.hidden = true;
+    const aria = S.logQuelle === 'journal' ? t('Journal von {unit}', { unit: S.journalUnit }) : t('Ausgabe des laufenden Schritts');
+    if ($('term').getAttribute('aria-label') !== aria) $('term').setAttribute('aria-label', aria);
     renderLeer();
   }
 
@@ -640,6 +691,11 @@
     if (z.art === 'schritt') {
       div.className = 'trenner';
       div.innerHTML = `<span class="tr-nr">${t('Schritt {nr}/{von}', { nr: Number(z.nr) || 1, von: Number(z.von) || '–' })}</span><span class="tr-name">${esc(z.name || '')}</span><span class="tr-linie"></span><span class="tr-zeit">${zeit(z.zeit)}</span>`;
+    } else if (z.art === 'luecke') {
+      // Journal: eine Flut von Zeilen in einem Takt – die ältesten wurden nicht übertragen (Server, journal.py)
+      const n = Math.max(1, Number(z.n) || 1);
+      div.className = 'z luecke';
+      div.innerHTML = `<span class="zt">${zeit(z.zeit)}</span><span class="zx">${esc(t('… {n} {zeilen} ausgelassen', { n, zeilen: mehrzahl(n, t('Zeile'), t('Zeilen')) }))}</span>`;
     } else {
       div.className = 'z' + (istFehler(z.text) ? ' fehler' : '');
       div.innerHTML = `<span class="zt">${zeit(z.zeit)}</span><span class="zx">${ansi(z.text).map(s => (s.c ? `<span class="${s.c}">${esc(s.t)}</span>` : esc(s.t))).join('')}</span>`;
@@ -655,10 +711,12 @@
   function renderLeer() {
     const leer = $('term-leer'), st = S.status;
     leer.hidden = !S.logFremd && (S.zeilenN > 0 || S.puffer.length > 0);
-    leer.textContent = S.logFremd ? t('Die Ausgabe dieses Runners wird hier noch nicht angezeigt.')
+    const text = S.logFremd ? (S.logQuelle === 'datei' ? t('Die Ausgabe dieses Runners wird hier noch nicht angezeigt.') : t('Ohne Dienst gibt es für diesen Runner kein Log.'))
+      : S.logQuelle === 'journal' ? (S.journalFehler === 'grenze' ? t('Das Journal kann gerade nicht angezeigt werden – zu viele sind gleichzeitig geöffnet.') : t('Noch keine Einträge im Journal von {unit}.', { unit: S.journalUnit }))
       : st && st.dienst.zustand === 'gestoppt' ? t('Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.')
       : st && st.github.zustand === 'offline' ? t('Kein Schritt läuft. GitHub stellt dem Runner gerade keine Jobs zu.')
       : t('Kein Schritt läuft. Die Ausgabe erscheint hier, sobald ein Job startet.');
+    if (leer.textContent !== text) leer.textContent = text;
   }
   function renderPause() {
     const k = $('k-pause');
@@ -1059,8 +1117,9 @@
     clearTimeout(neuTimer);
     if (quelle) quelle.close();
     letzterVersuch = Date.now();
-    quelle = new EventSource('/events');
-    for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log', 'runner', 'meldungen']) {
+    // Mit Journal-Runner: /events?journal=<id> – der Server liefert dann zusätzlich das Journal seiner Unit (#95)
+    quelle = new EventSource(RUNNER.journalUrl(S.stromJournal));
+    for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log', 'journal', 'runner', 'meldungen']) {
       quelle.addEventListener(b, (e) => { try { empfange(b, JSON.parse(e.data)); } catch (f) { console.error(b, f); } });
     }
     quelle.onopen = () => setzeVerbindung('verbunden');
@@ -1073,11 +1132,17 @@
       if (quelle.readyState === EventSource.CLOSED) { neuTimer = setTimeout(verbinde, wartezeit); wartezeit = Math.min(wartezeit * 2, 30000); }
     };
   }
+  /* Anderer Runner mit Journal (oder keiner mehr): Live-Strom mit dem neuen Ziel neu verbinden; der Server
+     schickt dann den Stand (log/journal mit „neu“). In der Demo liefert demo.js das Journal selbst. */
+  function wechsleJournal() {
+    if (DEMO) { if (window.RM_DEMO) window.RM_DEMO.journal(S.stromJournal); return; }
+    if (quelle) verbinde();
+  }
   renderZeitraum();  // gespeicherte Wahl sofort zeigen, auch vor den ersten Daten
   if (DEMO) {
     const s = document.createElement('script');
     s.src = '/static/demo.js';
-    s.onload = () => window.RM_DEMO.start({ empfange, setzeVerbindung, S, renderKopf });
+    s.onload = () => window.RM_DEMO.start({ empfange, setzeVerbindung, S, renderKopf, waehleRunner });
     document.head.appendChild(s);
   } else verbinde();
 })();

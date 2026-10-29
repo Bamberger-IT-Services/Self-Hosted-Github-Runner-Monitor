@@ -42,8 +42,11 @@ FAEHIGKEITEN = ("status", "jobs", "schritte", "logs", "updates")
 DIENSTE = erkennung.DIENSTE
 
 # Zustand eines Runners für Reiter und Karte (Design 0.8.0 › Bildschirme 1 und 2):
-# job · bereit · offline · gestoppt · fehlt (kein Dienst) · aktiv (Grundüberwachung: Dienst läuft) · unbekannt
+# job · bereit · offline · gestoppt · fehlt (kein Dienst, auch ohne Unit) · aktiv (Grundüberwachung: Dienst
+# läuft) · unbekannt (nur noch, wenn ein Adapter gar keinen Status kann – Reiter und Karte zeigen sonst
+# beide „Kein Dienst“, Review #114)
 ZUSTAENDE = ("job", "bereit", "offline", "gestoppt", "fehlt", "aktiv", "unbekannt")
+KEIN_DIENST = {"zustand": "fehlt", "seit": None, "grund": None, "neustarts": None, "letzterStopp": None}
 
 
 @dataclass(frozen=True)
@@ -100,11 +103,14 @@ class Anbieter:
     # ------------------------------------------------------------ Monitor (ohne root)
 
     def dienst_status(self) -> dict:
+        """systemd-Zustand der Unit; ``neustarts`` (NRestarts) und ``letzterStopp`` für die kv-Zeilen
+        der Grundüberwachung (#95)."""
         unit = erkennung.pruefe_unit(self.k.unit)
         if not unit:
-            return {"zustand": "fehlt", "seit": None, "grund": None}
+            return dict(KEIN_DIENST)
         d = runner.dienst_status(unit)
-        return {"zustand": d["zustand"], "seit": d.get("seit"), "grund": d.get("grund")}
+        return {"zustand": d["zustand"], "seit": d.get("seit"), "grund": d.get("grund"),
+                "neustarts": d.get("neustarts"), "letzterStopp": d.get("letzterStopp")}
 
     def beim_dienst(self, ergebnis: dict | None) -> dict | None:  # noqa: ARG002
         """Runner beim Dienst online/offline – ohne Anbindung nicht verfügbar."""
@@ -128,10 +134,10 @@ class Anbieter:
 
     @staticmethod
     def zustand_aus(dienst: dict, job: object, online: dict | None, faehig: dict) -> str:
+        if dienst.get("zustand") == "fehlt":
+            return "fehlt"  # auch ohne Unit (faehig.status false): Reiter und Karte „Kein Dienst“ (Review #114)
         if not faehig.get("status"):
             return "unbekannt"
-        if dienst.get("zustand") == "fehlt":
-            return "fehlt"
         if dienst.get("zustand") == "gestoppt":
             return "gestoppt"
         if not faehig.get("jobs"):
@@ -148,8 +154,7 @@ class Anbieter:
         """Ein Eintrag in ``runner[]`` (Format: docs/FUNKTIONSWEISE.md › „Anbieter-Adapter“, E-19)."""
         faehig = self.faehig()
         fund = fund or {}
-        dienst = dienst if dienst is not None else (self.dienst_status() if faehig["status"] else
-                                                    {"zustand": "fehlt", "seit": None, "grund": None})
+        dienst = dienst if dienst is not None else (self.dienst_status() if faehig["status"] else dict(KEIN_DIENST))
         online = online if online is not None else self.beim_dienst(ergebnis)
         if not faehig["jobs"]:
             job, letzte_jobs = None, None

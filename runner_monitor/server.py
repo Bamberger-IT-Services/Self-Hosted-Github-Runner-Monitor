@@ -21,7 +21,7 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 from . import VERSION, github, zugang
 from .konfig import Konfig
@@ -46,6 +46,7 @@ SICHERHEITS_KOPF = {
     "Cache-Control": "no-store",
 }
 STATISCH = re.compile(r"^[a-z0-9-]+\.(css|js|svg)$")
+RUNNER_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # /events?journal=<runner-id> (#95)
 
 
 class App:
@@ -309,15 +310,44 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             self.app.strom_ab(sitzung)
 
+    def _journal_wunsch(self) -> str | None:
+        """``/events?journal=<runner-id>``: Runner, dessen Journal dieses Fenster im Live-Log zeigt (#95).
+        Nur die ID kommt aus der Anfrage; welche Unit gelesen wird, bestimmt allein ``runner[]`` des Servers."""
+        try:
+            werte = parse_qs(urlsplit(self.path).query, max_num_fields=4).get("journal") or [""]
+        except ValueError:  # mehr als 4 Felder
+            return None
+        wunsch = werte[0]
+        return wunsch if RUNNER_ID.fullmatch(wunsch) else None
+
     def _strom(self) -> None:
         self._kopf(HTTPStatus.OK, "text/event-stream; charset=utf-8", None, {"X-Accel-Buffering": "no", "Connection": "close"})
         z = self.app.zustand
         # Hängt der Browser (Rechner schläft, WLAN weg), blockiert write() sonst ewig und der Thread bleibt liegen.
         self.connection.settimeout(SSE_SCHREIB_FRIST)
         q = z.verteiler.anmelden()
+        wunsch = self._journal_wunsch()
+        journal = {"folger": None, "unit": None}
+
+        def journal_abgleich() -> None:
+            # Unit aus runner[]; ändert sie sich (Runner neu erkannt, Unit weg), wird umgehängt.
+            unit = z.journal_unit(wunsch) if wunsch else None
+            if unit == journal["unit"] and (unit is None or journal["folger"] is not None):
+                return
+            z.journale.abmelden(journal["folger"], q)
+            journal["folger"], journal["unit"] = None, unit
+            if unit:
+                journal["folger"] = z.journale.anmelden(unit, q)
+                if journal["folger"] is None:  # schon MAX_FOLGER Units offen
+                    self._sse("journal", json.dumps({"unit": unit, "neu": True, "zeilen": [], "ereignisse": [], "hinweis": "grenze"}))
+            elif wunsch:
+                self._sse("journal", json.dumps({"unit": None, "neu": True, "zeilen": [], "ereignisse": []}))
+
         try:
             for bereich, daten in z.momentaufnahme():
                 self._sse(bereich, json.dumps(daten, ensure_ascii=False, separators=(",", ":")))
+            if wunsch:
+                journal_abgleich()
             while True:
                 try:
                     bereich, text = q.get(timeout=15)
@@ -330,10 +360,13 @@ class Handler(BaseHTTPRequestHandler):
                     LOG.info("Live-Verbindung beendet: Browser kam nicht hinterher, er verbindet sich neu")
                     return
                 self._sse(bereich, text)
+                if wunsch and bereich == "runner":
+                    journal_abgleich()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
             z.verteiler.abmelden(q)
+            z.journale.abmelden(journal["folger"], q)
 
     def _sse(self, bereich: str, text: str) -> None:
         self.wfile.write(f"event: {bereich}\ndata: {text}\n\n".encode("utf-8"))

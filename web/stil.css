@@ -190,6 +190,8 @@ body.dashboard { overflow: hidden; }
 /* Schrittliste von GitHub fehlt noch: gestrichelter Rest, Name gedämpft (Design 0.4.0) */
 .seg.unbekannt { background: repeating-linear-gradient(90deg, var(--track) 0 4px, transparent 4px 7px); }
 .schritt-name.mut { color: var(--ink-muted); font-weight: 500; }
+/* Teilweise (Jobs ja, Schritte nein, #95): Erklärung unter „Schritte nicht verfügbar“ */
+.zeile-k.ohne-schritte { margin-top: 4px; }
 .zahlen { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; }
 .zahl-gross { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.022em; margin-top: 2px; }
 .zahl-mittel { font-size: 17px; line-height: 22px; font-weight: 600; margin-top: 4px; }
@@ -316,6 +318,8 @@ body.dashboard { overflow: hidden; }
 .term.kurz .zx { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .z.fehler { background: var(--log-err); }
 .z.fehler .zt { color: #ff9e95; }
+/* Journal (#95): bei einer Flut nicht übertragene Zeilen */
+.z.luecke .zx { color: var(--log-muted); font-style: italic; }
 .trenner { display: flex; align-items: center; gap: 8px; margin: 10px 12px 5px; font-family: var(--sans); font-size: 12px; line-height: 18px; color: #f2f6f8; }
 .tr-nr { color: #9cc9e8; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tr-name { font-weight: 650; }

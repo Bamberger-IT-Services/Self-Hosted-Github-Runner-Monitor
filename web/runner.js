@@ -58,7 +58,8 @@ const RUNNER = (() => {
   /* Kurzzustand für Reiter und Liste: art = Farbklasse (laeuft = --brand, ok = --success, fehler = --danger,
      warn = --warning, neutral), wort = Schlüssel des Zustandstexts (der Zustand steht immer auch als Text). */
   function zustand(r) {
-    const z = r && r.status && r.status.zustand;
+    // Ohne Unit (faehig.status false) gibt es keinen Dienst: Reiter und Karte zeigen beide „Kein Dienst“ (Review #114)
+    const z = r && r.faehig && r.faehig.status === false ? 'fehlt' : r && r.status && r.status.zustand;
     return {
       job: { art: 'laeuft', wort: 'job' }, bereit: { art: 'ok', wort: 'bereit' },
       gestoppt: { art: 'fehler', wort: 'gestoppt' }, offline: { art: 'warn', wort: 'offline' },
@@ -69,19 +70,44 @@ const RUNNER = (() => {
   /* Anzeigename des Dienstes für die Plakette; ‚unbekannt‘ liefert null (der Aufrufer übersetzt). */
   const dienstName = (dienst) => DIENSTE[dienst] || null;
 
+  /* Woher das Live-Log des Runners kommt – nur aus faehig.logs und runner[].log, nie aus dem Dienstnamen:
+     'seiten' (Ausgabe der Schritte, GitHub), 'journal' (Journal der Unit, #95), 'datei' (Log-Datei aus
+     runner.json, noch nicht angezeigt) oder null (kein Log, z. B. ohne Unit). */
+  function logQuelle(r) {
+    const log = r && r.log, faehig = (r && r.faehig) || {};
+    if (!faehig.logs || !log || typeof log !== 'object') return null;
+    if (log.art === 'journal') return typeof log.unit === 'string' && log.unit ? 'journal' : null;
+    return ['seiten', 'datei'].includes(log.art) ? log.art : null;
+  }
+  /* Runner-ID für /events?journal=…, wenn das Live-Log dieses Runners das Journal ist, sonst null. */
+  const journalZiel = (r) => (logQuelle(r) === 'journal' ? r.id : null);
+  const journalUrl = (id) => (id ? `/events?journal=${encodeURIComponent(id)}` : '/events');
+
+  /* Zeilen fürs Log: ohne Schritte (faehig.schritte false) und im Journal gibt es keine Schritt-Trenner. */
+  const logZeilen = (zeilen, mitTrennern) => (Array.isArray(zeilen) ? zeilen : []).filter((z) => z && (mitTrennern || z.art !== 'schritt'));
+
   /* Eintrag aus runner[] → die Form, die renderStatus() und renderWorkflows() kennen (Altformat der
      Bereiche „status“ und „workflows“). basis: Werte der VM (vm, monitorVersion, system).
-     nurGrund = der Dienst liefert keine Jobs (Grundüberwachung): die Karten zeigen dann keine Jobs. */
+     Steuerung nur über faehig{…} (README › „Nicht verfügbar“ ehrlich zeigen), nie über den Dienstnamen:
+     nurGrund = keine Jobs (Grundüberwachung: kein „Online bei …“, keine „Letzten Jobs“, „Jobs nicht verfügbar“),
+     ohneSchritte = Jobs ja, Schritte nein („Schritte nicht verfügbar“, keine Trenner, kein Schritt-Chip).
+     anbieter dient nur der Anzeige (Plakette, „Online bei GitHub“). */
   function ansicht(r, basis = {}) {
     const s = r.status || {};
     const faehig = r.faehig || {};
+    const quelle = logQuelle(r);
+    const unit = typeof r.unit === 'string' ? r.unit : '';
+    // Ohne Labels vom Dienst (Grundüberwachung) steht die Unit als Label in der Kopfzeile (Design 0.8.0: „buildagent.service“)
+    const labels = Array.isArray(r.labels) && r.labels.length ? r.labels : (!faehig.jobs && unit ? [unit] : []);
     return {
-      vm: basis.vm || '', runner: r.name || r.id, id: r.id, eingerichtet: true, labels: Array.isArray(r.labels) ? r.labels : [],
+      vm: basis.vm || '', runner: r.name || r.id, id: r.id, eingerichtet: true, labels,
       version: r.version || '', monitorVersion: basis.monitorVersion, system: basis.system,
-      dienst: s.dienst || { zustand: 'fehlt', seit: null, grund: null },
+      dienst: faehig.status === false ? { zustand: 'fehlt', seit: null, grund: null } : (s.dienst || { zustand: 'fehlt', seit: null, grund: null }),
       github: s.beimDienst || { zustand: 'unbekannt', seit: null },
-      job: r.job || null, letzteJobs: Array.isArray(r.letzteJobs) ? r.letzteJobs : [],
-      anbieter: r.dienst, nurGrund: !faehig.jobs, ohneSchritte: !!faehig.jobs && !faehig.schritte,
+      job: faehig.jobs ? (r.job || null) : null, letzteJobs: faehig.jobs && Array.isArray(r.letzteJobs) ? r.letzteJobs : [],
+      anbieter: r.dienst, unit,
+      nurGrund: !faehig.jobs, ohneSchritte: !!faehig.jobs && !faehig.schritte,
+      logQuelle: quelle, journalUnit: quelle === 'journal' ? r.log.unit : '',
       zustand: s.zustand || null,  // „unbekannt“: Dienst liefert keinen lesbaren Stand (Forgejo/Gitea, #93)
     };
   }
@@ -89,7 +115,16 @@ const RUNNER = (() => {
   /* Meldung aus meldungen[] → betrifft sie einen anderen als den gewählten Runner? */
   const fremd = (meldung, gewaehlt) => !!(meldung && meldung.runner && meldung.runner !== gewaehlt);
 
-  return { SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd };
+  /* Neustarts für die kv-Zeile der Grundüberwachung: NRestarts von systemd zählt die automatischen Neustarts
+     (Restart=) seit dem letzten Start von Hand. Liefert {art: 'keine'|'zahl'|'unbekannt', n}. */
+  function neustarts(dienst) {
+    const n = dienst && dienst.neustarts;
+    if (!Number.isInteger(n) || n < 0) return { art: 'unbekannt', n: null };
+    return n === 0 ? { art: 'keine', n: 0 } : { art: 'zahl', n };
+  }
+
+  return { SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd,
+    logQuelle, journalZiel, journalUrl, logZeilen, neustarts };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = RUNNER;

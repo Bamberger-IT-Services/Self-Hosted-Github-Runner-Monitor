@@ -38,6 +38,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Einrichtung › „GitLab anbinden“ und im Runbook `gitlab-nicht-erreichbar`; der Sammler ruft den Adapter
   mit #94/#96 auf, bis dahin bleibt GitLab in der Grundüberwachung. Das Token geht nur über `https://`
   (`http://` nur mit `"http_erlaubt": true` in `runner.json`) (#99, E-20, E-21).
+- Grundüberwachung und „teilweise“ ehrlich zeigen: Runner ohne Anbindung zeigen „Dienst aktiv“ bzw.
+  „Dienst gestoppt“, den Hinweis „Nur Grundüberwachung“, Dienst (Unit · aktiv seit …), Neustarts
+  (automatische Neustarts laut systemd) und den letzten Stopp; „Jobs je Repository“ zeigt ruhig „Jobs nicht
+  verfügbar“ mit „Runner zuordnen ›“. Das Live-Log zeigt für diese Runner das Journal ihrer Unit (Chip
+  „Journal · <unit>“, ohne Schritt-Trenner), nur für angemeldete Benutzer, bekannte Token-Muster werden
+  ersetzt. Liefert ein Dienst Jobs, aber keine Schritte, steht „Schritte nicht verfügbar“; Job, Laufzeit und
+  „Letzte Jobs“ bleiben. Die Oberfläche richtet sich dabei nur nach den Fähigkeiten, nie nach dem Namen des
+  Dienstes. Demo: `?demo&runner=3&gewaehlt=3` und `?demo&faehig=teilweise` (#95).
 - Forgejo-/Gitea-Adapter nach API-Prüfung: Wer einen Forgejo- oder Gitea-Runner von Hand anbindet
   (Server und Organisation in `/etc/runner-monitor/runner.json`, Token mit `read:repository` und
   `read:organization`), sieht, ob der Runner beim Server online ist, Jobs je Repository, den laufenden
@@ -51,6 +59,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   OpenAPI-Beschreibung umgesetzt und noch nicht an einer laufenden Instanz geprüft (#93).
 
 ### Behoben
+- Reiter und Karte zeigen für einen Runner ohne systemd-Dienst beide „Kein Dienst“ (der Reiter zeigte
+  „Unbekannt“) (#95, Review #114).
 - Dashboard lud nicht (Syntaxfehler in `web/dashboard.js` seit dem Review zu #90: ein Zeilenkommentar
   schluckte eine schließende Klammer; Hotfix #112). Ein neuer Test prüft alle Skripte in `web/` (`tests/js/demo.test.mjs`).
 

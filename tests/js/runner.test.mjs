@@ -166,6 +166,90 @@ test('Runner ohne Dienst: neutral, kein Alarm', () => {
   assert.deepEqual(R.zustand({ status: { zustand: 'fehlt' } }), { art: 'neutral', wort: 'fehlt' });
 });
 
+/* ------------------------------------------------------------ Grundüberwachung und „teilweise“ (#95) */
+const FAEHIG = {
+  voll: { status: true, jobs: true, schritte: true, logs: true, updates: false },
+  teil: { status: true, jobs: true, schritte: false, logs: true, updates: false },
+  grund: { status: true, jobs: false, schritte: false, logs: true, updates: false },
+  ohne: { status: false, jobs: false, schritte: false, logs: false, updates: false },
+};
+const eintrag = (dienst, faehig, log) => ({
+  id: 'r1', name: 'r1', dienst, unit: 'buildagent.service', labels: [], faehig,
+  status: { zustand: faehig.status ? 'aktiv' : 'fehlt', dienst: { zustand: faehig.status ? 'aktiv' : 'fehlt', seit: 1, grund: null, neustarts: 0, letzterStopp: null }, beimDienst: null },
+  job: { name: 'build', start: 1, schritt: null, schritte: [] }, letzteJobs: [{ name: 'x' }], jobsJeRepository: null, log,
+});
+
+test('Steuerung nur über faehig, nie über den Dienstnamen', () => {
+  // Gleiche Fähigkeiten → gleiche Ansicht, egal welcher Dienst (README › „Nicht verfügbar“ ehrlich zeigen)
+  const LOG = { art: 'journal', unit: 'buildagent.service' };
+  for (const [art, faehig] of Object.entries(FAEHIG)) {
+    const ansichten = ['github', 'forgejo', 'gitea', 'gitlab', 'unbekannt', 'gibt-es-nicht'].map((d) => {
+      const a = R.ansicht(eintrag(d, faehig, LOG));
+      return { nurGrund: a.nurGrund, ohneSchritte: a.ohneSchritte, logQuelle: a.logQuelle, journalUnit: a.journalUnit, job: !!a.job,
+        letzte: a.letzteJobs.length, dienst: a.dienst.zustand, zustand: R.zustand(eintrag(d, faehig, LOG)), ziel: R.journalZiel(eintrag(d, faehig, LOG)) };
+    });
+    for (const a of ansichten) assert.deepEqual(a, ansichten[0], art);
+  }
+  // und umgekehrt: andere Fähigkeiten beim selben Dienst ändern die Ansicht
+  const g = R.ansicht(eintrag('github', FAEHIG.grund, LOG)), t = R.ansicht(eintrag('github', FAEHIG.teil, LOG));
+  assert.equal(g.nurGrund, true);
+  assert.equal(g.job, null);                // ohne Fähigkeit „jobs“ kein Job, auch wenn einer mitkäme
+  assert.deepEqual(g.letzteJobs, []);
+  assert.equal(t.nurGrund, false);
+  assert.equal(t.ohneSchritte, true);
+  assert.equal(t.job.name, 'build');
+  assert.equal(R.ansicht(eintrag('unbekannt', FAEHIG.voll, LOG)).ohneSchritte, false);
+});
+
+test('dashboard.js entscheidet Karten und Log nicht nach dem Dienstnamen', () => {
+  const js = readFileSync(new URL('../../web/dashboard.js', import.meta.url), 'utf8');
+  for (const name of ['abgleich', 'setzeLogQuelle', 'renderStatus', 'renderWorkflows', 'renderLogKopf', 'renderLeer']) {
+    const start = js.indexOf(`function ${name}(`);
+    assert.ok(start > 0, name);
+    const rumpf = js.slice(start, js.indexOf('\n  }\n', start));
+    assert.doesNotMatch(rumpf, /istGitHub\(|anbieter\s*===|\.dienst\s*===|===\s*'(github|forgejo|gitea|gitlab)'/, name);
+  }
+});
+
+test('Reiter und Karte gleich: ohne Unit „Kein Dienst“ statt „Unbekannt“ (Review #114)', () => {
+  const ohne = eintrag('forgejo', FAEHIG.ohne, null);
+  ohne.status = { zustand: 'unbekannt', dienst: { zustand: 'fehlt' }, beimDienst: null };  // auch ein älterer Server
+  assert.deepEqual(R.zustand(ohne), { art: 'neutral', wort: 'fehlt' });
+  assert.equal(R.ansicht(ohne).dienst.zustand, 'fehlt');
+  assert.equal(R.ansicht(ohne).logQuelle, null);
+});
+
+test('Log-Quelle und Journal-Ziel', () => {
+  assert.equal(R.logQuelle(eintrag('x', FAEHIG.grund, { art: 'journal', unit: 'buildagent.service' })), 'journal');
+  assert.equal(R.logQuelle(eintrag('x', FAEHIG.voll, { art: 'seiten', unit: 'u.service' })), 'seiten');
+  assert.equal(R.logQuelle(eintrag('x', FAEHIG.grund, { art: 'datei', unit: 'u.service' })), 'datei');
+  assert.equal(R.logQuelle(eintrag('x', { ...FAEHIG.grund, logs: false }, { art: 'journal', unit: 'u.service' })), null);
+  assert.equal(R.logQuelle(eintrag('x', FAEHIG.grund, { art: 'journal', unit: '' })), null);
+  assert.equal(R.logQuelle(eintrag('x', FAEHIG.grund, { art: 'anders' })), null);
+  assert.equal(R.logQuelle(null), null);
+  assert.equal(R.journalZiel(eintrag('x', FAEHIG.grund, { art: 'journal', unit: 'buildagent.service' })), 'r1');
+  assert.equal(R.journalZiel(eintrag('x', FAEHIG.voll, { art: 'seiten', unit: 'u.service' })), null);
+  assert.equal(R.journalUrl('runner vm/02'), '/events?journal=runner%20vm%2F02');
+  assert.equal(R.journalUrl(null), '/events');
+  const a = R.ansicht(eintrag('x', FAEHIG.grund, { art: 'journal', unit: 'buildagent.service' }));
+  assert.equal(a.journalUnit, 'buildagent.service');
+  assert.equal(a.unit, 'buildagent.service');
+});
+
+test('Log: Trenner nur mit Schritten, Journal ohne Trenner', () => {
+  const zeilen = [{ art: 'schritt', nr: 1 }, { zeit: 1, text: 'a' }, { zeit: 2, art: 'luecke', n: 3 }, null];
+  assert.deepEqual(R.logZeilen(zeilen, true).map((z) => z.art || 'zeile'), ['schritt', 'zeile', 'luecke']);
+  assert.deepEqual(R.logZeilen(zeilen, false).map((z) => z.art || 'zeile'), ['zeile', 'luecke']);
+  assert.deepEqual(R.logZeilen(undefined, true), []);
+});
+
+test('Neustarts aus NRestarts', () => {
+  assert.deepEqual(R.neustarts({ neustarts: 0 }), { art: 'keine', n: 0 });
+  assert.deepEqual(R.neustarts({ neustarts: 3 }), { art: 'zahl', n: 3 });
+  for (const w of [null, undefined, -1, 1.5, '3']) assert.deepEqual(R.neustarts({ neustarts: w }), { art: 'unbekannt', n: null });
+  assert.deepEqual(R.neustarts(null), { art: 'unbekannt', n: null });
+});
+
 test('ansicht reicht „unbekannt“ und nicht zuordenbare Jobs durch (#93)', () => {
   const r = { id: 'runner-vm-02', name: 'runner-vm-02', dienst: 'forgejo', faehig: { jobs: true, schritte: true },
     status: { zustand: 'unbekannt', dienst: { zustand: 'aktiv', seit: 1 }, beimDienst: { zustand: 'unbekannt', seit: null } }, job: null };

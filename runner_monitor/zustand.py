@@ -24,7 +24,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from . import VERSION, anbieter, erkennung, runner, system
+from . import VERSION, anbieter, erkennung, journal, runner, system
 from .anbieter import github as gh_adapter
 from .konfig import Konfig
 
@@ -120,6 +120,7 @@ class Zustand:
         self._funde: list[dict] = []  # erkennung.json (geprüft), neu gelesen bei Änderung
         self._zuordnung: dict[str, dict] = {}  # runner.json (Log-Pfade, E-18), neu gelesen bei Änderung
         self._grund_status: dict[str, tuple[float, dict]] = {}  # Unit → (Zeit, Dienststatus)
+        self.journale = journal.Journale()  # Journal je Unit fürs Live-Log, nur solange jemand zusieht (#95)
         self.messer: system.SystemMesser | None = None
         try:
             self.messer = system.SystemMesser(schwelle_frei_gb=konfig.schwelle_frei_gb)
@@ -500,6 +501,22 @@ class Zustand:
         liste = self._runner_liste(status)
         self._setze_wenn_neu("runner", liste)
         self._setze_wenn_neu("meldungen", self._meldungen(liste))
+
+    def journal_unit(self, runner_id: object) -> str | None:
+        """Unit, deren Journal das Live-Log des Runners zeigt – nur aus ``runner[]`` (Server), nie aus der
+        Anfrage: der Runner braucht die Fähigkeit ``logs`` und die Log-Quelle ``journal`` mit geprüfter Unit
+        (E-17/E-18: Units kommen aus den root-eigenen systemd-Verzeichnissen)."""
+        if not isinstance(runner_id, str) or not runner_id:
+            return None
+        with self._sperre:
+            liste = self.bereiche.get("runner")
+        for r in liste if isinstance(liste, list) else []:
+            if isinstance(r, dict) and r.get("id") == runner_id:
+                log = r.get("log") or {}
+                if (r.get("faehig") or {}).get("logs") and log.get("art") == "journal":
+                    return erkennung.pruefe_unit(log.get("unit"))
+                return None
+        return None
 
     def zustand_api(self) -> dict:
         """``GET /api/zustand``: alle bisherigen Bereiche (ohne Live-Log) plus ``vm``, ``runner[]`` und
