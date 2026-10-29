@@ -7,9 +7,11 @@ import copy
 import http.server
 import json
 import os
+import socketserver
 import stat
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -202,6 +204,19 @@ class ForgejoAbfrageTest(unittest.TestCase):
         self.assertEqual(erg["job"]["name"], "build")
 
 
+class EinstufungTest(unittest.TestCase):
+    def test_tabelle_verspricht_nie_mehr_als_ausgeliefert(self):
+        """E-23: Forgejo/Gitea ausgeliefert als Grundüberwachung bis #96/#115; die Adapter können mehr."""
+        for dienst in ("forgejo", "gitea"):
+            self.assertEqual(erkennung.EINSTUFUNG[dienst], "teil", dienst)
+            self.assertFalse(erkennung.FAEHIG[dienst]["jobs"], dienst)
+            self.assertFalse(erkennung.FAEHIG[dienst]["schritte"], dienst)
+            klasse = anbieter.klasse_fuer(dienst)
+            self.assertTrue(klasse.FAEHIG["jobs"] and klasse.FAEHIG["schritte"], dienst)
+            for f, wert in erkennung.FAEHIG[dienst].items():
+                self.assertTrue(klasse.FAEHIG[f] or not wert, f"{dienst}.{f}")
+
+
 class GiteaAbfrageTest(unittest.TestCase):
     def test_runde_gitea(self):
         speicher = {}
@@ -274,12 +289,80 @@ class FehlerTest(unittest.TestCase):
         erg = fj.abfrage(Attrappe(antworten), "beispiel-org", "runner-vm-02", {})
         self.assertEqual(erg["abfrage"], "fehler")
 
-    def test_actions_im_repository_aus(self):
+    def test_laeufe_nicht_lesbar(self):
+        """404 auf /actions/runs trotz has_actions (z. B. Gitea ohne den Pfad): nie „bereit“ behaupten."""
         antworten = lade("forgejo-17.json")
         del antworten["/repos/beispiel-org/api-dienst/actions/runs"]
+        antworten["/orgs/beispiel-org/actions/runners"][0]["status"] = "idle"
+        antworten["/repos/beispiel-org/web-portal/actions/runs"]["workflow_runs"][0]["status"] = "success"
         erg = fj.abfrage(Attrappe(antworten), "beispiel-org", "runner-vm-02", {})
         self.assertEqual(erg["abfrage"], "ok")
-        self.assertEqual(erg["repos"][1], {"name": "api-dienst", "privat": True, "laeuft": 0, "wartet": 0})
+        self.assertEqual([r["name"] for r in erg["repos"]], ["web-portal"])
+        self.assertEqual(erg["laeufeNichtLesbar"], 1)
+        e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                 server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "unbekannt")
+        ok = lade("forgejo-17.json")
+        ok["/orgs/beispiel-org/actions/runners"][0]["status"] = "idle"
+        for name in ("web-portal", "api-dienst"):
+            for lauf in ok[f"/repos/beispiel-org/{name}/actions/runs"]["workflow_runs"]:
+                lauf["status"] = "success"
+        erg = fj.abfrage(Attrappe(ok), "beispiel-org", "runner-vm-02", {})
+        e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                 server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "bereit")
+
+    def test_beschaeftigt_ohne_zuordenbaren_job(self):
+        """Der Dienst meldet „active“, der Job liegt aber in keinem Repository der Organisation."""
+        antworten = lade("forgejo-17.json")
+        for name in ("web-portal", "api-dienst"):
+            for lauf in antworten[f"/repos/beispiel-org/{name}/actions/runs"]["workflow_runs"]:
+                lauf["status"] = "success"
+        erg = fj.abfrage(Attrappe(antworten), "beispiel-org", "runner-vm-02", {})
+        self.assertTrue(erg["runner"]["beschaeftigt"])
+        self.assertIsNone(erg["job"])
+        e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                 server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "job")
+        self.assertIs(e["job"]["zuordenbar"], False)
+        self.assertIs(fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                 server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=self.ok(), stand="angebunden")["job"]["zuordenbar"], True)
+
+    def ok(self):
+        return fj.abfrage(Attrappe(lade("forgejo-17.json")), "beispiel-org", "runner-vm-02", {})
+
+    def test_runner_liste_nicht_lesbar_ist_unbekannt(self):
+        antworten = lade("forgejo-17.json")
+        for name in ("web-portal", "api-dienst"):
+            for lauf in antworten[f"/repos/beispiel-org/{name}/actions/runs"]["workflow_runs"]:
+                lauf["status"] = "success"
+        k = Attrappe(antworten, fehler={"/orgs/beispiel-org/actions/runners": fj.ForgejoFehler("keine-rechte", "403")})
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                 server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "unbekannt")
+        nicht_erreichbar_erg = fj.abfrage(Attrappe({}, fehler={"/version": nicht_erreichbar()}), "beispiel-org", "runner-vm-02", {})
+        e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                 server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=nicht_erreichbar_erg, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "unbekannt")
+
+    def test_fremde_antworten(self):
+        """Falsche Typen werden übergangen; was trotzdem scheitert, wird „unerwartete Antwort“ statt Absturz."""
+        antworten = lade("forgejo-17.json")
+        antworten["/repos/beispiel-org/web-portal/actions/runs"]["workflow_runs"][0]["status"] = ["running"]
+        antworten["/repos/beispiel-org/api-dienst/actions/runs"]["workflow_runs"][0]["status"] = {"x": 1}
+        antworten["/orgs/beispiel-org/actions/runners"][0]["labels"] = "kein-array"
+        antworten["/orgs/beispiel-org/actions/runners"][0]["busy"] = "ja"
+        antworten["/orgs/beispiel-org/repos"][0]["updated_at"] = 10**30
+        erg = fj.abfrage(Attrappe(antworten), "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["abfrage"], "ok")
+        self.assertEqual([(r["laeuft"], r["wartet"]) for r in erg["repos"]], [(0, 0), (0, 1)])
+        self.assertEqual(erg["runner"]["labels"], [])
+        for ausnahme in (TypeError, ValueError, AttributeError, OverflowError, KeyError, IndexError, RecursionError):
+            with mock.patch.object(fj, "zaehle", side_effect=ausnahme("kaputt")):
+                erg = fj.abfrage(Attrappe(lade("forgejo-17.json")), "beispiel-org", "runner-vm-02", {})
+            self.assertEqual((erg["abfrage"], erg["fehler"]), ("fehler", "unerwartete Antwort des Servers"), ausnahme)
+            self.assertEqual((erg["repos"], erg["job"]), ([], None))
 
     def test_adapter_liest_token_aus_zugang(self):
         with tempfile.TemporaryDirectory() as t:
@@ -336,6 +419,24 @@ class _Handler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *args):  # noqa: D102
         pass
+
+
+class _Troepfeln(socketserver.BaseRequestHandler):
+    def handle(self):
+        try:
+            self.request.recv(4096)
+            for z in b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n" + b" " * 100:
+                self.request.sendall(bytes([z]))
+                time.sleep(1)
+        except OSError:
+            pass
+
+
+def starte_troepfelnd():
+    server = socketserver.ThreadingTCPServer(("127.0.0.1", 0), _Troepfeln)
+    server.daemon_threads = True
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return server, None
 
 
 def starte(antworten: dict):
@@ -425,6 +526,26 @@ class KlientTest(unittest.TestCase):
         with mock.patch.dict(os.environ, {"http_proxy": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "no_proxy": ""}):
             k = fj.Klient(f"http://127.0.0.1:{self.server.server_port}", TOKEN, http_erlaubt=True)
             self.assertEqual(k.hole("/version").daten["version"], "17.0.1+gitea-1.22.0")
+
+    def test_troepfelnder_server_harte_frist(self):
+        server, _ = starte_troepfelnd()
+        try:
+            k = fj.Klient(f"http://127.0.0.1:{server.server_address[1]}", TOKEN, zeitlimit=0.5, http_erlaubt=True)
+            beginn = time.monotonic()
+            with self.assertRaises(fj.ForgejoFehler) as f:
+                k.hole("/version")
+            self.assertEqual(f.exception.art, "nicht-erreichbar")
+            self.assertLess(time.monotonic() - beginn, 1.5)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_nan_und_unendlich_abgelehnt(self):
+        _, handler = self.server, self.handler
+        handler.antworten["/api/v1/nan"] = (200, {}, b'{"version": NaN}')
+        with self.assertRaises(fj.ForgejoFehler) as f:
+            self.k.hole("/nan")
+        self.assertEqual(f.exception.art, "fehler")
 
     def test_weiterleitungs_handler(self):
         self.assertIsNone(fj._OhneWeiterleitung().redirect_request(urllib.request.Request("http://127.0.0.1/"), None, 302, "", {}, "http://192.0.2.1/"))
@@ -555,10 +676,30 @@ class SammlerZustandTest(unittest.TestCase):
         with mock.patch.object(self.s, "anbieter_abfragen") as aufruf, mock.patch.object(self.s, "github"), \
              mock.patch.object(self.s, "release", return_value={}), mock.patch.object(self.s, "erkennung"), \
              mock.patch.object(sammler, "docker_container", return_value={}), mock.patch.object(self.s, "auto_update"):
-            self.s.ein_takt(1000.0)
-            self.s.ein_takt(1010.0)
-            self.s.ein_takt(1031.0)
+            for zeitpunkt in (1000.0, 1010.0, 1031.0):
+                self.s.ein_takt(zeitpunkt)
+                self.s._anbieter_faden.join(5)
         self.assertEqual(aufruf.call_count, 2)
+
+    def test_haengender_server_haelt_ein_takt_nicht_auf(self):
+        """Tröpfelnder Server (ein Byte je Sekunde): ein_takt bleibt unter 1 s, die Abfrage läuft im Faden."""
+        server, _ = starte_troepfelnd()
+        try:
+            self.k.zuordnung_datei.write_text(json.dumps({"version": 1, "runner": {"runner-vm-02": {
+                "server": f"http://127.0.0.1:{server.server_address[1]}", "org": "beispiel-org", "http_erlaubt": True}}}))
+            with mock.patch.object(self.s, "github"), mock.patch.object(self.s, "release", return_value={}), \
+                 mock.patch.object(self.s, "erkennung"), mock.patch.object(sammler, "docker_container", return_value={}), \
+                 mock.patch.object(self.s, "auto_update"), mock.patch.object(fj, "ZEITLIMIT", 1.0):
+                beginn = time.monotonic()
+                self.s.ein_takt(1000.0)
+                self.assertLess(time.monotonic() - beginn, 1.0)
+                self.assertTrue(self.s._anbieter_faden.is_alive())
+                self.s._anbieter_faden.join(10)
+            erg = json.loads((self.k.lauf_verz / "anbieter.json").read_text())["runner"]["runner-vm-02"]
+            self.assertEqual(erg["abfrage"], "nicht-erreichbar")
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def test_fehler_im_adapter_haelt_den_sammler_nicht_auf(self):
         with mock.patch.object(fj.Forgejo, "abfrage", side_effect=RuntimeError("kaputt")), self.assertLogs("runner_monitor.sammler", "ERROR"):
@@ -577,8 +718,8 @@ class SammlerZustandTest(unittest.TestCase):
         fj02 = liste["runner-vm-02"]
         self.assertEqual(set(fj02), EINTRAG_SCHLUESSEL)
         self.assertEqual((fj02["server"], fj02["org"], fj02["stand"], fj02["einstufung"]),
-                         ("https://git.example.org", "beispiel-org", "angebunden", "voll"))
-        self.assertEqual(fj02["faehig"], erkennung.FAEHIG["forgejo"])
+                         ("https://git.example.org", "beispiel-org", "angebunden", "teil"))
+        self.assertEqual(fj02["faehig"], fj.Forgejo.FAEHIG)  # von Hand angebunden: was der Adapter liefert
         self.assertEqual(fj02["status"]["zustand"], "job")
         self.assertEqual(fj02["status"]["beimDienst"], {"zustand": "online", "seit": None})
         self.assertEqual(fj02["job"]["schritt"], {"nr": 3, "von": 5, "name": "Tests"})

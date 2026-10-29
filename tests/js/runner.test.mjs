@@ -165,3 +165,13 @@ test('Benutzerwahl ändert den Wunsch und speichert; unbekannte ID nicht', () =>
 test('Runner ohne Dienst: neutral, kein Alarm', () => {
   assert.deepEqual(R.zustand({ status: { zustand: 'fehlt' } }), { art: 'neutral', wort: 'fehlt' });
 });
+
+test('ansicht reicht „unbekannt“ und nicht zuordenbare Jobs durch (#93)', () => {
+  const r = { id: 'runner-vm-02', name: 'runner-vm-02', dienst: 'forgejo', faehig: { jobs: true, schritte: true },
+    status: { zustand: 'unbekannt', dienst: { zustand: 'aktiv', seit: 1 }, beimDienst: { zustand: 'unbekannt', seit: null } }, job: null };
+  assert.equal(R.ansicht(r).zustand, 'unbekannt');
+  assert.equal(R.zustand(r).wort, 'unbekannt');
+  const j = R.ansicht({ ...r, status: { ...r.status, zustand: 'job' }, job: { name: '', zuordenbar: false } });
+  assert.equal(j.job.zuordenbar, false);
+  assert.equal(R.ansicht({ id: 'x' }).zustand, null);
+});

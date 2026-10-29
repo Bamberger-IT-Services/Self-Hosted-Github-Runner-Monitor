@@ -150,7 +150,8 @@ Instanz-Verwaltung angelegt) kann der Monitor nicht abfragen (dafür braucht Git
 ### Forgejo- oder Gitea-Runner anbinden (#93)
 
 Erkennt der Monitor einen Forgejo- oder Gitea-Runner (System prüfen › „Runner auf dieser VM“),
-überwacht er ihn zunächst nur über Dienst und Journal. Mit Anbindung zeigt er zusätzlich, ob der
+überwacht er ihn zunächst nur über Dienst und Journal (ausgeliefert gilt er als „teil“, bis die
+Einrichtung im Browser ihn anbindet, E-23). Von Hand angebunden zeigt er zusätzlich, ob der
 Runner beim Server online ist, Jobs je Repository, den laufenden Job mit Schritten (Forgejo ab 17,
 Gitea) und die letzten Jobs. Bis die Einrichtung im Browser das übernimmt (#96/#97), geht es so:
 
@@ -190,14 +191,16 @@ die Adresse aus der Erkennung ist nur ein Vorschlag:
 ```
 
 `server` ohne `/api/v1` und ohne Zugangsdaten; `org` ist die Organisation (oder der Benutzer), der
-die Repositories gehören. Der Sammler liest Datei und Token in jeder Runde (alle 30 s) neu – ein
+die Repositories gehören. Mit Token gilt nur **`https://`**; ein Server nur mit `http://` (z. B. im LAN)
+wird erst abgefragt, wenn bei diesem Runner zusätzlich `"http_erlaubt": true` steht (E-21) – das
+Token läuft dann unverschlüsselt durchs Netz, `HTTP_PROXY` wird dabei bewusst nicht benutzt. Der Sammler liest Datei und Token in jeder Runde (alle 30 s) neu – ein
 Neustart ist nicht nötig. Ob es klappt, steht in `/run/runner-monitor/anbieter.json` (`"abfrage":
 "ok"`) bzw. im Journal des Sammlers.
 
-**Sicherheit:** Am besten `https://`. Mit `http://` (üblich im lokalen Netz) geht das Token
-unverschlüsselt über das Netz; das ist nur in einem vertrauenswürdigen Netz vertretbar
+**Sicherheit:** `http_erlaubt` nur in einem vertrauenswürdigen Netz
 ([Sicherheitsbericht](sicherheit/bericht.md), S-FORGEJO-01). Der Monitor folgt keiner Weiterleitung –
-leitet der Server z. B. von `http` auf `https` um, die `https`-Adresse eintragen.
+leitet der Server z. B. von `http` auf `https` um, die `https`-Adresse eintragen. Ein Konto im Team
+„Owners“ hat volle Rechte an der Organisation – das Token selbst bekommt trotzdem nur Leserechte.
 
 ## Prüfen
 

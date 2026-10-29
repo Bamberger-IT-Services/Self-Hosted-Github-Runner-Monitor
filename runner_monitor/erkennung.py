@@ -60,19 +60,19 @@ STAENDE = ("angebunden", "grund", "ignoriert", "offen")
 GEPRUEFT = ["systemd-Units", "Prozesse", ".runner-Dateien", "Server-API"]
 
 # Was der Monitor in dieser Version je Dienst liefern kann (README › „Nicht verfügbar“ ehrlich zeigen).
-# Forgejo und Gitea haben seit #93 einen Adapter, den der Sammler aufruft (Status beim Dienst, Jobs,
-# Schritte; Log aus dem Journal), sobald runner.json Server und Organisation nennt (E-23). GitLab ist
-# erkannt, aber noch nicht angebunden: nur Grundüberwachung (Dienst und Journal). Der GitLab-Adapter
-# (#99) kann mehr (Jobs, ohne Schritte), die Tabelle hebt aber erst an, wenn der Sammler ihn aufruft
-# (E-20). Kommt eine Anbindung dazu, ändert sich nur diese Tabelle.
+# Forgejo, Gitea und GitLab sind erkannt, ausgeliefert aber als Grundüberwachung (Dienst und Journal).
+# Ihre Adapter können mehr (Forgejo/Gitea #93: Jobs und Schritte; GitLab #99: Jobs ohne Schritte); die
+# Tabelle hebt erst an, wenn die Einrichtung sie anbindet (#96) und der Sammler sie regulär aufruft
+# (#115), Gitea zusätzlich erst nach Prüfung an einem echten Server (E-20, E-23). Ein von Hand in
+# runner.json angebundener Forgejo-/Gitea-Runner meldet in runner[] die Fähigkeiten seines Adapters.
 FAEHIG = {
     "github": {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False},
-    "forgejo": {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False},
-    "gitea": {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False},
+    "forgejo": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
+    "gitea": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
     "gitlab": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
     "unbekannt": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
 }
-EINSTUFUNG = {"github": "voll", "forgejo": "voll", "gitea": "voll", "gitlab": "teil", "unbekannt": "unbekannt"}
+EINSTUFUNG = {"github": "voll", "forgejo": "teil", "gitea": "teil", "gitlab": "teil", "unbekannt": "unbekannt"}
 
 UNIT_VERZEICHNISSE = ("/etc/systemd/system", "/run/systemd/system", "/usr/local/lib/systemd/system",
                       "/usr/lib/systemd/system", "/lib/systemd/system")

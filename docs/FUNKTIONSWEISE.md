@@ -115,18 +115,18 @@ Unit enthält „runner“, „agent“, „build“ …, startet Container). Be
 oder aktiv sind. Zwischen Forgejo und Gitea entscheidet die Antwort des Servers.
 
 **Einstufung und Fähigkeiten** richten sich nach dem, was diese Version liefern kann (Tabelle
-`FAEHIG` in `erkennung.py`): GitHub, Forgejo und Gitea `voll` (Status, Jobs, Schritte, Logs; Forgejo
-und Gitea seit #93, sobald sie in `runner.json` angebunden sind); GitLab `teil` (erkannt, noch ohne
-Adapter: Dienst und Journal); unbekannt `unbekannt` (Grundüberwachung). `updates` ist überall
-`false` (E-16, E-20). Ein Fund ohne Unit hat weder `status` noch `logs`.
+`FAEHIG` in `erkennung.py`): GitHub `voll` (Status, Jobs, Schritte, Logs); Forgejo, Gitea und GitLab
+`teil` (ausgeliefert als Dienst und Journal – ihre Adapter können mehr, die Tabelle hebt erst mit der
+Anbindung in Einrichtung und Sammler an, E-20, E-23); unbekannt `unbekannt` (Grundüberwachung).
+`updates` ist überall `false` (E-16). Ein Fund ohne Unit hat weder `status` noch `logs`.
 
 Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README):
 
 ```json
 { "id": "runner-vm-02", "name": "runner-vm-02", "dienst": "forgejo", "server": "https://git.example.org",
   "version": "13.0 / Runner 9.1", "grad": "sicher", "merkmale": ["systemd-Unit forgejo-runner.service", "…"],
-  "einstufung": "voll", "stand": "offen", "unit": "forgejo-runner.service", "log": null,
-  "faehig": { "status": true, "jobs": true, "schritte": true, "logs": true, "updates": false },
+  "einstufung": "teil", "stand": "offen", "unit": "forgejo-runner.service", "log": null,
+  "faehig": { "status": true, "jobs": false, "schritte": false, "logs": true, "updates": false },
   "aktiv": true, "grund": null }
 ```
 
@@ -166,6 +166,7 @@ verworfen. Ein Eintrag mit `unit`, der nicht gefunden wurde, erscheint als „vo
 `server` (`http(s)://host[:port][/pfad]`, ohne Zugangsdaten, Abfrage und Anker – sonst verworfen)
 und `org` (Organisation oder Benutzer beim Dienst, `A-Z a-z 0-9 . _ -`) binden einen Forgejo- oder
 Gitea-Runner an (#93); sie sind die **einzige** Quelle, wohin der Sammler mit Token fragt (E-18).
+Mit Token nur `https://`; `http://` nur mit `"http_erlaubt": true` beim selben Runner (E-21).
 Bis die Einrichtung im Browser sie schreibt (#96/#97), trägt root sie von Hand ein (EINRICHTUNG.md).
 
 **Sicherheit (S-ERK-01):** Bei Funden mit Unit-Datei kommen Name, Server und Dienst nur aus Registrierungen, die die Unit vorgibt
@@ -225,11 +226,18 @@ REST-Klient (auch für Releases und die Prüfung in der Einrichtung) und reicht 
 Ohne Unit gibt es weder `status` noch `logs` (außer beim GitHub-Runner aus `MONITOR_RUNNER_VERZ`,
 dessen Status wie bisher „fehlt“ zeigt und dessen Live-Log aus `_diag/pages` kommt). Weitere
 GitHub-Runner neben dem aus `MONITOR_RUNNER_VERZ` laufen bis #94 in der Grundüberwachung.
-**Angebunden** ist ein Forgejo- oder Gitea-Runner, wenn er eine Unit hat, `runner.json` Server und
-Organisation nennt und sein Stand nicht `grund`/`ignoriert` ist (`anbieter.angebunden`); sonst gilt
-die Grundüberwachung, auch wenn die Einstufung `voll` ist. Liefert der Server keine Schritte (Forgejo
-vor 17), meldet der Eintrag `faehig.schritte: false` – die Oberfläche zeigt dann „Schritte nicht
-verfügbar“ (Design › „Teilweise“).
+**Angebunden** ist ein Forgejo- oder Gitea-Runner, wenn er eine Unit hat, `runner.json` Server (mit
+`https://`, `http://` nur mit `http_erlaubt`) und Organisation nennt und sein Stand nicht
+`grund`/`ignoriert` ist (`anbieter.angebunden`; GitLab kann denselben Weg mit #115 nutzen, er braucht
+keine Organisation – `BRAUCHT_ORG`). Sonst gilt die Grundüberwachung. Ausgeliefert ist die Einstufung
+bis #96/#115 `teil` (E-23); ein von Hand angebundener Runner meldet in `runner[]` die Fähigkeiten
+seines Adapters. Liefert der Server keine Schritte (Forgejo vor 17), meldet der Eintrag
+`faehig.schritte: false` – die Oberfläche zeigt dann „Schritte nicht verfügbar“ (Design ›
+„Teilweise“). **Ehrlich statt „Bereit“:** Ist der Runner beim Dienst beschäftigt, der Job aber in
+keinem Repository der Organisation zu finden, ist der Zustand `job` mit `job.zuordenbar: false`
+(„Job nicht zuordenbar“); ist die Runner-Liste oder sind die Läufe eines Repositorys nicht lesbar
+(`laeufeNichtLesbar`, z. B. 404 auf `/actions/runs`) oder schlug die Abfrage fehl, ist er
+`unbekannt`.
 
 ### Fähigkeiten je Anbieter (API-Prüfung, #93)
 
@@ -263,7 +271,11 @@ Schreibrecht. Ohne Recht auf die Runner-Liste bleibt „beim Dienst“ unbekannt
 Jobs keinem Runner zuordnen (die UUID fehlt) – Jobs je Repository gibt es trotzdem. Die Bereiche
 stammen aus der Beschreibung; mit einem eingeschränkten Token sind sie noch nicht geprüft.
 
-**Eine Runde** (Sammler, alle 30 s, höchstens 25 s, je Anfrage 10 s): Version → Organisation oder
+**Eine Runde** (Sammler, alle 30 s in einem **eigenen Faden** – ein hängender Server hält GitHub, Docker
+und Updates nie auf; eine Runde je Runner höchstens 25 s, je Anfrage eine harte Frist von 10 s in einem
+Daemon-Faden, die auch DNS und tröpfelnde Antworten abdeckt; Antworten werden stückweise gelesen, `NaN`
+und `Infinity` abgelehnt, eine Antwort in unerwarteter Form wird „unerwartete Antwort“ mit dem letzten
+guten Stand): Version → Organisation oder
 Benutzer (einmal je Token) → Runner-Liste → Repositories (ohne archivierte und ohne Actions, 50 je
 Seite) → Läufe je Repository (ruhige Repositories nur alle 5 Min., wie bei GitHub) → Jobs der
 laufenden Läufe → bei Forgejo Log-Anfang je neuem Job → Schritte des eigenen Jobs → Ergebnis der
@@ -293,7 +305,8 @@ bleibt der letzte gute Stand (Repositories, Runner, Job, letzte Jobs) stehen; `s
 `ok`, `nicht-erreichbar` und `kontingent` „angebunden“. Die Meldungen (`token`, `abfrage`) entstehen
 wie beim GitHub-Runner. Ist der Runner beim Dienst „beschäftigt“, der Job aber keinem Repository der
 Organisation zuzuordnen (z. B. ein globaler Runner arbeitet für eine andere Organisation), zeigt der
-Eintrag „bereit“ – ein eigener Zustand dafür fehlt im Format (E-19).
+Eintrag `job` mit `zuordenbar: false` (siehe oben). Offen für #115: eigene Fäden je Server (heute
+nacheinander in einem Faden), GitLab im Sammler.
 
 **Woher ein Adapter seine Werte nimmt (E-18):** Server, Organisation, Log-Pfad und Token-Datei nur
 aus der Konfiguration – GitHub: Server fest `https://github.com`, Organisation aus

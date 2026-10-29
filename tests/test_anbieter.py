@@ -478,7 +478,7 @@ class RunnerListeTest(unittest.TestCase):
         self.assertEqual(gh["jobsJeRepository"], self.z.bereiche["workflows"])
         self.assertEqual(gh["letzteJobs"], [])
         # Forgejo ohne Server/Organisation in runner.json: Grundüberwachung, Server und Log nie aus dem Fund (E-18)
-        self.assertEqual((fj["status"]["zustand"], fj["server"], fj["einstufung"]), ("gestoppt", None, "voll"))
+        self.assertEqual((fj["status"]["zustand"], fj["server"], fj["einstufung"]), ("gestoppt", None, "teil"))
         self.assertEqual(fj["faehig"], {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False})
         self.assertEqual(fj["log"], {"art": "journal", "unit": "forgejo-runner.service"})
         self.assertIsNone(fj["jobsJeRepository"])

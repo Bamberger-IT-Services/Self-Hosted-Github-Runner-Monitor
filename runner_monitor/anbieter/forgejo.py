@@ -26,9 +26,10 @@ Zugangsdaten (es wird 0644 nach ``/run/runner-monitor/anbieter.json`` geschriebe
 
 from __future__ import annotations
 
-import http.client
 import json
+import math
 import re
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -41,7 +42,7 @@ from . import Anbieter, RunnerKonfig, registriere
 from . import github as gh_adapter
 
 TAKT = 30                     # Sekunden zwischen zwei Abfragen (Sammler), wie bei GitHub
-ZEITLIMIT = 10.0              # je Anfrage (Verbindung und jedes Lesen)
+ZEITLIMIT = 10.0              # harte Gesamtfrist je Anfrage (DNS, Verbindung, Lesen – eigener Faden)
 FRIST = 25.0                  # eine ganze Runde; danach bricht sie ab („nicht erreichbar“)
 MAX_ANTWORT = 4 * 1024 * 1024
 MAX_LOGKOPF = 4096            # vom Job-Log nur der Anfang (wer hat den Job?)
@@ -105,9 +106,13 @@ class Klient:
         self._oeffner = oeffner
 
     def hole(self, pfad: str, parameter: dict | None = None, *, text: bool = False) -> Antwort:
+        """Eine GET-Anfrage mit **harter Frist**: Sie läuft in einem eigenen Daemon-Faden; ist er nach
+        ``min(zeitlimit, Rest der Runde)`` nicht fertig (hängender DNS, tröpfelnder Server), gilt der
+        Server als nicht erreichbar und der Faden wird zurückgelassen (wie ``gitlab.Klient``)."""
         if not self.server:
             raise ForgejoFehler("fehler", "Server fehlt, ist keine gültige Adresse oder nicht https:// (http:// nur mit „http_erlaubt“ in runner.json)")
-        if time.monotonic() > self._ende:
+        rest = min(self.zeitlimit, self._ende - time.monotonic())
+        if rest <= 0:
             raise ForgejoFehler("nicht-erreichbar", "Frist für die Abfrage überschritten")
         url = f"{self.server}/api/v1{pfad}"
         if parameter:
@@ -120,37 +125,80 @@ class Klient:
             anfrage.add_header("Range", f"bytes=0-{MAX_LOGKOPF - 1}")
         grenze = MAX_LOGKOPF if text else MAX_ANTWORT
         self.zaehler["anfragen"] += 1
-        try:
-            with self._oeffner.open(anfrage, timeout=self.zeitlimit) as antwort:
-                kopf = {k.lower(): v for k, v in antwort.headers.items()}
-                roh = antwort.read(grenze + 1)
-        except urllib.error.HTTPError as fehler:
-            code = fehler.code
-            fehler.close()
-            if code == 401:
-                raise ForgejoFehler("token-ungueltig", "Token ungültig oder abgelaufen (401)") from None
-            if code == 403:
-                raise ForgejoFehler("keine-rechte", f"Keine Berechtigung für {pfad} (403)") from None
-            if code == 404:
-                raise ForgejoFehler("fehlt", f"{pfad} nicht gefunden (404)") from None
-            if code == 429:
-                raise ForgejoFehler("kontingent", "Zu viele Anfragen (429)") from None
-            if 300 <= code < 400:
-                raise ForgejoFehler("fehler", f"Weiterleitung ({code}) – Adresse in runner.json prüfen") from None
-            if code >= 500:  # Dienst startet neu, Proxy ohne Ziel: vorübergehend
-                raise ForgejoFehler("nicht-erreichbar", f"Server antwortet mit {code}") from None
-            raise ForgejoFehler("fehler", f"Server antwortet mit {code}") from None
-        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException, ValueError) as fehler:
-            grund = getattr(fehler, "reason", None) or type(fehler).__name__
-            raise ForgejoFehler("nicht-erreichbar", f"Server nicht erreichbar ({grund})") from None
+        ergebnis: list = []
+        frist = time.monotonic() + rest
+        faden = threading.Thread(target=self._hole, args=(anfrage, frist, grenze, text, ergebnis), name="forgejo-abfrage", daemon=True)
+        faden.start()
+        faden.join(rest)
+        if faden.is_alive() or not ergebnis:
+            raise ForgejoFehler("nicht-erreichbar", "Zeitüberschreitung (keine vollständige Antwort innerhalb der Frist)")
+        art, *wert = ergebnis[0]
+        if art == "fehler":
+            raise wert[0]
+        code, kopf, roh = wert
+        if code is not None:
+            self._pruefe_code(code, pfad)
         if text:
             return Antwort(roh[:grenze].decode("utf-8", "replace"), kopf)
         if len(roh) > grenze:
             raise ForgejoFehler("fehler", f"Antwort auf {pfad} zu groß")
         try:
-            return Antwort(json.loads(roh.decode("utf-8")), kopf)
-        except (UnicodeDecodeError, ValueError):
+            return Antwort(json.loads(roh.decode("utf-8"), parse_constant=_verwerfe_konstante), kopf)
+        except (UnicodeDecodeError, ValueError, RecursionError):
             raise ForgejoFehler("fehler", f"Keine gültige JSON-Antwort auf {pfad}") from None
+
+    @staticmethod
+    def _pruefe_code(code: int, pfad: str) -> None:
+        if code == 401:
+            raise ForgejoFehler("token-ungueltig", "Token ungültig oder abgelaufen (401)")
+        if code == 403:
+            raise ForgejoFehler("keine-rechte", f"Keine Berechtigung für {pfad} (403)")
+        if code == 404:
+            raise ForgejoFehler("fehlt", f"{pfad} nicht gefunden (404)")
+        if code == 429:
+            raise ForgejoFehler("kontingent", "Zu viele Anfragen (429)")
+        if 300 <= code < 400:
+            raise ForgejoFehler("fehler", f"Weiterleitung ({code}) – Adresse in runner.json prüfen")
+        if code >= 500:  # Dienst startet neu, Proxy ohne Ziel: vorübergehend
+            raise ForgejoFehler("nicht-erreichbar", f"Server antwortet mit {code}")
+        raise ForgejoFehler("fehler", f"Server antwortet mit {code}")
+
+    def _hole(self, anfrage: urllib.request.Request, frist: float, grenze: int, text: bool, ergebnis: list) -> None:
+        try:
+            try:
+                with self._oeffner.open(anfrage, timeout=max(0.1, frist - time.monotonic())) as antwort:
+                    kopf = {k.lower(): v for k, v in antwort.headers.items()}
+                    ergebnis.append(("ok", None, kopf, _lies_antwort(antwort, frist, grenze, ganz=not text)))
+            except urllib.error.HTTPError as fehler:
+                try:
+                    ergebnis.append(("ok", fehler.code, {}, b""))
+                finally:
+                    fehler.close()
+        except ForgejoFehler as fehler:
+            ergebnis[:] = [("fehler", fehler)]
+        except Exception as fehler:  # noqa: BLE001 – Netz, DNS, TLS, http.client (BadStatusLine, IncompleteRead …)
+            grund = getattr(fehler, "reason", None) or type(fehler).__name__
+            ergebnis[:] = [("fehler", ForgejoFehler("nicht-erreichbar", f"Server nicht erreichbar ({grund})"))]
+
+
+def _verwerfe_konstante(name: str):
+    raise ValueError(f"unzulässiger JSON-Wert: {name}")  # NaN, Infinity, -Infinity
+
+
+def _lies_antwort(antwort, frist: float, grenze: int, ganz: bool = True) -> bytes:
+    """Stückweise lesen, höchstens ``grenze`` + 1 Byte, zur Frist abbrechen. ``ganz=False`` (Log-Anfang):
+    nach ``grenze`` Byte aufhören, statt den Rest abzuwarten."""
+    lese = getattr(antwort, "read1", None) or antwort.read
+    teile, gelesen = [], 0
+    while gelesen <= grenze if ganz else gelesen < grenze:
+        if time.monotonic() > frist:
+            raise ForgejoFehler("nicht-erreichbar", "Antwort zu langsam")
+        stueck = lese(min(65536, grenze + 1 - gelesen))
+        if not stueck:
+            break
+        teile.append(stueck)
+        gelesen += len(stueck)
+    return b"".join(teile)
 
 
 # ---------------------------------------------------------------- Auswertung (testbar ohne Netz)
@@ -174,26 +222,47 @@ def ganzzahl(wert: object) -> int | None:
     return wert if isinstance(wert, int) and not isinstance(wert, bool) and 0 < wert < 2**53 else None
 
 
+def status(d: dict, feld: str = "status") -> str:
+    """Status aus einer fremden Antwort – nur ein String zählt (sonst wäre ``in {…}`` ein TypeError)."""
+    wert = d.get(feld) if isinstance(d, dict) else None
+    return wert[:40] if isinstance(wert, str) else ""
+
+
+def text(wert: object, grenze: int = 200) -> str:
+    return str(wert)[:grenze] if isinstance(wert, (str, int)) and not isinstance(wert, bool) else ""
+
+
+def zeit(wert: object) -> float | None:
+    if not isinstance(wert, str):
+        return None
+    try:
+        ergebnis = gh.iso_zu_unix(wert)
+    except (ValueError, OverflowError, OSError):
+        return None
+    return ergebnis if ergebnis is not None and math.isfinite(ergebnis) else None
+
+
 def runner_eintrag(r: dict) -> dict:
     """Runner der Liste → ``{zustand: online|offline, beschaeftigt, labels}`` (beide Formen)."""
-    status = str(r.get("status") or "").lower()
-    labels = [lab.get("name") if isinstance(lab, dict) else lab for lab in r.get("labels") or []]
+    zustand = status(r).lower()
+    roh = r.get("labels") if isinstance(r.get("labels"), list) else []
+    labels = [lab.get("name") if isinstance(lab, dict) else lab for lab in roh]
     return {
-        "zustand": "offline" if status == "offline" or not status else "online",
-        "beschaeftigt": bool(r.get("busy")) or status == "active",
+        "zustand": "offline" if zustand == "offline" or not zustand else "online",
+        "beschaeftigt": r.get("busy") is True or zustand == "active",
         "labels": [str(lab)[:64] for lab in labels if isinstance(lab, str) and lab][:20],
     }
 
 
 def zaehle(laeufe: list[dict]) -> tuple[int, int]:
-    laeuft = sum(1 for lauf in laeufe if lauf.get("status") in LAEUFT)
-    wartet = sum(1 for lauf in laeufe if lauf.get("status") in WARTET)
+    laeuft = sum(1 for lauf in laeufe if status(lauf) in LAEUFT)
+    wartet = sum(1 for lauf in laeufe if status(lauf) in WARTET)
     return laeuft, wartet
 
 
 def workflow_aus(lauf: dict) -> str:
     """Name des Workflows: Forgejo ``workflow_id`` („ci.yml“), Gitea ``path`` („.gitea/workflows/ci.yml@…“)."""
-    datei = str(lauf.get("workflow_id") or lauf.get("path") or lauf.get("name") or "")
+    datei = text(lauf.get("workflow_id")) or text(lauf.get("path"), 500) or text(lauf.get("name"))
     datei = datei.split("@")[0].rsplit("/", 1)[-1]
     return re.sub(r"\.ya?ml$", "", datei)[:100]
 
@@ -213,16 +282,16 @@ def ref_aus(lauf: dict) -> dict:
 
 def schritt_aus(schritte: list[dict]) -> tuple[list[str], dict | None]:
     """Namen und ``{nr, von, name}``: der laufende Schritt, sonst der nach dem letzten erledigten."""
-    namen = [str(s.get("name") or "")[:200] for s in schritte]
+    namen = [text(s.get("name")) for s in schritte]
     if not namen:
         return [], None
     nr = 0
     for i, s in enumerate(schritte):
-        status = s.get("status")
-        if status in LAEUFT:
+        zustand = status(s)
+        if zustand in LAEUFT:
             nr = i + 1
             break
-        if status in ERLEDIGT or s.get("conclusion"):
+        if zustand in ERLEDIGT or status(s, "conclusion"):
             nr = i + 2
     nr = max(1, min(nr, len(namen)))
     return namen, {"nr": nr, "von": len(namen), "name": namen[nr - 1]}
@@ -275,28 +344,28 @@ def job_details(klient: Klient, org: str, repo: str, job: dict) -> tuple[list[di
 
 def job_fuer(lauf: dict, repo: dict, job: dict, schritte: list[dict] | None) -> dict:
     namen, schritt = schritt_aus(schritte or [])
-    start = gh.iso_zu_unix(job.get("started_at")) or next(
-        (gh.iso_zu_unix(s.get("started") or s.get("started_at")) for s in (schritte or []) if s.get("started") or s.get("started_at")),
-        None) or gh.iso_zu_unix(lauf.get("started") or lauf.get("run_started_at") or lauf.get("created_at"))
+    start = zeit(job.get("started_at")) or next(
+        (z for s in (schritte or []) if (z := zeit(s.get("started")) or zeit(s.get("started_at")))), None) \
+        or zeit(lauf.get("started")) or zeit(lauf.get("run_started_at")) or zeit(lauf.get("created_at"))
     return {
         "repo": repo["name"], "privat": repo["privat"], "workflow": workflow_aus(lauf),
-        "name": str(job.get("name") or "")[:200], "ref": ref_aus(lauf), "schritte": namen, "schritt": schritt,
-        "start": start, "url": str(job.get("html_url") or "")[:500],
+        "name": text(job.get("name")), "ref": ref_aus(lauf), "schritte": namen, "schritt": schritt,
+        "start": start, "url": text(job.get("html_url"), 500), "zuordenbar": True,
         "_id": ganzzahl(job.get("id")), "_lauf": ganzzahl(lauf.get("id")),
     }
 
 
 def ende_aus(job: dict, schritte: list[dict] | None) -> tuple[str | None, float | None]:
     """Ergebnis und Ende eines beendeten Jobs (Forgejo: ``status``, Gitea: ``conclusion``)."""
-    status = str(job.get("conclusion") or job.get("status") or "")
-    if status in LAEUFT or status in WARTET:
+    zustand = status(job, "conclusion") or status(job)
+    if not zustand or zustand in LAEUFT or zustand in WARTET:
         return None, None
-    ende = gh.iso_zu_unix(job.get("completed_at"))
+    ende = zeit(job.get("completed_at"))
     for s in reversed(schritte or []):
         if ende:
             break
-        ende = gh.iso_zu_unix(s.get("stopped") or s.get("completed_at"))
-    return ERGEBNIS.get(status, "abgebrochen"), ende
+        ende = zeit(s.get("stopped")) or zeit(s.get("completed_at"))
+    return ERGEBNIS.get(zustand, "abgebrochen"), ende
 
 
 def _repos(klient: Klient, org: str, besitzer: str) -> list[dict]:
@@ -311,7 +380,7 @@ def _repos(klient: Klient, org: str, besitzer: str) -> list[dict]:
                 continue
             if r.get("archived") or r.get("has_actions") is False:
                 continue
-            repos.append({"name": name, "privat": bool(r.get("private")), "geaendert": gh.iso_zu_unix(r.get("updated_at")) or 0})
+            repos.append({"name": name, "privat": r.get("private") is not False, "geaendert": zeit(r.get("updated_at")) or 0})
         if len(liste) < SEITE:
             break
     return repos
@@ -345,6 +414,7 @@ def abfrage(klient: Klient, org: str, runner_name: str, speicher: dict, letzter_
         "org": org, "abfrage": "ok", "abgefragt": jetzt, "letzterErfolg": letzter_erfolg, "tokenAblauf": None,
         "kontingent": {}, "art": None, "serverVersion": None, "repos": [], "runner": {"zustand": "unbekannt"},
         "job": None, "letzteJobs": list(speicher.get("letzte") or []), "schritte": speicher.get("schritte"), "fehler": "",
+        "laeufeNichtLesbar": 0,
     }
     if not klient.token:
         ergebnis["abfrage"] = "kein-token"
@@ -381,14 +451,17 @@ def abfrage(klient: Klient, org: str, runner_name: str, speicher: dict, letzter_
             try:
                 daten = klient.hole(f"/repos/{q(org)}/{q(repo['name'])}/actions/runs", {"limit": 30}).daten
             except ForgejoFehler as fehler:
-                if fehler.art != "fehlt":  # Actions im Repository aus: 404
+                if fehler.art != "fehlt":
                     raise
-                daten = {}
+                # 404 trotz has_actions (z. B. Gitea vor 1.24 ohne /actions/runs): Läufe nicht lesbar –
+                # das Repository fehlt in der Liste, und „bereit“ wird nicht behauptet
+                ergebnis["laeufeNichtLesbar"] += 1
+                continue
             laeufe = liste_aus(daten, "workflow_runs")
             laeuft, wartet = zaehle(laeufe)
             ruhige[repo["name"]] = {"zeit": jetzt, "laeuft": laeuft, "wartet": wartet}
             ergebnis["repos"].append({"name": repo["name"], "privat": repo["privat"], "laeuft": laeuft, "wartet": wartet})
-            laufend.extend((repo, lauf) for lauf in laeufe if lauf.get("status") in LAEUFT and ganzzahl(lauf.get("id")))
+            laufend.extend((repo, lauf) for lauf in laeufe if status(lauf) in LAEUFT and ganzzahl(lauf.get("id")))
         for name in set(ruhige) - {r["name"] for r in repos}:
             del ruhige[name]
 
@@ -403,6 +476,11 @@ def abfrage(klient: Klient, org: str, runner_name: str, speicher: dict, letzter_
     except ForgejoFehler as fehler:
         ergebnis["abfrage"] = "keine-rechte" if fehler.art == "fehlt" else fehler.art
         ergebnis["fehler"] = str(fehler)
+    except (TypeError, ValueError, AttributeError, OverflowError, KeyError, IndexError, RecursionError):
+        # Fremde Antwort in unerwarteter Form: Runde als Fehler, nie abstürzen oder Halbes zeigen –
+        # der Sammler behält den letzten guten Stand
+        ergebnis.update(abfrage="fehler", fehler="unerwartete Antwort des Servers", repos=[], job=None,
+                        runner={"zustand": "unbekannt"}, letzteJobs=list(speicher.get("letzte") or []))
     ergebnis["anfragen"] = dict(klient.zaehler)
     if ergebnis["job"]:
         ergebnis["job"] = {k: v for k, v in ergebnis["job"].items() if not k.startswith("_")}
@@ -419,10 +497,10 @@ def _meine_jobs(klient: Klient, org: str, laufend: list[tuple[dict, dict]], ich:
         daten = klient.hole(f"/repos/{q(org)}/{q(repo['name'])}/actions/runs/{ganzzahl(lauf['id'])}/jobs").daten
         for job in liste_aus(daten, "jobs"):
             jid = ganzzahl(job.get("id"))
-            if jid is None or job.get("status") not in LAEUFT:
+            if jid is None or status(job) not in LAEUFT:
                 continue
             if "runner_name" in job:
-                wer = job.get("runner_name")
+                wer = text(job.get("runner_name"), 128)
             else:
                 schluessel = f"{jid}:{ganzzahl(job.get('task_id')) or job.get('attempt') or 0}"
                 gesehen.add(schluessel)
@@ -495,6 +573,10 @@ def _letzte_jobs(klient: Klient, org: str, meine: list[dict], speicher: dict, je
 
 # ---------------------------------------------------------------- Adapter
 
+# Job, den der Dienst meldet („beschäftigt“), den der Monitor aber keinem Repository zuordnen kann
+JOB_UNBEKANNT = {"repo": "", "privat": False, "workflow": "", "name": "", "ref": None, "schritte": [], "schritt": None,
+                 "start": None, "url": "", "zuordenbar": False}
+
 
 @registriere
 class Forgejo(Anbieter):
@@ -518,7 +600,7 @@ class Forgejo(Anbieter):
     def abfrage(self, speicher: dict, letzter_erfolg: float | None = None, token: str | None = None,
                 klient: Klient | None = None) -> dict:
         tok = self.token() if token is None else token
-        return abfrage(klient or Klient(self.k.server or "", tok, http_erlaubt=self.k.http_erlaubt),
+        return abfrage(klient or Klient(self.k.server or "", tok, zeitlimit=ZEITLIMIT, http_erlaubt=self.k.http_erlaubt),
                        self.k.org, self.k.name, speicher, letzter_erfolg)
 
     # ------------------------------------------------------------ Monitor
@@ -540,9 +622,19 @@ class Forgejo(Anbieter):
         self._schritte = erg.get("schritte") if isinstance(erg.get("schritte"), bool) else None
         rest.setdefault("job", self.api_job(erg))
         rest.setdefault("letzte_jobs", [j for j in erg.get("letzteJobs") or [] if isinstance(j, dict)])
+        runner_erg = erg.get("runner") if isinstance(erg.get("runner"), dict) else {}
         if not rest.get("labels"):
-            rest["labels"] = list((erg.get("runner") or {}).get("labels") or [])
-        return super().eintrag(ergebnis=erg, **rest)
+            rest["labels"] = list(runner_erg.get("labels") or [])
+        e = super().eintrag(ergebnis=erg, **rest)
+        st = e["status"]
+        if e["faehig"]["jobs"] and st["zustand"] == "bereit":
+            if erg.get("abfrage") == "ok" and runner_erg.get("beschaeftigt") is True:
+                # beim Dienst beschäftigt, Job aber nicht gefunden (anderes Repository, fehlende Rechte)
+                st["zustand"] = "job"
+                e["job"] = dict(JOB_UNBEKANNT)
+            elif (st.get("beimDienst") or {}).get("zustand") == "unbekannt" or erg.get("laeufeNichtLesbar"):
+                st["zustand"] = "unbekannt"  # Runner-Liste oder Läufe nicht lesbar: nie „bereit“ behaupten
+        return e
 
 
 @registriere

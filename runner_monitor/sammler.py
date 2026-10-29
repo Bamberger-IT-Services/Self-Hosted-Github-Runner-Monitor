@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -122,6 +123,7 @@ class Sammler:
         self.naechste_anbieter = 0.0
         self._anbieter_speicher: dict[str, tuple[tuple, dict]] = {}  # je Runner: (Schlüssel, Speicher der Abfrage)
         self._anbieter_erfolg: dict[str, float] = {}
+        self._anbieter_faden: threading.Thread | None = None  # Abfrage weiterer Dienste läuft neben ein_takt
 
     def github_adapter(self) -> gh_adapter.GitHub:
         """Adapter des GitHub-Runners aus ``MONITOR_RUNNER_VERZ`` – Server, Organisation und Token aus
@@ -275,6 +277,12 @@ class Sammler:
             self._anbieter_erfolg.pop(rid, None)
         if neu or alt:
             schreibe_oeffentlich(self.k.lauf_verz / "anbieter.json", {"zeit": time.time(), "runner": neu})
+
+    def _anbieter_sicher(self) -> None:
+        try:
+            self.anbieter_abfragen()
+        except Exception:  # noqa: BLE001 – Forgejo/Gitea dürfen den Sammler nie aufhalten
+            LOG.exception("Fehler bei der Abfrage weiterer Dienste")
 
     def release(self) -> dict:
         klient = github.Klient(self.token())
@@ -432,12 +440,12 @@ class Sammler:
         if jetzt >= self.naechste_github:
             self.naechste_github = jetzt + TAKT_GITHUB
             self.github()
-        if jetzt >= self.naechste_anbieter:
+        if jetzt >= self.naechste_anbieter and not (self._anbieter_faden and self._anbieter_faden.is_alive()):
+            # Eigener Faden: ein hängender oder tröpfelnder Forgejo-/Gitea-Server hält GitHub, Docker,
+            # Erkennung und Updates nie auf. Läuft die vorige Runde noch, wartet die nächste.
             self.naechste_anbieter = jetzt + TAKT_ANBIETER
-            try:
-                self.anbieter_abfragen()
-            except Exception:  # noqa: BLE001 – Forgejo/Gitea dürfen GitHub, Docker und Updates nie aufhalten
-                LOG.exception("Fehler bei der Abfrage weiterer Dienste")
+            self._anbieter_faden = threading.Thread(target=self._anbieter_sicher, name="anbieter-abfrage", daemon=True)
+            self._anbieter_faden.start()
         if jetzt >= self.naechste_release:
             self.naechste_release = jetzt + TAKT_RELEASE
             daten = self.release()

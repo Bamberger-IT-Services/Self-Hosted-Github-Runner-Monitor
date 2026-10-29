@@ -82,6 +82,7 @@ const RUNNER = (() => {
       github: s.beimDienst || { zustand: 'unbekannt', seit: null },
       job: r.job || null, letzteJobs: Array.isArray(r.letzteJobs) ? r.letzteJobs : [],
       anbieter: r.dienst, nurGrund: !faehig.jobs, ohneSchritte: !!faehig.jobs && !faehig.schritte,
+      zustand: s.zustand || null,  // „unbekannt“: Dienst liefert keinen lesbaren Stand (Forgejo/Gitea, #93)
     };
   }
 
