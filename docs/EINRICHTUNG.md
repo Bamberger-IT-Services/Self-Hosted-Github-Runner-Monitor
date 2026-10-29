@@ -103,9 +103,9 @@ Fast geschafft. Schließen Sie die Einrichtung im Browser ab:
    (ohne eingegebenes Token prüft der Sammler das auf der VM hinterlegte), „Weiter“ prüft und speichert. Für
    alle anderen Runner (Forgejo, Gitea, GitLab, weitere GitHub-Runner) tragen Sie Zugangsdaten **auf der VM**
    ein – der Block zeigt den Befehl `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (E-22). Der Befehl
-   legt bisher **nur das Token** ab; Server und Organisation eines Forgejo-/Gitea-Runners gehören in
-   `/etc/runner-monitor/runner.json` (siehe „Forgejo- oder Gitea-Runner anbinden“; Abfrage im Skript folgt mit #120).
-   „Verbindung prüfen“ fragt dann über den Sammler mit genau diesen Angaben.
+   fragt bei Forgejo, Gitea und GitLab Server, Organisation (nicht bei GitLab) und Token ab, trägt alles ein
+   und prüft gleich die Verbindung (siehe „Forgejo- oder Gitea-Runner anbinden“). „Verbindung prüfen“ im
+   Browser fragt danach über den Sammler mit genau diesen Angaben.
    Jeder Runner lässt sich mit „Überspringen – nur Grundüberwachung“ auslassen; mit nur einem Runner heißt der
    Knopf „Ohne Anbindung fortfahren“. Ohne übernommenen Runner geht es von Schritt 3 direkt zu 5.
 5. **Alles eingerichtet:** Zugang, Firewall und je Runner der Stand (angebunden, Grundüberwachung,
@@ -159,17 +159,18 @@ noch nicht unterstützt“; von Hand angebunden zeigt er Jobs.
    Rolle **Maintainer** (bei Gruppen-Runnern ggf. **Owner**), Bereich **`read_api`** (nur lesen), Ablaufdatum z. B. 90 Tage (der Monitor warnt
    14 Tage vorher). Ein persönliches Token (Profil › Access tokens) mit `read_api` geht ebenso, wenn das Konto
    Zugriff auf den Runner hat.
-2. **Eintragen** (die ID zeigt `sudo ./einrichten.sh zugang` ohne Angabe):
+2. **Eintragen** (die ID zeigt `sudo ./einrichten.sh zugang` ohne Angabe). Das Skript fragt den Server
+   (z. B. `https://gitlab.example.org`, ohne `/api/v4`) und das Token ab und prüft danach die Verbindung –
+   wie bei Forgejo, siehe unten:
    ```bash
    sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner-id>
    ```
-3. **Server:** die Adresse Ihres GitLab (z. B. `https://gitlab.example.org`) in `/etc/runner-monitor/runner.json`
-   (wie unten bei Forgejo, aber **ohne** `org` – GitLab braucht keine Organisation):
-   `{ "version": 1, "runner": { "runner-vm-03": { "server": "https://gitlab.example.org" } } }`.
-   Die Adresse aus der Erkennung wird nie übernommen. Der Monitor folgt keiner Weiterleitung – die Adresse muss die endgültige sein. Mit Token
-   nur **`https://`**; ein Server nur mit `http://` (z. B. im LAN) wird erst abgefragt, wenn in
-   `/etc/runner-monitor/runner.json` bei diesem Runner `"http_erlaubt": true` steht – das Token läuft dann unverschlüsselt
-   durchs Netz, und `HTTP_PROXY` wird dabei bewusst nicht benutzt.
+3. **Server:** Der Monitor folgt keiner Weiterleitung, die Adresse muss also die endgültige sein. Mit Token
+   gilt nur **`https://`**. Einen Server nur mit `http://` (z. B. im LAN) nimmt das Skript erst nach einer
+   ausdrücklichen Rückfrage an und setzt dann `"http_erlaubt": true`. Das Token läuft dann unverschlüsselt
+   durchs Netz; `HTTP_PROXY` wird dabei bewusst nicht benutzt.
+   Von Hand: `server` in `/etc/runner-monitor/runner.json` wie unten bei Forgejo, aber **ohne** `org`
+   (GitLab braucht keine Organisation). Die Adresse aus der Erkennung wird nie ungefragt übernommen.
 4. **Name:** der Runner wird bei GitLab über seine Beschreibung gefunden. Sie muss mit `name` in
    `/etc/gitlab-runner/config.toml` übereinstimmen und darf bei GitLab nur einmal vorkommen.
 
@@ -177,6 +178,8 @@ Was der Monitor von GitLab zeigt: Runner online/offline, aktueller Job (Projekt,
 letzte Jobs, laufende Jobs je Projekt. **Nicht verfügbar:** Schritte eines Jobs und wartende Jobs (die
 GitLab-API liefert beides nicht). Ein bei GitLab pausierter Runner gilt als offline. **Instanz-Runner** (von der
 Instanz-Verwaltung angelegt) kann der Monitor nicht abfragen (dafür braucht GitLab Administratorrechte).
+Bis der Sammler GitLab regelmäßig abfragt (#115), sagt die Verbindungsprüfung im Skript, ob Server und
+Token passen; im Dashboard bleibt bis dahin die Grundüberwachung.
 
 ### Forgejo- oder Gitea-Runner anbinden (#93)
 
@@ -184,7 +187,7 @@ Erkennt der Monitor einen Forgejo- oder Gitea-Runner (System prüfen › „Runn
 überwacht er ihn zunächst nur über Dienst und Journal (ausgeliefert gilt er als „teil“, bis die
 Einrichtung im Browser ihn anbindet, E-23). Von Hand angebunden zeigt er zusätzlich, ob der
 Runner beim Server online ist, Jobs je Repository, den laufenden Job mit Schritten (Forgejo ab 17,
-Gitea) und die letzten Jobs. Bis die Einrichtung im Browser das übernimmt (#96/#97), geht es so:
+Gitea) und die letzten Jobs. Server, Organisation und Token tragen Sie auf der VM ein, nicht im Browser (E-22):
 
 **1. Token erstellen** – auf dem Server (z. B. `https://git.example.org`) anmelden: Einstellungen ›
 Anwendungen › „Zugriffstoken erstellen“ (Gitea: „Neues Token generieren“).
@@ -204,16 +207,43 @@ Jobs keinem Runner zuordnen (Jobs je Repository gibt es trotzdem). Ein eigenes K
 Monitor im Team „Owners“ ist die sauberste Lösung. Forgejo und Gitea melden einen Ablauf des Tokens
 nicht über die API; der Monitor kann deshalb nicht vorher warnen, sondern meldet erst „Token ungültig“.
 
-**2. Token auf der VM ablegen** (ID aus der Liste, z. B. `runner-vm-02`):
+**2. Auf der VM eintragen** (ID aus der Liste, z. B. `runner-vm-02`):
 
 ```bash
 sudo /opt/runner-monitor/aktuell/einrichten.sh zugang                # erkannte Runner
-sudo /opt/runner-monitor/aktuell/einrichten.sh zugang runner-vm-02   # Token verdeckt eingeben
+sudo /opt/runner-monitor/aktuell/einrichten.sh zugang runner-vm-02   # Server, Organisation, Token
 ```
 
-**3. Server und Organisation eintragen** in `/etc/runner-monitor/runner.json` (root, Gruppe
-`runner-monitor`, 0640). Nur diese Angaben bestimmen, wohin der Monitor mit dem Token fragt –
-die Adresse aus der Erkennung ist nur ein Vorschlag:
+Das Skript fragt nacheinander:
+
+| Frage | Eingabe |
+|---|---|
+| Server | Adresse des Servers, z. B. `https://git.example.org`, ohne `/api/v1` und ohne Zugangsdaten. Enter übernimmt den bisherigen Server; ist noch keiner eingetragen, schlägt das Skript die Adresse aus der Erkennung vor (nur bei einem Runner mit systemd-Dienst), die Sie bestätigen |
+| Organisation | die Organisation (oder der Benutzer), der die Repositories gehören |
+| Token | verdeckt, wird nicht angezeigt. Bei gleicher Adresse behält Enter das bisherige Token |
+
+Nur diese Angaben bestimmen, wohin der Monitor mit dem Token fragt – die Adresse aus der Erkennung ist nur
+ein Vorschlag. Mit Token gilt nur **`https://`**. Einen Server nur mit `http://` (z. B. im LAN) nimmt das
+Skript erst nach einer ausdrücklichen Rückfrage an und setzt dann `"http_erlaubt": true` (E-21). Das Token
+läuft dann unverschlüsselt durchs Netz; `HTTP_PROXY` wird dabei bewusst nicht benutzt.
+
+**Neue Adresse, neues Token (E-22):** Hatte der Runner schon ein Token und ändert sich die Adresse,
+verlangt das Skript ein neues Token und löscht das bisherige. Es geht nie an die neue Adresse. Ohne neues
+Token bleibt alles, wie es war.
+
+**Grundüberwachung:** Haben Sie den Runner in der Einrichtung im Browser auf „Grundüberwachung“ gelassen,
+fragt das Skript, ob es diesen Stand aufheben soll (Enter = ja); sonst fragt der Monitor den Dienst
+nicht ab. Ein „ignorierter“ Runner bleibt ignoriert.
+
+**3. Verbindung:** Nach dem Speichern prüft das Skript die Verbindung, nur lesend. Die Antwort ist eine
+von: „Server erreichbar · Forgejo 13.0“ und „Token gültig, Organisation … gefunden“, „Token ungültig
+oder abgelaufen“, „Keine Rechte“, „Server nicht erreichbar“ oder „Server nicht gefunden“ (unter der
+Adresse antwortet kein Forgejo/Gitea). Nach einer Korrektur den Befehl einfach noch einmal ausführen.
+Danach fragt der Sammler alle 30 s ab; das Ergebnis steht in `/run/runner-monitor/anbieter.json`
+(`"abfrage": "ok"`) bzw. im Journal des Sammlers.
+
+**Von Hand** geht es weiterhin: `/etc/runner-monitor/runner.json` (root, Gruppe `runner-monitor`, 0640)
+und das Token in `/etc/runner-monitor/zugang/<runner>.token` (root, 0600):
 
 ```json
 { "version": 1,
@@ -221,12 +251,8 @@ die Adresse aus der Erkennung ist nur ein Vorschlag:
     "runner-vm-02": { "server": "https://git.example.org", "org": "beispiel-org" } } }
 ```
 
-`server` ohne `/api/v1` und ohne Zugangsdaten; `org` ist die Organisation (oder der Benutzer), der
-die Repositories gehören. Mit Token gilt nur **`https://`**; ein Server nur mit `http://` (z. B. im LAN)
-wird erst abgefragt, wenn bei diesem Runner zusätzlich `"http_erlaubt": true` steht (E-21) – das
-Token läuft dann unverschlüsselt durchs Netz, `HTTP_PROXY` wird dabei bewusst nicht benutzt. Der Sammler liest Datei und Token in jeder Runde (alle 30 s) neu – ein
-Neustart ist nicht nötig. Ob es klappt, steht in `/run/runner-monitor/anbieter.json` (`"abfrage":
-"ok"`) bzw. im Journal des Sammlers.
+Wer die Adresse von Hand ändert, legt dabei auch ein neues Token ab – das Skript tut das von selbst.
+Der Sammler liest Datei und Token in jeder Runde neu; ein Neustart ist nicht nötig.
 
 **Sicherheit:** `http_erlaubt` nur in einem vertrauenswürdigen Netz
 ([Sicherheitsbericht](sicherheit/bericht.md), S-FORGEJO-01). Der Monitor folgt keiner Weiterleitung –
@@ -266,7 +292,7 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `sudo ./einrichten.sh code` | neuer Einrichtungscode (nur solange kein Zugang besteht) |
 | `sudo ./einrichten.sh passwort` | Zugang zurücksetzen, alle abmelden, neuer Code – Token und Einstellungen bleiben |
 | `sudo ./einrichten.sh token` | GitHub-Token eintragen oder erneuern |
-| `sudo ./einrichten.sh zugang <runner>` | Zugangsdaten eines Runners eintragen oder erneuern (`<runner>` = ID aus der Erkennung; ohne Angabe: Liste). Schreibt `/etc/runner-monitor/zugang/<runner>.token`, beim GitHub-Runner auch `github-token` |
+| `sudo ./einrichten.sh zugang <runner>` | Zugangsdaten eines Runners eintragen oder erneuern (`<runner>` = ID aus der Erkennung; ohne Angabe: Liste). Schreibt `/etc/runner-monitor/zugang/<runner>.token`, beim GitHub-Runner auch `github-token`; bei Forgejo, Gitea und GitLab auch Server und Organisation in `runner.json`, danach Verbindungsprüfung |
 | `sudo ./einrichten.sh runner` | GitHub-Runner einrichten |
 | `sudo ./einrichten.sh aktualisieren` | neueste Version installieren ([UPDATE.md](UPDATE.md)) |
 | `sudo ./einrichten.sh zurueck` | zur vorherigen Version |

@@ -5,7 +5,7 @@
 #   sudo ./einrichten.sh code            # neuen Einrichtungscode anzeigen (60 Min. gültig)
 #   sudo ./einrichten.sh passwort        # Zugang zurücksetzen – danach neu im Browser anlegen
 #   sudo ./einrichten.sh token           # GitHub-Token eintragen oder erneuern
-#   sudo ./einrichten.sh zugang <runner> # Zugangsdaten eines Runners eintragen oder erneuern (ohne: Liste)
+#   sudo ./einrichten.sh zugang <runner> # Zugangsdaten eines Runners (Forgejo/Gitea/GitLab: mit Server) eintragen (ohne: Liste)
 #   sudo ./einrichten.sh runner          # GitHub-Runner auf dieser VM einrichten (--umziehen: neu anmelden)
 #   sudo ./einrichten.sh aktualisieren   # neueste Version von GitHub installieren
 #   sudo ./einrichten.sh zurueck         # zur vorherigen Version zurück
@@ -34,6 +34,7 @@ ok() { printf '  \033[32m✓\033[0m %s\n' "$*"; }
 hinweis() { printf '  \033[33m!\033[0m %s\n' "$*"; }
 fehler() { printf '\033[31mFehler:\033[0m %s\n' "$*" >&2; exit 1; }
 frage() { local a; read -r -p "    $1 [j/N] " a </dev/tty || true; [[ "${a,,}" == j* ]]; }
+frage_ja() { local a; read -r -p "    $1 [J/n] " a </dev/tty || true; [[ "${a,,}" != n* ]]; }
 # Ausgabe wie im Design 0.3.0 (Setup-Skript): Abschnitte, Trennlinien, graue Hinweise
 abschnitt() { printf '\033[1;94m%s\033[0m\n' "$*"; }
 regel() { printf '\033[90m%s\033[0m\n' '──────────────────────────────────────────────────────────'; }
@@ -274,8 +275,146 @@ token_uebernehmen() {
   token_kopieren "GitHub-Token übernommen nach"
 }
 
+# Forgejo, Gitea, GitLab (#120, E-22, E-26): Server, Organisation und Token auf der VM. Prüfen und
+# Schreiben macht runner_monitor.anbieter.anbindung mit den Regeln von Erkennung und Sammler – das
+# Skript fragt nur ab. Das Token geht über die Standardeingabe (printf ist eingebaut, also nie als
+# Argument eines Prozesses) und erscheint nie in der Ausgabe.
+anbindung_helfer() { (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 "$PYTHON" -m runner_monitor.anbieter.anbindung "$@" 2>/dev/null); }
+
+# Wert zu einem Schlüssel aus der Ausgabe von „anbindung info“ (Zeilen schluessel=wert)
+wert_aus() {
+  local zeile
+  while IFS= read -r zeile; do
+    if [[ "$zeile" == "$2="* ]]; then printf '%s\n' "${zeile#"$2="}"; return 0; fi
+  done <<< "$1"
+  return 0
+}
+
+# Zeilen „art|text“ des Helfers ausgeben (ok, warn, fehler, hin)
+zeilen_ausgeben() {
+  local art text
+  while IFS='|' read -r art text; do
+    case "$art" in
+      ok) ok "$text" ;;
+      warn) hinweis "$text" ;;
+      fehler) printf '  \033[31m✗\033[0m %s\n' "$text" ;;
+      hin) hin "$text" ;;
+    esac
+  done <<< "$1"
+}
+
+zugang_server() {
+  local id="$1" info="$2" dienst name server_alt org_alt http_alt token_da stand braucht_org vor
+  local s eingabe neu rc org="" t="" behalten=false aktiv=false ausgabe
+  local -a http=() org_arg=() stand_arg=() token_arg=()
+  dienst="$(wert_aus "$info" dienst)"; server_alt="$(wert_aus "$info" server)"; org_alt="$(wert_aus "$info" org)"
+  http_alt="$(wert_aus "$info" http)"
+  token_da="$(wert_aus "$info" token)"; stand="$(wert_aus "$info" stand)"; braucht_org="$(wert_aus "$info" braucht_org)"
+  case "$dienst" in forgejo) name=Forgejo ;; gitea) name=Gitea ;; *) name=GitLab ;; esac
+  vor="${server_alt:-$(wert_aus "$info" vorschlag)}"
+
+  abschnitt "Zugang für $id ($name)"
+  if [ "$dienst" = gitlab ]; then
+    hin "Token: GitLab › Access tokens, Bereich read_api (nur lesen). Server ohne /api/v4."
+  else
+    hin "Token: $name › Einstellungen › Anwendungen, repository und organization „Lesen“. Server ohne /api/v1."
+  fi
+  if [ -n "$server_alt" ]; then hin "Bisher in $ETC/runner.json: $server_alt"
+  elif [ -n "$vor" ]; then hin "Vorschlag aus der Erkennung: $vor (bitte prüfen)"; fi
+
+  # 1. Server – https://; http:// nur nach ausdrücklicher Rückfrage (E-21)
+  while true; do
+    read -r -p "  Server${vor:+ [Enter: $vor]}: " eingabe </dev/tty || fehler "Abgebrochen – nichts geändert."
+    s="${eingabe:-$vor}"
+    rc=0; neu="$(anbindung_helfer pruefe-server -- "$s")" || rc=$?
+    if [ "$rc" = 0 ]; then http=(); break; fi
+    if [ "$rc" = 4 ] && [ "$neu" = "$server_alt" ] && [ "$http_alt" = 1 ]; then
+      hin "http_erlaubt bleibt (für diese Adresse schon ausdrücklich erlaubt)."; http=(--http-erlaubt); break
+    fi
+    if [ "$rc" = 4 ]; then
+      hinweis "Mit http:// geht das Token unverschlüsselt durchs Netz – nur in einem vertrauenswürdigen lokalen Netz."
+      if frage "Trotzdem http:// erlauben (\"http_erlaubt\": true in runner.json)?"; then http=(--http-erlaubt); break; fi
+      hin "Dann bitte die https://-Adresse angeben."
+    else
+      hinweis "${neu:-Keine gültige Adresse.}"
+    fi
+  done
+  s="$neu"
+
+  # 2. Organisation (Forgejo, Gitea – GitLab braucht keine)
+  if [ "$braucht_org" = 1 ]; then
+    while true; do
+      read -r -p "  Organisation (oder Benutzer)${org_alt:+ [Enter: $org_alt]}: " eingabe </dev/tty || fehler "Abgebrochen – nichts geändert."
+      org="${eingabe:-$org_alt}"
+      rc=0; neu="$(anbindung_helfer pruefe-org -- "$org")" || rc=$?
+      if [ "$rc" = 0 ]; then org="$neu"; org_arg=(--org "$org"); break; fi
+      hinweis "${neu:-Ungültige Organisation.}"
+    done
+  fi
+
+  # 3. Token – bei neuer Adresse Pflicht: das bisherige geht nie an eine andere Adresse (E-22)
+  if [ "$token_da" = 1 ] && [ "$s" = "$server_alt" ]; then
+    behalten=true
+  elif [ "$token_da" = 1 ]; then
+    hinweis "Die Adresse ändert sich – das bisherige Token wird gelöscht und nicht an $s geschickt."
+  fi
+  while true; do
+    if $behalten; then read -r -s -p "  Token für $id (Enter: bisheriges behalten, Eingabe bleibt unsichtbar): " t </dev/tty || fehler "Abgebrochen – nichts geändert."
+    else read -r -s -p "  Token für $id (Eingabe bleibt unsichtbar): " t </dev/tty || fehler "Abgebrochen – nichts geändert."; fi
+    echo
+    if [ -z "$t" ] && $behalten; then break; fi
+    [ -n "$t" ] || fehler "Ohne Token – nichts geändert."
+    # Länge getrennt: {16,512} überschreitet RE_DUP_MAX mancher regex-Bibliotheken (255)
+    if [[ "$t" =~ ^[A-Za-z0-9._~+/=-]+$ ]] && [ "${#t}" -ge 16 ] && [ "${#t}" -le 512 ]; then token_arg=(--token-stdin); break; fi
+    hinweis "Das Token ist zu kurz oder enthält ungültige Zeichen."
+  done
+
+  # 4. Stand aus der Einrichtung: „Grundüberwachung“ verhindert die Abfrage beim Dienst
+  if [ "$stand" = grund ]; then
+    hinweis "In der Einrichtung steht dieser Runner auf „Grundüberwachung“ – so fragt der Monitor $name nicht ab."
+    if frage_ja "Stand aufheben, damit der Runner angebunden wird?"; then stand_arg=(--stand-aufheben); fi
+  elif [ "$stand" = ignoriert ]; then
+    hinweis "Der Runner ist in der Einrichtung „ignoriert“ – angebunden wird er erst, wenn Sie das dort zurücknehmen."
+  fi
+
+  # 5. Schreiben – der Sammler ruht so lange, damit keine Runde Adresse und Token verschieden liest
+  install -d -o root -g "$NUTZER" -m 750 "$ETC"
+  if systemctl is-active --quiet runner-monitor-sammler.service 2>/dev/null; then
+    aktiv=true
+    # auch bei Strg+C oder Fehler wieder starten
+    trap 'systemctl start runner-monitor-sammler.service 2>/dev/null || true' EXIT
+    trap 'exit 130' INT TERM
+    systemctl stop runner-monitor-sammler.service 2>/dev/null || true
+  fi
+  rc=0
+  if [ "${#token_arg[@]}" -gt 0 ]; then
+    ausgabe="$(printf '%s\n' "$t" | anbindung_helfer setze --runner "$id" --zuordnung "$ETC/runner.json" \
+      --zugang-verz "$ETC/zugang" --server "$s" "${org_arg[@]}" "${http[@]}" "${stand_arg[@]}" "${token_arg[@]}")" || rc=$?
+  else
+    ausgabe="$(anbindung_helfer setze --runner "$id" --zuordnung "$ETC/runner.json" --zugang-verz "$ETC/zugang" \
+      --server "$s" "${org_arg[@]}" "${http[@]}" "${stand_arg[@]}" </dev/null)" || rc=$?
+  fi
+  t=""
+  if $aktiv; then trap - EXIT INT TERM; systemctl start runner-monitor-sammler.service 2>/dev/null || true; fi
+  zeilen_ausgeben "$ausgabe"
+  [ "$rc" = 0 ] || fehler "Nicht gespeichert (Rückgabe $rc) – siehe oben."
+
+  # 6. Verbindung prüfen – nur lesend, über den Adapter, mit harter Frist
+  abschnitt "Verbindung prüfen"
+  rc=0
+  ausgabe="$(cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 timeout --foreground 60 "$PYTHON" -m runner_monitor.anbieter.anbindung \
+    pruefe-verbindung --runner "$id" --erkennung /run/runner-monitor/erkennung.json --zuordnung "$ETC/runner.json" \
+    --zugang-verz "$ETC/zugang" 2>/dev/null)" || rc=$?
+  zeilen_ausgeben "$ausgabe"
+  case "$rc" in
+    0) ok "übernommen – der Sammler fragt in spätestens 30 s ab (Info zeigt den Stand)" ;;
+    124) hinweis "Prüfung abgebrochen (keine Antwort innerhalb von 60 s) – gespeichert ist trotzdem alles." ;;
+    *) hin "Gespeichert ist alles; nach einer Korrektur erneut: sudo $0 zugang $id" ;;
+  esac
+}
+
 zugang() {
-  local id="${1:-}" t gid
+  local id="${1:-}" t gid info="" dienst=""
   if [ -z "$id" ]; then
     echo "Aufruf: sudo $0 zugang <runner>"
     echo "Erkannte Runner (ID, Dienst, Name):"
@@ -284,6 +423,15 @@ zugang() {
   fi
   [[ "$id" =~ ^[a-z0-9_]([a-z0-9._-]{0,62}[a-z0-9_])?$ ]] || fehler "Ungültige Runner-ID: $id (Liste: sudo $0 zugang)"
   gid="$(token_helfer github-id --runner-verz "$RUNNER_VERZ")" || true
+  # Forgejo, Gitea, GitLab: auch Server und Organisation (#120); alle anderen wie bisher nur das Token
+  if [ "$id" != "$gid" ]; then
+    info="$(anbindung_helfer info --runner "$id" --erkennung /run/runner-monitor/erkennung.json \
+      --zuordnung "$ETC/runner.json" --zugang-verz "$ETC/zugang")" || info=""
+    dienst="$(wert_aus "$info" dienst)"
+  fi
+  case "$dienst" in
+    forgejo|gitea|gitlab) zugang_server "$id" "$info"; return 0 ;;
+  esac
   if [ "$id" = "$gid" ]; then
     echo "GitHub: Fine-grained Token mit Read-only für Actions und Metadata (optional: Self-hosted runners)."
   else
