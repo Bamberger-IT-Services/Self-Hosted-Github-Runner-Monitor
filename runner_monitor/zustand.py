@@ -591,7 +591,7 @@ class Zustand:
     def starte(self) -> None:
         if self.messer is not None:
             self.lade_verlauf()
-            runner.JournalFolger(self.bei_journal).start()
+            runner.JournalFolger(self.bei_journal, unit=lambda: self._github_unit).start()
             runner.SeitenFolger(self.k.runner_verz / "_diag" / "pages", self.bei_seite).start()
         threading.Thread(target=self._schleife, name="messen", daemon=True).start()
 
