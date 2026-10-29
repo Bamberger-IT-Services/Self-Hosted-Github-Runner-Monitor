@@ -262,6 +262,7 @@ class SkriptTest(unittest.TestCase):
         self.assertEqual(self.befehle(), [])  # nur die Liste der Images wird gelesen
         self.assertEqual(r.stdout, "")
 
+    @unittest.skipIf(os.geteuid() == 0, "als root ist jedes Verzeichnis schreibbar (Forgejo-CI läuft als root)")
     def test_ohne_schreibrecht_kein_docker_aufruf(self):
         r = self.lauf("25", frei=30, wurzel=False)  # /var/lib/runner-aufraeumen nicht schreibbar (kein root)
         self.assertEqual(r.returncode, 0, r.stderr)
