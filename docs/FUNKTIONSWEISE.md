@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 29.10.2026 · Version 0.7.0 (Runner-Erkennung, Anbieter-Adapter und Einrichtung aus 0.8.0 in Arbeit)**
+**Stand: 29.10.2026 · Version 0.8.0 (in Arbeit)**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).

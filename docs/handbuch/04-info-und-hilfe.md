@@ -7,6 +7,8 @@ Klick daneben.
 
 ![Info & Hilfe](bilder/info-hilfe.png)
 
+![Abschnitt Runner mit drei Runnern (GitHub, Forgejo, unbekannt)](bilder/info-runner.png)
+
 Das Blatt bleibt beim Lesen ruhig stehen: Nur die Werte darin aktualisieren sich, Position und
 aufgeklappte Anleitung bleiben.
 
