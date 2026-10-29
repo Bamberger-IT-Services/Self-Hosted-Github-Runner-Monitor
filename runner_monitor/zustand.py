@@ -445,6 +445,9 @@ class Zustand:
                 a = anbieter.adapter(k)
                 # noch keine Runde (Sammler eben gestartet, Runner neu angebunden): „ausstehend“ statt „Kein Token“ (E-25)
                 erg = weitere.get(f["id"]) if isinstance(weitere.get(f["id"]), dict) else {"abfrage": "ausstehend"}
+                ziel = erg.get("ziel")
+                if isinstance(ziel, dict) and (ziel.get("server"), ziel.get("org") or "") != (k.server, k.org or ""):
+                    erg = {"abfrage": "ausstehend"}  # Ergebnis eines früheren Servers (runner.json geändert, Review #121)
                 # „angebunden“ wie beim GitHub-Runner nur mit gültigem Token (Review #111)
                 stand = "angebunden" if erg.get("abfrage") in STAND_ANGEBUNDEN else "offen"
                 dienst_st = self._dienst_grund(a, jetzt) if a.faehig()["status"] else None

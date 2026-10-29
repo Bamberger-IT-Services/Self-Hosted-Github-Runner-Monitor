@@ -382,10 +382,7 @@ class Sammler:
                 alt = alt if isinstance(alt, dict) else {}
                 self._anbieter_ergebnis = {rid: e for rid, e in alt.items() if rid in ids and isinstance(e, dict)}
                 geaendert = len(self._anbieter_ergebnis) != len(alt)
-                je_id = {a.k.id: a for a in liste}
                 for rid, e in self._anbieter_ergebnis.items():
-                    if "ziel" not in e and e.get("org", "") == je_id[rid].k.org:
-                        e["ziel"] = self._ziel(je_id[rid])  # Datei vor #121 ohne Ziel: einmal übernehmen
                     erfolg = e.get("letzterErfolg")
                     if isinstance(erfolg, (int, float)) and not isinstance(erfolg, bool) and erfolg > 0:
                         self._anbieter_erfolg[rid] = erfolg
@@ -408,6 +405,12 @@ class Sammler:
                     self._anbieter_wartend[a.k.id] = a   # wartet schon: Platz bleibt, Konfiguration wird frisch
         if geaendert:
             self._anbieter_schreiben()
+
+    def _ziel_veraltet(self, rid: str, ziel: dict) -> bool:
+        """(Unter der Sperre) Gilt für den Runner inzwischen ein anderes Ziel? Dann gehört eine laufende Runde
+        zum alten Server und ihr Ergebnis wird verworfen (Review #121, N1)."""
+        aktuell = (self._anbieter_ergebnis or {}).get(rid)
+        return bool(aktuell) and aktuell.get("ziel") not in (None, ziel)
 
     def _anbieter_starten(self) -> None:
         with self._anbieter_sperre:
@@ -437,7 +440,8 @@ class Sammler:
                 if rid in self._anbieter_haengend or jetzt - start < RUNDENFRIST:
                     continue
                 self._anbieter_haengend.add(rid)
-                if rid in self._anbieter_ids and self._anbieter_ergebnis is not None:
+                if rid in self._anbieter_ids and self._anbieter_ergebnis is not None \
+                        and not self._ziel_veraltet(rid, self._ziel(a)):
                     self._anbieter_ergebnis[rid] = self._fehler_ergebnis(
                         a, f"Keine Antwort innerhalb der Frist ({RUNDENFRIST:.0f} s)")
                     neu = True
@@ -479,8 +483,12 @@ class Sammler:
                 if lauf and lauf[0] is threading.current_thread():
                     del self._anbieter_laeufe[a.k.id]
                 self._anbieter_haengend.discard(a.k.id)
-                # Auch eine verspätete Runde liefert den neueren Stand – außer der Runner ist nicht mehr angebunden.
+                # Auch eine verspätete Runde liefert den neueren Stand – außer der Runner ist nicht mehr angebunden
+                # oder hat inzwischen ein anderes Ziel (dann gleich neu planen, statt 30 s „ausstehend“).
                 behalten = ergebnis is not None and a.k.id in self._anbieter_ids and self._anbieter_ergebnis is not None
+                if behalten and self._ziel_veraltet(a.k.id, ergebnis.get("ziel")):
+                    behalten = False
+                    self.naechste_anbieter = 0.0
                 if behalten:
                     self._anbieter_ergebnis[a.k.id] = ergebnis
             if behalten:
@@ -509,6 +517,9 @@ class Sammler:
         ergebnis["ziel"] = ziel
         with self._anbieter_sperre:
             if a.k.id not in self._anbieter_ids:
+                return None
+            if self._ziel_veraltet(a.k.id, ziel):  # Server/Organisation gewechselt: verwerfen, gleich neu planen
+                self.naechste_anbieter = 0.0
                 return None
             if ergebnis.get("abfrage") == "ok":
                 self._anbieter_erfolg[a.k.id] = ergebnis["abgefragt"]

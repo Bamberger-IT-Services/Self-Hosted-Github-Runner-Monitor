@@ -528,7 +528,7 @@
     let inhalt = '', fuss = '', zeitText = '';
     if (w.abfrage === 'ausstehend') {
       // E-25: neu angebunden, die erste Abfrage beim Dienst läuft noch – keine Meldung „Kein Token“
-      inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.uhr(26, 1.2)}</span><div class="leer-titel">${t('Wird abgefragt …')}</div><div class="leer-text">${t('Die erste Abfrage beim Dienst läuft. Das dauert höchstens eine halbe Minute.')}</div></div>`;
+      inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.uhr(26, 1.2)}</span><div class="leer-titel">${t('Wird abgefragt …')}</div><div class="leer-text">${t('Die erste Abfrage beim Dienst läuft.')}</div></div>`;
       fuss = `<div class="wf-zeit">${t('Abfrage läuft')}</div>`;
     } else if (w.abfrage === 'kein-token') {
       inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">${t('Kein GitHub-Token eingerichtet')}</div><div class="leer-text">${t('Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.')}</div><div class="leer-pfad">/etc/runner-monitor/github-token</div><button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">${t('Anleitung: Token einrichten ›')}</button></div>`;

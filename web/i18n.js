@@ -124,7 +124,7 @@ const I18N = (() => {
     "nimmt keine neuen Jobs an": "accepts no new jobs",
     "nimmt keine neuen Jobs an, der laufende Job läuft weiter": "accepts no new jobs, the running job continues",
     "Wird abgefragt …": "Querying …",
-    "Die erste Abfrage beim Dienst läuft. Das dauert höchstens eine halbe Minute.": "The first query to the service is running. This takes at most half a minute.",
+    "Die erste Abfrage beim Dienst läuft.": "The first query to the service is running.",
     "Abfrage läuft": "Query running",
     "wird abgefragt": "being queried",
     "Was ist neu?": "What’s new?",

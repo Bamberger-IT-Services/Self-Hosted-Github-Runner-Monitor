@@ -64,6 +64,10 @@ class Basis(unittest.TestCase):
             return {}
 
 
+def ziel(rid: str = "runner-vm-02", server: str = "https://git.example.org", org: str = "beispiel-org") -> dict:
+    return {"server": server, "org": org, "name": rid}
+
+
 def ergebnis_ok(**mehr) -> dict:
     return {"org": "beispiel-org", "abfrage": "ok", "abgefragt": time.time(), "letzterErfolg": time.time(), "tokenAblauf": None,
             "kontingent": {}, "repos": [{"name": "web-portal", "privat": False, "laeuft": 0, "wartet": 0}],
@@ -134,7 +138,7 @@ class FaedenTest(Basis):
         self.runner({"runner-vm-02": {"server": "https://git.example.org", "org": "beispiel-org"}})
         s = sammler.Sammler(self.k)
         (self.k.lauf_verz / "anbieter.json").write_text(json.dumps({"zeit": 1, "runner": {"runner-vm-02": ergebnis_ok(
-            job={"name": "build"}, letzterErfolg=500.0)}}))
+            job={"name": "build"}, letzterErfolg=500.0, ziel=ziel())}}))
         frei = threading.Event()
         aufrufe = []
 
@@ -179,7 +183,7 @@ class FaedenTest(Basis):
     def test_letzter_stand_ueberdauert_den_neustart(self):
         self.runner({"runner-vm-02": {"server": "https://git.example.org", "org": "beispiel-org"}})
         (self.k.lauf_verz / "anbieter.json").write_text(json.dumps({"zeit": 1, "runner": {
-            "runner-vm-02": ergebnis_ok(job={"name": "build"}), "runner-vm-99": ergebnis_ok()}}))
+            "runner-vm-02": ergebnis_ok(job={"name": "build"}, ziel=ziel()), "runner-vm-99": ergebnis_ok()}}))
         s = sammler.Sammler(self.k)  # frisch gestartet
         with mock.patch.object(fj, "Klient", side_effect=lambda server, token, **_: Attrappe(
                 {}, token=token, server=server, fehler={"/version": fj.ForgejoFehler("nicht-erreichbar", "weg")})):
@@ -187,6 +191,61 @@ class FaedenTest(Basis):
         erg = self.datei()
         self.assertEqual(list(erg), ["runner-vm-02"])  # nicht mehr angebunden: weg
         self.assertEqual((erg["runner-vm-02"]["abfrage"], erg["runner-vm-02"]["job"]), ("nicht-erreichbar", {"name": "build"}))
+
+    def test_alter_eintrag_ohne_ziel_ist_kein_guter_stand(self):
+        """K1 (Review #121): Einträge ohne ``ziel`` (vor diesem Stand geschrieben) gelten nie als letzter guter Stand."""
+        self.runner({"runner-vm-02": {"server": "https://git.example.org", "org": "beispiel-org"}})
+        (self.k.lauf_verz / "anbieter.json").write_text(json.dumps({"zeit": 1, "runner": {"runner-vm-02": ergebnis_ok(job={"name": "build"})}}))
+        s = sammler.Sammler(self.k)
+        with mock.patch.object(fj, "Klient", side_effect=lambda server, token, **_: Attrappe(
+                {}, token=token, server=server, fehler={"/version": fj.ForgejoFehler("nicht-erreichbar", "weg")})):
+            s.anbieter_abfragen()
+        erg = self.datei()["runner-vm-02"]
+        self.assertEqual((erg["abfrage"], erg["job"], erg["letzterErfolg"]), ("nicht-erreichbar", None, None))
+
+    def test_serverwechsel_waehrend_der_runde(self):
+        """N1 (Review #121): Wechselt der Server, während die Runde zum alten Server läuft, wird ihr Ergebnis
+        verworfen; der Runner bleibt „ausstehend“ und wird im nächsten Takt beim neuen Server abgefragt."""
+        self.runner({"runner-vm-02": {"server": "https://alt.example.org", "org": "beispiel-org"}})
+        s = sammler.Sammler(self.k)
+        frei = threading.Event()
+        aufrufe: list[str] = []
+
+        def abfrage(a, speicher, letzter_erfolg=None, token=None):  # noqa: ARG001
+            aufrufe.append(a.k.server)
+            if len(aufrufe) == 1:
+                frei.wait(5)
+            return ergebnis_ok(repos=[{"name": f"repo-{len(aufrufe)}", "privat": False, "laeuft": 0, "wartet": 0}])
+
+        with mock.patch.object(fj.Forgejo, "abfrage", abfrage):
+            s.anbieter_takt(1000.0)
+            self.assertTrue(warte(lambda: aufrufe, 2))
+            self.k.zuordnung_datei.write_text(json.dumps({"version": 1, "runner": {"runner-vm-02": {"server": "https://neu.example.org", "org": "beispiel-org"}}}))
+            s.anbieter_takt(1031.0)
+            e = self.datei()["runner-vm-02"]
+            self.assertEqual((e["abfrage"], e["ziel"]["server"]), ("ausstehend", "https://neu.example.org"))
+            frei.set()
+            self.assertTrue(warte(lambda: not faeden("runner-vm-02"), 3))
+            e = self.datei()["runner-vm-02"]
+            self.assertEqual((e["abfrage"], e["ziel"]["server"]), ("ausstehend", "https://neu.example.org"))  # alte Runde verworfen
+            s.anbieter_takt(1033.0)  # gleich neu geplant, nicht erst nach 30 s
+            self.assertTrue(warte(lambda: len(aufrufe) == 2 and not faeden("runner-vm-02"), 3))
+        e = self.datei()["runner-vm-02"]
+        self.assertEqual((e["abfrage"], e["ziel"]["server"], e["repos"][0]["name"]), ("ok", "https://neu.example.org", "repo-2"))
+        self.assertEqual(aufrufe, ["https://alt.example.org", "https://neu.example.org"])
+
+    def test_monitor_ignoriert_ergebnis_eines_frueheren_servers(self):
+        self.runner({"runner-vm-02": {"server": "https://neu.example.org", "org": "beispiel-org"}})
+        (self.k.lauf_verz / "anbieter.json").write_text(json.dumps({"zeit": 1, "runner": {"runner-vm-02": ergebnis_ok(
+            ziel=ziel(server="https://alt.example.org"), abfrage="token-ungueltig")}}))
+        z = zustand.Zustand(self.k)
+        with mock.patch.object(runner, "finde_unit", return_value=""), \
+             mock.patch.object(runner, "dienst_status", return_value={"zustand": "aktiv", "seit": 1.0, "grund": None}), \
+             mock.patch.object(runner, "runner_version", return_value=""):
+            z.ein_takt(0)
+        r = next(r for r in z.bereiche["runner"] if r["id"] == "runner-vm-02")
+        self.assertEqual(r["jobsJeRepository"]["abfrage"], "ausstehend")
+        self.assertFalse([m for m in z.bereiche["meldungen"] if m["runner"] == "runner-vm-02"])
 
     def test_ein_takt_bleibt_schnell(self):
         self.runner({"runner-vm-02": {"server": "https://git.example.org", "org": "beispiel-org"}})

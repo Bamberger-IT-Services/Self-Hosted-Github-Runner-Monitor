@@ -330,7 +330,10 @@ Neustart des Sammlers bleibt der letzte Stand aus der Datei der „letzte gute S
 letzte Jobs, Art, Server-Version und Token-Ablauf aus der letzten guten Runde stehen und `letzterErfolg`
 kommt aus ihr – aber nur, wenn es eine gab (`letzterErfolg`, auch ohne laufenden Job) und sie zum
 selben Ziel gehört; nach einem Wechsel von Server, Organisation oder Token beginnt der Runner ohne
-Altstand. Ein neu angebundener Runner (oder einer mit neuem Ziel) steht bis zu seiner ersten Runde auf
+Altstand. Einträge ohne `ziel` (älterer Stand) gelten nie als guter Stand. Wechselt der Server, während
+eine Runde zum alten Server läuft, wird deren Ergebnis verworfen (auch die Meldung „hängt“) und der
+Runner sofort neu eingeplant; der Monitor zeigt ein Ergebnis, dessen `ziel` nicht zur aktuellen
+`runner.json` passt, als „ausstehend“. Ein neu angebundener Runner (oder einer mit neuem Ziel) steht bis zu seiner ersten Runde auf
 `abfrage: "ausstehend"` (Platzhalter in `anbieter.json`; der Monitor nimmt ihn auch ohne Eintrag an):
 keine Meldung, die Karte „Jobs je Repository“ zeigt „Wird abgefragt …“, der Zustand ist `unbekannt`.
 
