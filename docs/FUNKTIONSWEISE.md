@@ -259,7 +259,7 @@ Ein Eintrag in `runner[]`:
            "schritt": { "nr": 3, "von": 8, "name": "Abhängigkeiten" }, "schritte": ["…"] },
   "letzteJobs": [ { "name": "build", "ergebnis": "erfolg", "dauer": 274, "ende": 1761699000, "repo": "api-dienst", "workflow": "CI" } ],
   "jobsJeRepository": { …wie der Bereich workflows… },
-  "log": { "art": "seiten", "pfad": "/opt/actions-runner/_diag/pages", "unit": "…" } }
+  "log": { "art": "seiten", "unit": "actions.runner.beispiel-org.runner-vm-01.service" } }
 ```
 
 - `status.zustand`: `job|bereit|offline|gestoppt|fehlt` (mit Jobs), `aktiv|gestoppt|fehlt`
@@ -269,10 +269,14 @@ Ein Eintrag in `runner[]`:
   `von` ist `null`, solange der Dienst keine Schrittliste geliefert hat, und `job.schritt` ist `null`
   ohne Fähigkeit `schritte` („Schritte nicht verfügbar“).
 - `jobsJeRepository` ist `null` ohne Fähigkeit `jobs`; `log` ist `null` ohne Fähigkeit `logs`, sonst
-  `{art: seiten, pfad, unit}` (GitHub, mit Schritt-Trennern), `{art: journal, unit}` oder
-  `{art: datei, pfad}` (nur aus `runner.json`).
-- `stand`, `einstufung`, `version` kommen aus der Erkennung; ist der GitHub-Runner noch nicht erkannt,
-  gilt `angebunden`, sobald ein Token da ist, sonst `offen`. Ignorierte Funde fehlen.
+  `{art, unit}` mit `art` = `seiten` (GitHub, `_diag/pages`, mit Schritt-Trennern), `journal` oder
+  `datei` (Pfad nur aus `runner.json`). Pfade der VM stehen bewusst nicht in `/api/zustand` (Review #111);
+  der Monitor kennt sie intern (`log_quelle()`).
+- `stand`, `einstufung`, `version` kommen aus der Erkennung. Beim GitHub-Runner gilt `angebunden` nur,
+  wenn die letzte Abfrage `ok`, `nicht-erreichbar` oder `kontingent` war (Token gültig, Dienst evtl.
+  kurz weg); ohne Token, mit ungültigem Token, ohne Rechte, ohne Organisation oder vor der ersten
+  Abfrage ist er `offen` – auch wenn die Erkennung „angebunden“ meldet (sie sieht nur, dass eine
+  Token-Datei da ist). `grund` aus `runner.json` bleibt. Ignorierte Funde fehlen.
 
 Eine Meldung in `meldungen[]` (Texte entstehen wie bisher im Browser, hier nur Art und Werte; nach
 Schwere `fehler` → `warn` → `neutral` sortiert):
@@ -301,10 +305,14 @@ Meldungen zur Verbindung und zu Updates des Monitors bleiben bis #94 allein im B
 | `/etc/runner-monitor/zugang/<id>.token` | root, 0600 | Token; nur der Sammler liest es (regulär, ohne Symlink, höchstens 4 KB) |
 | `/etc/runner-monitor/github-token` | root, 0600 | bisheriger Ort, bleibt als **Rückfall** bis #94/#96 |
 
-- **Übernahme:** Beim ersten Start des Sammlers nach dem Update (und bei `einrichten.sh`) wird das
-  bestehende GitHub-Token einmal nach `zugang/<id>.token` **kopiert**, nie überschrieben; `<id>` ist
-  die ID des GitHub-Runners aus `MONITOR_RUNNER_VERZ/.runner` (`agentName`, wie die Erkennung sie
-  bildet). Gibt es noch keinen registrierten Runner, versucht es der Sammler im nächsten Takt.
+- **Übernahme:** Bei jedem Start des Sammlers (und bei `einrichten.sh`) wird das bestehende
+  GitHub-Token nach `zugang/<id>.token` **kopiert**, wenn es dort fehlt; `<id>` ist die ID des
+  GitHub-Runners aus `MONITOR_RUNNER_VERZ/.runner` (`agentName`, wie die Erkennung sie bildet). Gibt
+  es noch keinen registrierten Runner, versucht es der Sammler im nächsten Takt. Eine vorhandene
+  Kopie bleibt – außer der alte Ort ist **neuer und anders** (z. B. Token mit einer älteren Version
+  nach `einrichten.sh zurueck` erneuert): dann wird sie atomar ersetzt.
+- **Schreibfehler** (Platte voll, Rechte): Die dann veraltete Kopie wird entfernt, es gilt der alte
+  Ort. Der Sammler schreibt eine Warnung ins Journal, `einrichten.sh` einen Hinweis – beide ohne Token.
 - **Lesen:** zuerst `zugang/<id>.token`, sonst der alte Ort.
 - **Erneuern:** `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (ohne Angabe: Liste
   der erkannten Runner); beim GitHub-Runner schreibt es auch den alten Ort. Die alten Wege

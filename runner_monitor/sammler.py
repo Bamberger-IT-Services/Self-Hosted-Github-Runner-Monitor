@@ -131,8 +131,9 @@ class Sammler:
         return self.github_adapter().token()
 
     def migriere_token(self) -> None:
-        """Bestehendes GitHub-Token einmal nach ``zugang/<runner>.token`` kopieren (E-19).
+        """Bestehendes GitHub-Token nach ``zugang/<runner>.token`` kopieren (E-19), einmal je Start.
 
+        Fehlt die Kopie, wird sie angelegt; ist der alte Ort neuer und anders, wird sie ersetzt.
         Der alte Ort bleibt (Rückfall, Update-Hilfsdienst, ältere Versionen). Gibt es noch keinen
         registrierten Runner, versucht der Sammler es im nächsten Takt erneut."""
         if self._token_migriert:
@@ -141,8 +142,21 @@ class Sammler:
         if not rid:
             return
         self._token_migriert = True
-        if zugangsdaten.migriere(self.k.token_datei, self.k.zugang_verz, rid):
-            LOG.info("GitHub-Token nach %s übernommen (alter Ort bleibt)", zugangsdaten.token_pfad(self.k.zugang_verz, rid))
+        ziel = zugangsdaten.token_pfad(self.k.zugang_verz, rid)
+        try:
+            if zugangsdaten.migriere(self.k.token_datei, self.k.zugang_verz, rid):
+                LOG.info("GitHub-Token nach %s übernommen (alter Ort bleibt)", ziel)
+        except (zugangsdaten.TokenFehler, OSError) as fehler:
+            self._zugang_verwerfen(rid, f"GitHub-Token nicht nach {ziel} übernommen: {type(fehler).__name__}")
+
+    def _zugang_verwerfen(self, rid: str, grund: str) -> None:
+        """Nach einem Schreibfehler die (dann veraltete) Kopie entfernen – es gilt der alte Ort."""
+        try:
+            entfernt = zugangsdaten.entferne(self.k.zugang_verz, rid)
+        except OSError:
+            entfernt = False
+        LOG.warning("%s – %s; es gilt %s", grund, "veraltete Kopie entfernt" if entfernt else "keine Kopie vorhanden",
+                    self.k.token_datei)
 
     def org(self) -> str:
         try:
@@ -176,7 +190,7 @@ class Sammler:
             try:
                 zugangsdaten.schreibe(self.k.zugang_verz, rid, token)
             except (zugangsdaten.TokenFehler, OSError) as fehler:
-                LOG.warning("GitHub-Token nicht nach zugang/ geschrieben: %s", fehler)
+                self._zugang_verwerfen(rid, f"Neues GitHub-Token nicht nach zugang/ geschrieben: {type(fehler).__name__}")
         LOG.info("Neues GitHub-Token übernommen")
         self.naechste_github = 0
 

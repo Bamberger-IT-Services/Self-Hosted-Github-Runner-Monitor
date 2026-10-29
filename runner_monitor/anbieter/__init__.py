@@ -156,8 +156,15 @@ class Anbieter:
             "job": job,
             "letzteJobs": letzte_jobs,
             "jobsJeRepository": self.jobs_je_repository(ergebnis) if faehig["jobs"] else None,
-            "log": self.log_quelle() if faehig["logs"] else None,
+            "log": self.log_oeffentlich() if faehig["logs"] else None,
         }
+
+    def log_oeffentlich(self) -> dict | None:
+        """Log-Quelle für ``/api/zustand``: nur Art und Unit, keine Pfade der VM (Review #111)."""
+        quelle = self.log_quelle()
+        if not quelle:
+            return None
+        return {"art": quelle["art"], "unit": quelle.get("unit") or self.k.unit or None}
 
 
 class Grundueberwachung(Anbieter):

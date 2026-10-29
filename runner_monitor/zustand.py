@@ -39,6 +39,7 @@ MAX_RUNNER = 20  # höchstens so viele Runner in runner[] (die Erkennung liefert
 GRUND_TAKT = 10  # Sekunden: so lange gilt der Dienststatus eines Runners in Grundüberwachung
 TOKEN_WARNUNG_TAGE = 14  # Meldung „Token läuft ab“ wie im Dashboard
 STUFEN = {"fehler": 0, "warn": 1, "neutral": 2}
+STAND_ANGEBUNDEN = ("ok", "nicht-erreichbar", "kontingent")  # Abfrage-Ergebnisse, bei denen ein Runner „angebunden“ ist
 FORMAT = 2  # /api/zustand: 2 = Bereiche wie bisher + vm, runner[], meldungen[] (E-19, additiv)
 
 
@@ -420,7 +421,12 @@ class Zustand:
             primaer = fund["id"] if fund else None
             a = gh_adapter.GitHub(gh_adapter.konfig_fuer(name, rid, self._github_unit, gh.get("org") or self.k.org,
                                                          self.k.runner_verz, self.k.zugang_verz, self.k.token_datei))
-            stand = None if fund else ("angebunden" if gh.get("abfrage") not in (None, "kein-token") else "offen")
+            # „angebunden“ nur, wenn der Sammler wirklich mit gültigem Token fragt (ok) oder nur der
+            # Dienst gerade nicht antwortet; ohne Token, mit ungültigem Token, ohne Rechte oder ohne
+            # Organisation ist der Runner „offen“ (Review #111). grund/ignoriert aus runner.json bleiben.
+            stand = (fund or {}).get("stand") or "angebunden"
+            if stand == "angebunden" and gh.get("abfrage") not in STAND_ANGEBUNDEN:
+                stand = "offen"
             liste.append(a.eintrag(dienst=status.get("dienst"), job=status.get("job"), letzte_jobs=status.get("letzteJobs"),
                                    ergebnis=gh, online=status.get("github"), fund=fund, stand=stand,
                                    labels=status.get("labels"), version=status.get("version") or None))

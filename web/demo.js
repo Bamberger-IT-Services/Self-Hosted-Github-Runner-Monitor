@@ -99,7 +99,7 @@ window.RM_DEMO = (() => {
       id: 'runner-vm-01', name: st.runner, dienst: 'github', server: 'https://github.com', org: w.org, unit,
       stand: gh === 'kein-token' ? 'offen' : 'angebunden', einstufung: 'voll', version: st.version, labels: st.labels, faehig: FAEHIG_VOLL,
       status: { zustand: zust, dienst: st.dienst, beimDienst: st.github }, job: st.job, letzteJobs: st.letzteJobs, jobsJeRepository: w,
-      log: { art: 'seiten', pfad: '/opt/actions-runner/_diag/pages', unit },
+      log: { art: 'seiten', unit },
     }];
     if (runnerAnzahl >= 2) liste.push(grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'teil', 'grund', 'aktiv'));
     if (runnerAnzahl >= 3) liste.push(grundRunner('buildagent', 'buildagent', 'unbekannt', 'buildagent.service', 'unbekannt', 'grund', zustand === 'gestoppt' ? 'gestoppt' : 'aktiv'));

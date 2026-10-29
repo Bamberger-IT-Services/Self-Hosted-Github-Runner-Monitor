@@ -208,7 +208,7 @@ installieren() {
 }
 
 token() {
-  local t org neu rid
+  local t org neu
   echo "Fine-grained Token mit Read-only für Actions und Metadata (optional: Self-hosted runners)."
   echo "Erstellen: github.com › Settings › Developer settings › Fine-grained tokens (Resource owner: die Organisation)"
   read -r -s -p "  Token (Eingabe bleibt unsichtbar): " t </dev/tty; echo
@@ -217,8 +217,7 @@ token() {
   (umask 077; printf '%s\n' "$t" > "$ETC/github-token.neu"); mv "$ETC/github-token.neu" "$ETC/github-token"
   ok "gespeichert in $ETC/github-token (nur root)"
   # Auch je Runner ablegen (#92, E-19), sonst gälte eine ältere Kopie in zugang/ weiter.
-  rid="$(token_helfer kopiere --ueberschreiben --alt "$ETC/github-token" --verz "$ETC/zugang" --runner-verz "$RUNNER_VERZ")" || true
-  if [ -n "$rid" ]; then ok "auch in $ETC/zugang/$rid.token (je Runner, nur root)"; fi
+  token_kopieren "auch in" --ueberschreiben
   # Organisation immer anbieten. Die Einstellung aus dem Browser hat Vorrang vor konfig.env,
   # deshalb beide Stellen lesen und beide schreiben (sonst fehlt sie nach „Überspringen“).
   org="$("$PYTHON" -c 'import json,sys; print(json.load(open(sys.argv[1])).get("org",""))' "$DATEN/einstellungen.json" 2>/dev/null || true)"
@@ -254,13 +253,25 @@ os.replace(pfad + ".neu", pfad)' "$DATEN/einstellungen.json" "$neu"
 # Ort $ETC/github-token geschrieben (Rückfall für ältere Versionen und den Update-Hilfsdienst, bis #94/#96).
 token_helfer() { (cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 "$PYTHON" -m runner_monitor.anbieter.token "$@" 2>/dev/null); }
 
-# Bisheriges GitHub-Token einmal je Runner ablegen – Kopie, der alte Ort bleibt (der Sammler tut das
-# beim Start ebenso; hier steht es sichtbar in der Ausgabe).
+# $ETC/github-token nach $ETC/zugang/<id>.token kopieren. Rückgabe des Helfers: 0 geschrieben, 3 nichts zu
+# tun (kein Runner, kein Token, Kopie aktuell), 2 Schreibfehler – dann hat er die veraltete Kopie
+# entfernt, und es gilt der alte Ort. Das Token erscheint nie in der Ausgabe.
+token_kopieren() {
+  local text="$1" rid rc=0; shift
+  rid="$(token_helfer kopiere "$@" --alt "$ETC/github-token" --verz "$ETC/zugang" --runner-verz "$RUNNER_VERZ")" || rc=$?
+  case "$rc" in
+    0) ok "$text $ETC/zugang/$rid.token (je Runner, nur root)" ;;
+    3) ;;
+    2) hinweis "Token je Runner nicht geschrieben${rid:+ ($ETC/zugang/$rid.token)} – veraltete Kopie entfernt, es gilt $ETC/github-token. Rechte prüfen: sudo ls -ld $ETC/zugang" ;;
+    *) hinweis "Token je Runner nicht geprüft (Rückgabe $rc) – der Sammler übernimmt es beim Start" ;;
+  esac
+}
+
+# Bisheriges GitHub-Token je Runner ablegen – Kopie, der alte Ort bleibt (der Sammler tut das beim
+# Start ebenso; hier steht es sichtbar in der Ausgabe). Ist der alte Ort neuer, wird die Kopie ersetzt.
 token_uebernehmen() {
-  local rid
   [ -s "$ETC/github-token" ] || return 0
-  rid="$(token_helfer kopiere --alt "$ETC/github-token" --verz "$ETC/zugang" --runner-verz "$RUNNER_VERZ")" || true
-  if [ -n "$rid" ]; then ok "GitHub-Token übernommen nach $ETC/zugang/$rid.token (alter Ort bleibt)"; fi
+  token_kopieren "GitHub-Token übernommen nach"
 }
 
 zugang() {
@@ -268,7 +279,7 @@ zugang() {
   if [ -z "$id" ]; then
     echo "Aufruf: sudo $0 zugang <runner>"
     echo "Erkannte Runner (ID, Dienst, Name):"
-    token_helfer liste --erkennung /run/runner-monitor/erkennung.json || hin "noch keine Erkennung – der Sammler sucht beim Start und alle 6 Stunden"
+    token_helfer liste --erkennung /run/runner-monitor/erkennung.json --runner-verz "$RUNNER_VERZ" || hin "noch keine Erkennung – der Sammler sucht beim Start und alle 6 Stunden"
     exit 1
   fi
   [[ "$id" =~ ^[a-z0-9_]([a-z0-9._-]{0,62}[a-z0-9_])?$ ]] || fehler "Ungültige Runner-ID: $id (Liste: sudo $0 zugang)"

@@ -27,10 +27,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ### Behoben
 - Dashboard lud nicht (Syntaxfehler in `web/dashboard.js` seit dem Review zu #90: ein Zeilenkommentar
-  schluckte eine schließende Klammer). Ein neuer Test prüft alle Skripte in `web/` (`tests/js/demo.test.mjs`).
+  schluckte eine schließende Klammer; Hotfix #112). Ein neuer Test prüft alle Skripte in `web/` (`tests/js/demo.test.mjs`).
 
 ### Einmalig nach dem Update
-- Nichts zu tun: Das bestehende GitHub-Token wird beim ersten Start nach dem Update nach
+- Nichts zu tun: Das bestehende GitHub-Token wird beim Start nach dem Update nach
   `/etc/runner-monitor/zugang/<runner>.token` kopiert; `/etc/runner-monitor/github-token` bleibt als
   Rückfall bestehen (#92).
 

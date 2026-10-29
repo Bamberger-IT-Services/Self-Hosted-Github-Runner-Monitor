@@ -7,17 +7,20 @@
   höchstens 64 Zeichen, nie mit Punkt oder Minus am Anfang – kein Pfad, kein „..“.
 * Gelesen wird wie in der Erkennung: nur reguläre Dateien, ohne Symlinks, höchstens 4 KB.
 * **Übernahme (Migration):** Das bisherige GitHub-Token (``/etc/runner-monitor/github-token``) wird
-  beim ersten Start des Sammlers nach dem Update einmal nach ``zugang/<id>.token`` **kopiert**
-  (nie überschrieben). Der alte Ort bleibt als Rückfall, bis #94/#96 abgeschlossen sind – ältere
-  Versionen (``einrichten.sh zurueck``) und der Update-Hilfsdienst lesen nur ihn. Wer das Token über
-  die alten Wege erneuert (Einrichtung im Browser, ``einrichten.sh token``), schreibt beide Orte.
+  beim Start des Sammlers nach ``zugang/<id>.token`` **kopiert**. Eine vorhandene Kopie bleibt, außer
+  der alte Ort ist neuer und anders (z. B. nach ``einrichten.sh zurueck`` und einem Token-Wechsel mit
+  der älteren Version) – dann wird sie atomar ersetzt. Der alte Ort bleibt als Rückfall, bis #94/#96
+  abgeschlossen sind – ältere Versionen und der Update-Hilfsdienst lesen nur ihn. Wer das Token über
+  die alten Wege erneuert (Einrichtung im Browser, ``einrichten.sh token``), schreibt beide Orte;
+  scheitert das Schreiben nach ``zugang/``, wird die veraltete Kopie entfernt (es gilt der alte Ort).
 
 Kommandozeile (für ``einrichten.sh``, gibt nie ein Token aus)::
 
     python3 -m runner_monitor.anbieter.token github-id --runner-verz /opt/actions-runner
     python3 -m runner_monitor.anbieter.token kopiere --alt /etc/runner-monitor/github-token \\
         --verz /etc/runner-monitor/zugang --runner-verz /opt/actions-runner [--ueberschreiben]
-    python3 -m runner_monitor.anbieter.token liste --erkennung /run/runner-monitor/erkennung.json
+    python3 -m runner_monitor.anbieter.token liste --erkennung /run/runner-monitor/erkennung.json \
+        [--runner-verz /opt/actions-runner]
 
 Rückgabe: 0 = erledigt (gibt die ID bzw. die Liste aus), 3 = nichts zu tun, 2 = Fehler.
 """
@@ -127,25 +130,47 @@ def schreibe(verz: Path, rid: str, token: str, ueberschreiben: bool = True) -> b
         Path(tmp).unlink(missing_ok=True)
 
 
-def migriere(alt: Path, verz: Path, rid: str | None) -> bool:
-    """Einmalige Übernahme des bisherigen Tokens nach ``zugang/<rid>.token`` (Kopie, nie überschreiben).
-
-    True nur, wenn jetzt kopiert wurde. Nichts zu tun: kein Runner (rid None), kein altes Token oder
-    die Datei gibt es schon (dann gilt sie – auch wenn sie inzwischen anders ist)."""
-    if not pruefe_id(rid):
-        return False
+def _mtime(pfad: Path, folgen: bool) -> float | None:
     try:
-        if os.path.lexists(token_pfad(verz, rid)):  # type: ignore[arg-type]
-            return False
-    except OSError:
+        return (os.stat(pfad) if folgen else os.lstat(pfad)).st_mtime
+    except (OSError, ValueError):
+        return None
+
+
+def migriere(alt: Path, verz: Path, rid: str | None) -> bool:
+    """Bisheriges Token nach ``zugang/<rid>.token`` übernehmen (Kopie; der alte Ort bleibt).
+
+    * Fehlt die Kopie, wird sie angelegt (``os.link``, überschreibt nie eine gleichzeitig angelegte).
+    * Gibt es sie, bleibt sie – außer der alte Ort ist **neuer** und hat ein anderes Token: dann ist
+      die Kopie veraltet und wird atomar ersetzt (``os.replace``).
+
+    True, wenn jetzt geschrieben wurde. Nichts zu tun (False): kein Runner, kein altes Token, Kopie
+    aktuell. Schreibfehler (``TokenFehler``, ``OSError``) gehen an den Aufrufer – der entscheidet,
+    ob er die veraltete Kopie entfernt."""
+    if not pruefe_id(rid):
         return False
     token = lies_rueckfall(alt)
     if not token:
         return False
-    try:
+    ziel = token_pfad(verz, rid)  # type: ignore[arg-type]
+    neu_zeit = _mtime(ziel, folgen=False)
+    if neu_zeit is None:
         return schreibe(verz, rid, token, ueberschreiben=False)  # type: ignore[arg-type]
-    except (TokenFehler, OSError, ValueError):
+    alt_zeit = _mtime(alt, folgen=True)
+    if alt_zeit is None or alt_zeit <= neu_zeit or lies(ziel) == token:
         return False
+    return schreibe(verz, rid, token, ueberschreiben=True)  # type: ignore[arg-type]
+
+
+def entferne(verz: Path, rid: str | None) -> bool:
+    """Veraltete Kopie entfernen (nach einem Schreibfehler) – danach gilt der alte Ort."""
+    if not pruefe_id(rid):
+        return False
+    try:
+        token_pfad(verz, rid).unlink()  # type: ignore[arg-type]
+    except FileNotFoundError:
+        return False
+    return True
 
 
 # ---------------------------------------------------------------- Kommandozeile für einrichten.sh
@@ -163,13 +188,16 @@ def main(argv: list[str] | None = None) -> int:
     kop.add_argument("--ueberschreiben", action="store_true")
     lis = unter.add_parser("liste", help="erkannte Runner (ID, Dienst, Name) aus erkennung.json")
     lis.add_argument("--erkennung", required=True)
+    lis.add_argument("--runner-verz", help="markiert den GitHub-Runner aus MONITOR_RUNNER_VERZ")
     a = p.parse_args(argv)
     if a.befehl == "liste":
         daten = erkennung.pruefe_ergebnis(erkennung.Quelle("/").lies(str(Path(a.erkennung).absolute()), erkennung.MAX_ERGEBNIS))
         funde = [f for f in (daten or {}).get("runner", []) if f.get("stand") != "ignoriert"]
+        gid = github_id(Path(a.runner_verz)) if a.runner_verz else None
         for f in funde:
+            zusatz = "  ← GitHub-Runner des Monitors (schreibt auch github-token)" if f["id"] == gid else ""
             print(f"  {erkennung.fuer_terminal(f['id'])[:40]:<40} {erkennung.ANZEIGE.get(f['dienst'], 'unbekannt'):<10} "
-                  f"{erkennung.fuer_terminal(f.get('name') or '')[:28]}")
+                  f"{erkennung.fuer_terminal(f.get('name') or '')[:28]}{zusatz}")
         return 0 if funde else 3
     rid = github_id(Path(a.runner_verz))
     if a.befehl == "github-id":
@@ -179,18 +207,23 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not rid:
         return 3
-    if not a.ueberschreiben:
-        if not migriere(Path(a.alt), Path(a.verz), rid):
-            return 3
-        print(rid)
-        return 0
-    token = lies_rueckfall(Path(a.alt))
-    if not token:
-        return 3
     try:
-        schreibe(Path(a.verz), rid, token, ueberschreiben=True)
+        if not a.ueberschreiben:
+            if not migriere(Path(a.alt), Path(a.verz), rid):
+                return 3
+        else:
+            token = lies_rueckfall(Path(a.alt))
+            if not token:
+                return 3
+            schreibe(Path(a.verz), rid, token, ueberschreiben=True)
     except (TokenFehler, OSError) as fehler:
-        print(f"Fehler: {fehler}", file=sys.stderr)
+        # Kopie wäre jetzt veraltet: entfernen, damit der alte Ort gilt. Meldung ohne Token.
+        try:
+            entferne(Path(a.verz), rid)
+        except OSError:
+            pass
+        print(f"Fehler: {type(fehler).__name__}: {getattr(fehler, 'strerror', None) or fehler}", file=sys.stderr)
+        print(rid)
         return 2
     print(rid)
     return 0

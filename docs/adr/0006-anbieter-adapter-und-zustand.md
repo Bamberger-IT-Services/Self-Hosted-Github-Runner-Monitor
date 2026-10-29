@@ -23,9 +23,10 @@ Fund darf nie bestimmen, wohin der Monitor mit einem Token fragt (E-18).
   kommen nur Anzeigewerte.
 - **Zugangsdaten je Runner** in `/etc/runner-monitor/zugang/<id>.token` (Verzeichnis root 0700,
   Dateien 0600), gesetzt über `sudo einrichten.sh zugang <runner>`, im Dashboard weder sichtbar noch
-  änderbar. Das bisherige `github-token` wird beim ersten Start nach dem Update einmal **kopiert**
-  und bleibt als Rückfall, bis #94/#96 abgeschlossen sind; alle Wege, die das GitHub-Token erneuern,
-  schreiben beide Orte.
+  änderbar. Das bisherige `github-token` wird beim Start nach dem Update **kopiert** und bleibt als
+  Rückfall, bis #94/#96 abgeschlossen sind; ist der alte Ort später neuer und anders, wird die Kopie
+  ersetzt. Alle Wege, die das GitHub-Token erneuern, schreiben beide Orte; scheitert das Schreiben
+  nach `zugang/`, wird die veraltete Kopie entfernt (Review #111).
 - **`/api/zustand` additiv** (Format 2): `GET /api/zustand` liefert die bisherigen Bereiche
   unverändert und zusätzlich `vm`, `runner[]` und `meldungen[]` (mit Runner-ID). `/events` bekommt
   die Ereignisse `runner` und `meldungen`. Die Oberfläche bleibt beim Altformat, bis #94 sie umstellt;
@@ -47,5 +48,7 @@ Fund darf nie bestimmen, wohin der Monitor mit einem Token fragt (E-18).
 - Übergangsweise zwei Orte für das GitHub-Token; die Rückfall-Regel entfällt mit #94/#96.
 - Der Name der Token-Datei hängt am `agentName` in `.runner`, den der Runner-Benutzer ändern kann
   (Sicherheitsbericht S-ADAPTER-01: Restrisiko gering, weil Server nie aus Funden kommen).
+- `runner[].log` nennt nur `art` und `unit`, keine Pfade der VM (Review #111); `stand` ist beim
+  GitHub-Runner nur bei gültigem Token „angebunden“.
 - `runner[]` umfasst höchstens 20 Runner; weitere GitHub-Runner neben `MONITOR_RUNNER_VERZ` laufen bis
   #94 in der Grundüberwachung.

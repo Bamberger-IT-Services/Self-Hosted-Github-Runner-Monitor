@@ -246,6 +246,39 @@ class TokenTest(unittest.TestCase):
         self.assertFalse(zugangsdaten.migriere(self.alt, self.verz, "runner-vm-01"))
         self.assertEqual(zugangsdaten.lies(self.verz / "runner-vm-01.token"), "ghp_" + "c" * 36)
 
+    def test_veraltete_kopie_wird_ersetzt(self):
+        self.alt.write_text("ghp_" + "a" * 36)
+        zugangsdaten.migriere(self.alt, self.verz, "r")
+        neu = self.verz / "r.token"
+        os.utime(neu, (1000.0, 1000.0))
+        # alter Ort neuer, gleicher Inhalt: nichts zu tun
+        os.utime(self.alt, (2000.0, 2000.0))
+        self.assertFalse(zugangsdaten.migriere(self.alt, self.verz, "r"))
+        # alter Ort neuer und anders (Token mit älterer Version gewechselt): Kopie ersetzen
+        self.alt.write_text("ghp_" + "b" * 36)
+        os.utime(self.alt, (3000.0, 3000.0))
+        self.assertTrue(zugangsdaten.migriere(self.alt, self.verz, "r"))
+        self.assertEqual(zugangsdaten.lies(neu), "ghp_" + "b" * 36)
+        self.assertEqual(stat.S_IMODE(os.stat(neu).st_mode), 0o600)
+        # Kopie neuer (zugang gesetzt): bleibt, auch wenn anders
+        zugangsdaten.schreibe(self.verz, "r", "ghp_" + "c" * 36)
+        os.utime(self.alt, (10.0, 10.0))
+        self.assertFalse(zugangsdaten.migriere(self.alt, self.verz, "r"))
+        self.assertEqual(zugangsdaten.lies(neu), "ghp_" + "c" * 36)
+
+    def test_schreibfehler_entfernt_veraltete_kopie(self):
+        registriere_runner(self.d)
+        zugangsdaten.schreibe(self.verz, "runner-vm-01", "alt_" + "a" * 36)
+        self.alt.write_text("ghp_" + "g" * 36)
+        argv = ["kopiere", "--ueberschreiben", "--alt", str(self.alt), "--verz", str(self.verz), "--runner-verz", str(self.d / "actions-runner")]
+        aus, fehler = io.StringIO(), io.StringIO()
+        with mock.patch.object(zugangsdaten, "schreibe", side_effect=OSError(28, "No space left on device")), \
+             redirect_stdout(aus), mock.patch.object(zugangsdaten.sys, "stderr", fehler):
+            self.assertEqual(zugangsdaten.main(argv), 2)
+        self.assertEqual(aus.getvalue(), "runner-vm-01\n")
+        self.assertNotIn("ghp_", fehler.getvalue() + aus.getvalue())
+        self.assertFalse((self.verz / "runner-vm-01.token").exists())  # es gilt der alte Ort
+
     def test_migration_nichts_zu_tun(self):
         self.assertFalse(zugangsdaten.migriere(self.alt, self.verz, "runner-vm-01"))  # kein altes Token
         self.alt.write_text("t" * 20)
@@ -288,6 +321,12 @@ class TokenTest(unittest.TestCase):
         self.assertIn("Forgejo", aus.getvalue())
         self.assertNotIn("\x1b", aus.getvalue())
         self.assertNotIn("alt ", aus.getvalue())
+        # mit --runner-verz: GitHub-Runner des Monitors gekennzeichnet
+        registriere_runner(self.d, "runner-vm-02")
+        aus = io.StringIO()
+        with redirect_stdout(aus):
+            zugangsdaten.main(["liste", "--erkennung", str(datei), "--runner-verz", str(self.d / "actions-runner")])
+        self.assertIn("GitHub-Runner des Monitors", aus.getvalue())
 
 
 class SammlerTokenTest(unittest.TestCase):
@@ -333,6 +372,24 @@ class SammlerTokenTest(unittest.TestCase):
         self.assertEqual(self.k.token_datei.read_text().strip(), "ghp_" + "f" * 36)
         self.assertEqual(zugangsdaten.lies(self.neu), "ghp_" + "f" * 36)
         self.assertEqual(self.s.token(), "ghp_" + "f" * 36)
+
+    def test_veraltete_kopie_beim_start_ersetzt(self):
+        zugangsdaten.schreibe(self.k.zugang_verz, "runner-vm-01", "alt_" + "a" * 36)
+        os.utime(self.neu, (1000.0, 1000.0))
+        self.k.token_datei.write_text("ghp_" + "n" * 36)   # z. B. mit einer älteren Version erneuert
+        self.s.migriere_token()
+        self.assertEqual(self.s.token(), "ghp_" + "n" * 36)
+
+    def test_schreibfehler_im_sammler(self):
+        zugangsdaten.schreibe(self.k.zugang_verz, "runner-vm-01", "alt_" + "a" * 36)
+        (self.k.auftraege_verz / "github-token").write_text(json.dumps({"token": "ghp_" + "h" * 36}))
+        with mock.patch.object(zugangsdaten, "schreibe", side_effect=OSError(28, "No space left on device")), \
+             self.assertLogs("runner_monitor.sammler", "WARNING") as log:
+            self.s.auftraege()
+        self.assertIn("veraltete Kopie entfernt", log.output[0])
+        self.assertNotIn("ghp_", " ".join(log.output))
+        self.assertFalse(self.neu.exists())
+        self.assertEqual(self.s.token(), "ghp_" + "h" * 36)  # der alte Ort hat das neue Token
 
     def test_github_ueber_den_adapter(self):
         with mock.patch.object(gh_adapter, "abfrage", wraps=gh_adapter.abfrage) as aufruf:
@@ -401,11 +458,12 @@ class RunnerListeTest(unittest.TestCase):
         for r in liste:
             self.assertEqual(set(r), EINTRAG_SCHLUESSEL, r["id"])
         gh, fj, ba, nd = liste
-        self.assertEqual((gh["dienst"], gh["server"], gh["org"], gh["stand"], gh["einstufung"]), ("github", "https://github.com", "beispiel-org", "angebunden", "voll"))
+        # github.json fehlt (noch keine Abfrage): trotz Fund „angebunden“ nur „offen“ (Review #111)
+        self.assertEqual((gh["dienst"], gh["server"], gh["org"], gh["stand"], gh["einstufung"]), ("github", "https://github.com", "beispiel-org", "offen", "voll"))
         self.assertEqual(gh["faehig"], erkennung.FAEHIG["github"])
         self.assertEqual(gh["status"]["zustand"], "bereit")
         self.assertEqual(gh["status"]["dienst"], status["dienst"])
-        self.assertEqual(gh["log"], {"art": "seiten", "pfad": f"{self.k.runner_verz}/_diag/pages", "unit": self.unit})
+        self.assertEqual(gh["log"], {"art": "seiten", "unit": self.unit})  # keine Pfade der VM in /api/zustand
         self.assertEqual(gh["jobsJeRepository"], self.z.bereiche["workflows"])
         self.assertEqual(gh["letzteJobs"], [])
         # Forgejo: Grundüberwachung, Server und Log nie aus dem Fund (E-18)
@@ -413,7 +471,7 @@ class RunnerListeTest(unittest.TestCase):
         self.assertEqual(fj["log"], {"art": "journal", "unit": "forgejo-runner.service"})
         self.assertIsNone(fj["jobsJeRepository"])
         # Log-Datei nur aus runner.json
-        self.assertEqual(ba["log"], {"art": "datei", "pfad": "/var/log/buildagent/agent.log"})
+        self.assertEqual(ba["log"], {"art": "datei", "unit": "buildagent.service"})
         self.assertEqual(ba["status"]["zustand"], "aktiv")
         # ohne Unit: weder Status noch Log, kein systemctl-Aufruf
         self.assertEqual((nd["status"]["zustand"], nd["log"], nd["faehig"]["status"]), ("unbekannt", None, False))
@@ -429,6 +487,28 @@ class RunnerListeTest(unittest.TestCase):
         self.assertEqual(liste[0]["status"]["zustand"], "job")
         self.assertEqual(job["schritt"], {"nr": 2, "von": 3, "name": "Tests"})
         self.assertEqual(job, self.z.bereiche["status"]["job"])
+
+    def test_stand_nach_abfrage(self):
+        pfad = self.d / "lauf" / "github.json"
+        for abfrage, erwartet in (("ok", "angebunden"), ("nicht-erreichbar", "angebunden"), ("kontingent", "angebunden"),
+                                  ("kein-token", "offen"), ("token-ungueltig", "offen"), ("keine-rechte", "offen"), ("fehler", "offen")):
+            pfad.write_text(json.dumps({"abfrage": abfrage, "org": "beispiel-org", "abgefragt": 100.0}))
+            os.utime(pfad, (len(abfrage) * 1000.0, len(abfrage) * 1000.0 + hash(abfrage) % 997))  # mtime ändert sich sicher
+            _, liste, _ = self.takt()
+            self.assertEqual(liste[0]["stand"], erwartet, abfrage)
+        # ohne Fund (noch keine Erkennung) gilt dieselbe Regel
+        (self.d / "lauf" / "erkennung.json").unlink()
+        pfad.write_text(json.dumps({"abfrage": "ok", "org": "beispiel-org", "abgefragt": 1.0}))
+        os.utime(pfad, (5.0, 5.0))
+        _, liste, _ = self.takt()
+        self.assertEqual(liste[0]["stand"], "angebunden")
+
+    def test_stand_grund_bleibt(self):
+        self.funde[0]["stand"] = "grund"
+        (self.d / "lauf" / "erkennung.json").write_text(json.dumps({"zeit": 1.0, "runner": self.funde}))
+        (self.d / "lauf" / "github.json").write_text(json.dumps({"abfrage": "ok", "abgefragt": 1.0}))
+        _, liste, _ = self.takt()
+        self.assertEqual(liste[0]["stand"], "grund")
 
     def test_meldungen_mit_runner(self):
         _, _, meldungen = self.takt()
