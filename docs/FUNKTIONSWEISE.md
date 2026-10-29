@@ -77,6 +77,7 @@ für `runner.json`, „Neu erkennen“ und „Verbindung prüfen“) und prüfen
 | Forgejo-/Gitea-Runner: Online, Jobs je Repository, aktueller Job mit Schritten, letzte Jobs | API des Servers aus `runner.json` (`/api/v1`, Token aus `zugang/<id>.token`), siehe „Fähigkeiten je Anbieter“ | 30 s |
 | Neue Version | GitHub-API `repos/<release-repo>/releases/latest` | 6 h |
 | Docker-Container | `docker ps --format json` (wird gesammelt, in Version 0.1 nicht angezeigt) | 10 s |
+| Aufräumen der Platte eingerichtet? (#144) | Sammler (root, `runner_monitor/aufraeumen.py`): `/usr/local/bin/runner-aufraeumen` und `/etc/cron.daily/runner-aufraeumen` per `lstat` – nur reguläre Dateien von root, für Gruppe/andere nicht schreibbar, ausführbar, der nächtliche Lauf ruft das Skript auf; `systemctl is-active runner-aufraeumen.timer`; beim GitHub-Runner `.env` (`ACTIONS_RUNNER_HOOK_JOB_STARTED` = `<runner-verz>/vor-dem-job.sh`) und der Hook ruft das Skript auf – gelesen mit `O_NOFOLLOW`, höchstens 64 KiB, ohne zu blockieren. Ergebnis `/run/runner-monitor/aufraeumen.json`, nur bei Änderung geschrieben | 60 s |
 
 **Ohne Token** laufen Runner-Status, Auslastung, Prozesse, Platten und Live-Log normal; Job-
 Name und Ergebnis kommen dann allein aus dem Journal, Repository und Schrittnamen fehlen.
@@ -489,6 +490,9 @@ Momentaufnahme nur als ersten Schwall von `/events`; jetzt auch als ein JSON-Obj
   "meldungen": [ …Meldungen… ] }
 ```
 
+Seit #144 kommt (additiv, `format` bleibt 2) der Bereich `aufraeumen` dazu, sobald der Sammler ihn geprüft hat
+(siehe „Vom Server in den Browser“); ältere Sammler liefern ihn nicht, dann gilt der Stand als unbekannt.
+
 Die bisherigen Bereiche bleiben **unverändert**, die Oberfläche nutzt sie weiter, bis #94 sie auf
 `vm`/`runner[]`/`meldungen[]` umstellt; danach kann das Altformat in einem eigenen Issue entfallen.
 Das Live-Log bleibt allein in `/events`. Seit #94 baut das Dashboard daraus seine Ansicht (Abschnitt
@@ -622,6 +626,12 @@ Logik ohne DOM, geprüft mit `tests/js/info.test.mjs`).
   Organisation und Unit gehen nur nach strenger Prüfung in einen Befehl ein (`INFO.serverBasis`,
   `INFO.einheit`). Der Link „Anleitung: Zugangsdaten für {Dienst} ›“ bei „Zugangsdaten ändern“ zeigt die
   Zugangs-Anleitung für genau diesen Runner.
+- **„Platte knapp“ (#144):** Den Befehl `sudo /usr/local/bin/runner-aufraeumen` (voller Pfad) zeigt die Anleitung
+  nur, wenn der Bereich `aufraeumen` das Skript meldet (`INFO.aufraeumenLage`: `eingerichtet` – Skript, nächtlicher
+  Lauf und Timer oder Hook; `teilweise`; `fehlt`; `unbekannt` ohne Bereich). Sonst steht dort zuerst
+  `sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen`; bei `unbekannt` nur dieser Befehl. Die Meldung „Platte
+  knapp“ sagt „räumt der Runner vor jedem Job auf“ (Hook, oder unbekannt wie bisher), „räumt die VM alle 15 Minuten
+  auf“ (Timer) oder „automatisches Aufräumen ist nicht eingerichtet“. Demo: `?demo&zustand=platte&aufraeumen=fehlt|teilweise|timer|unbekannt`.
 - **„Was tun?“ und Karten je Dienst (#123):** Die Meldung eines Runners (`meldungen[]` mit `dienst`) nennt seinen
   Dienst („runner-vm-02: Forgejo nicht erreichbar“, „Kein Gitea-Token“ …) und führt zur Anleitung, die für
   diesen Dienst gilt. Kartenfuß „Jobs je Repository“ und leerer Zustand ohne GitHub-Pfad: „{Dienst} nicht
@@ -784,6 +794,7 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | `runner` | seit #92: Liste der Runner wie `runner[]` in `/api/zustand` (siehe „Anbieter-Adapter“), nur bei Änderung; das Dashboard nutzt sie seit #94 |
 | `meldungen` | seit #92: Liste wie `meldungen[]` in `/api/zustand`, nur bei Änderung |
 | `journal` | seit #95, nur mit `/events?journal=<runner-id>`: `unit`, `neu`, `zeilen[]`, `ereignisse[]`, `hinweis` (siehe „Grundüberwachung und ‚teilweise‘“) |
+| `aufraeumen` | seit #144: `{skript, nacht, timer, vorDemJob, geprueft}` – Wahrheitswerte, ob `/usr/local/bin/runner-aufraeumen`, der nächtliche Lauf, `runner-aufraeumen.timer` und (nur GitHub-Runner, sonst `null`) der Hook vor dem Job eingerichtet sind; nur bei Änderung. Der Monitor übernimmt nur diese Felder mit diesen Typen (`aufraeumen.pruefe_stand`) |
 
 Zeiten sind Unix-Sekunden. Alle 15 s kommt ein Kommentar `: lebt`, damit Proxys die Verbindung
 offen lassen. Nach 5 s ohne Daten zeigt der Browser „Getrennt“ und den letzten Stand; nach 10 s
@@ -894,7 +905,8 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `/etc/runner-monitor/github-token` | root, 0600 | bisheriger Ort des GitHub-Tokens, Rückfall bis #94/#96 (Update-Hilfsdienst und ältere Versionen lesen nur ihn) |
 | `/etc/runner-monitor/runner.json` | root:runner-monitor, 0640 | Zuordnung und Ignorieren erkannter Runner, Server und Organisation für Forgejo/Gitea (siehe „Runner erkennen“) |
 | `/var/lib/runner-monitor/` | runner-monitor, 0750 | `zugang.json` (scrypt-Hash), `sitzungen.json`, `sperren.json`, `einstellungen.json` (Organisation, Auto-Update), `einrichtungscode.json`, `systempruefung.json`, `update-status.json`, `verlauf.json` (Verlauf der letzten 10 Min., alle 10 s gesichert), `auftraege/` |
-| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner), `anbieter.json` (Forgejo/Gitea #93, GitLab #115) – Ergebnisse des Sammlers, ohne Token |
+| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner), `anbieter.json` (Forgejo/Gitea #93, GitLab #115), `aufraeumen.json` (#144) – Ergebnisse des Sammlers, ohne Token |
+| `/usr/local/bin/runner-aufraeumen`, `/etc/cron.daily/runner-aufraeumen`, `/etc/systemd/system/runner-aufraeumen.{service,timer}` | root, 0755 bzw. 0644 | Aufräumen der Platte für jeden Runner, angelegt von `einrichten.sh aufraeumen` (`deploy/aufraeumen-einrichten.sh`, auch aus `deploy/runner-einrichten.sh`; [RUNNER.md](RUNNER.md), Abschnitt 6a). Beim GitHub-Runner zusätzlich `vor-dem-job.sh` und eine Zeile in `.env` im Runner-Ordner – geschrieben als Runner-Benutzer, nie als root |
 | `/etc/systemd/system/runner-monitor*.{service,path}` | root | Dienste ([deploy/systemd](../deploy/systemd/)) |
 
 ## Was der Monitor nicht kann

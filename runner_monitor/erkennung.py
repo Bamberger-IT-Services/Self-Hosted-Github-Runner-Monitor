@@ -100,7 +100,7 @@ BEKANNT_PROGRAMM = (
 STICHWORTE = ("runner", "agent", "build", "woodpecker", "drone", "buildkite", "jenkins", "teamcity", "bamboo")
 # Bekannte Dienste mit solchen Wörtern, die keine CI-Runner sind.
 AUSNAHMEN = re.compile(
-    r"(?:runner-monitor.*|qemu-guest-agent|ssh-agent|gpg-agent.*|walinuxagent|amazon-ssm-agent|"
+    r"(?:runner-monitor.*|runner-aufraeumen|qemu-guest-agent|ssh-agent|gpg-agent.*|walinuxagent|amazon-ssm-agent|"
     r"snap\..*|google-.*|zabbix-agent2?|datadog-agent.*|wazuh-agent|elastic-agent|fluent-bit|"
     r"spice-vdagentd?|vgauth.*|open-vm-tools|vmtoolsd|buildkit.*|docker.*|containerd.*|"
     r"systemd-.*|user@.*|user-runtime-dir@.*|polkit.*|pcscd|xrdp.*)\.service"

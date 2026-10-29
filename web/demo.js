@@ -79,6 +79,15 @@ window.RM_DEMO = (() => {
       { pfad: '/var/lib/docker', gesamt: 256 * GB, frei: 171 * GB, belegt: 85 * GB },
     ];
   };
+  /* Aufräumen der Platte (#144) wie der Bereich „aufraeumen“ des Sammlers. ?aufraeumen=fehlt|teilweise|timer|unbekannt,
+     Standard: eingerichtet mit Hook vor dem Job (GitHub-Runner). „unbekannt“ schickt nichts (älterer Sammler). */
+  let aufraeumenWahl = 'hook';
+  const aufraeumen = () => ({
+    hook: { skript: true, nacht: true, timer: true, vorDemJob: true },
+    timer: { skript: true, nacht: true, timer: true, vorDemJob: null },
+    teilweise: { skript: true, nacht: false, timer: false, vorDemJob: false },
+    fehlt: { skript: false, nacht: false, timer: false, vorDemJob: null },
+  }[aufraeumenWahl] || null);
 
   /* Seit #92 (E-19, additiv): zusätzlich runner[] und meldungen[] wie GET /api/zustand bzw. die
      Ereignisse „runner“ und „meldungen“; die Oberfläche nutzt sie seit #94 (Reiter, Meldungen mit Runner).
@@ -301,6 +310,7 @@ window.RM_DEMO = (() => {
     api.empfange('platten', platten());
     api.empfange('workflows', workflows());
     api.empfange('update', update());
+    const a = aufraeumen(); if (a) api.empfange('aufraeumen', { ...a, geprueft: jetzt() });
     runnerSenden();
   }
 
@@ -340,6 +350,7 @@ window.RM_DEMO = (() => {
     if (['kein-token', 'nicht-erreichbar', 'token-ungueltig'].includes(p.get('anbieter'))) anbieterAbfrage = p.get('anbieter');
     if (parseInt(p.get('anbieteralter'), 10) > 0) anbieterAlter = parseInt(p.get('anbieteralter'), 10);
     schritteLokal = p.get('schritte') === 'lokal';
+    if (['fehlt', 'teilweise', 'timer', 'unbekannt'].includes(p.get('aufraeumen'))) aufraeumenWahl = p.get('aufraeumen');
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();
     if (['job', 'platte', 'volllast'].includes(zustand)) neuerJob();

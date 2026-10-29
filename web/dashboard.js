@@ -249,6 +249,7 @@
         renderSystem(); break;
       case 'prozesse': S.prozesse = d; renderProzesse(); break;
       case 'platten': S.platten = d; renderPlatten(); renderKopf(); break;
+      case 'aufraeumen': S.aufraeumen = d && typeof d === 'object' ? d : null; renderKopf(); if (S.info) renderInfo(); break;  // #144
       case 'workflows': S.workflowsAlt = d; abgleich(); renderWorkflows(); renderKopf(); break;
       case 'update':
         S.update = d;
@@ -269,6 +270,13 @@
   }
 
   /* ------------------------------------------------------------ Meldungen (Kopfzeile Mitte) */
+  /* Zweite Zeile von „Platte knapp“: nur behaupten, was auf der VM eingerichtet ist (#144, Bereich „aufraeumen“). */
+  function plattenText(p) {
+    const a = S.aufraeumen, lage = INFO.aufraeumenLage(a), n = { n: zahl(p.schwelleFrei / GB, 0) };
+    if (lage === 'unbekannt' || (a.skript && a.vorDemJob === true)) return t('unter {n} GB räumt der Runner vor jedem Job auf', n);
+    if (a.skript && a.timer === true) return t('unter {n} GB räumt die VM alle 15 Minuten auf', n);
+    return t('automatisches Aufräumen ist nicht eingerichtet');
+  }
   function meldungen() {
     const M = [], st = S.status, w = S.workflows, u = S.update, jetzt = Date.now();
     if (S.verbindung === 'getrennt' && S.letzteDaten) M.push({ id: 'monitor', cls: 'fehler', ic: IC.getrennt(18), titel: t('Verbindung zum Monitor unterbrochen'), text: t('Stand {z} ({vor}) · neuer Versuch läuft', { z: zeit(S.letzteDaten), vor: vor((jetzt - S.letzteDaten) / 1000) }) });
@@ -287,7 +295,7 @@
     if (w && w.abfrage === 'kein-token') M.push({ id: 'token', cls: 'neutral', ic: IC.schluessel(18), titel: t('Kein GitHub-Token'), text: t('Workflows und GitHub-Status sind aus') });
     }
     for (const p of S.platten || []) {
-      if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', cls: 'warn', ic: IC.warn(18), titel: t('Platte knapp: {n} GB frei', { n: zahl(p.frei / GB, 1) }), text: t('unter {n} GB räumt der Runner vor jedem Job auf', { n: zahl(p.schwelleFrei / GB, 0) }) });
+      if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', cls: 'warn', ic: IC.warn(18), titel: t('Platte knapp: {n} GB frei', { n: zahl(p.frei / GB, 1) }), text: plattenText(p) });
     }
     M.push(...sm.filter((e) => e.nach));
     if (!srv && w && w.tokenAblauf) {
@@ -782,6 +790,7 @@
       tokenAblauf: !!(w.tokenAblauf && (ms(w.tokenAblauf) - Date.now()) < 14 * 86400000),
       gestoppt: st.dienst.zustand === 'gestoppt', fehlt: st.dienst.zustand === 'fehlt', offline: st.github.zustand === 'offline',
       knapp: (S.platten || []).some(p => p.schwelleFrei && p.frei < p.schwelleFrei), getrennt: S.verbindung === 'getrennt',
+      aufraeumen: S.aufraeumen || null,
       updFehler: us.zustand === 'fehler', updNeu: !!(u.neueste && vergleiche(u.neueste.version, u.installiert) > 0),
     }, t, zr && { dienst: zr.dienst, id: zr.id, server: zr.server || '', org: zr.org || '' });
   }
@@ -1294,7 +1303,7 @@
     letzterVersuch = Date.now();
     // Mit Journal-Runner: /events?journal=<id> – der Server liefert dann zusätzlich das Journal seiner Unit (#95)
     quelle = new EventSource(RUNNER.journalUrl(S.stromJournal));
-    for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log', 'journal', 'runner', 'meldungen']) {
+    for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log', 'journal', 'runner', 'meldungen', 'aufraeumen']) {
       quelle.addEventListener(b, (e) => { try { empfange(b, JSON.parse(e.data)); } catch (f) { console.error(b, f); } });
     }
     quelle.onopen = () => setzeVerbindung('verbunden');

@@ -89,54 +89,12 @@ fi
 ( cd "$VERZ" || exit 0; ./svc.sh install "$NUTZER" >/dev/null 2>&1 || true; ./svc.sh start >/dev/null 2>&1 || true )
 
 echo "5/6 Platz sichern"
-# Die Platte darf nie volllaufen (eine volle Platte legt Runner-VM und Hypervisor lahm).
-# 1) Vor JEDEM Job: unter 25 GB frei → alte Container, Images, Volumes und Build-Cache weg.
-# 2) Jede Nacht: gründlich aufräumen (Build-Cache auf 20 GB begrenzen) und freien Platz per
-#    fstrim an Proxmox zurückgeben (VM-Platte mit „Discard“ einstellen).
-rm -f /etc/cron.weekly/*runner-aufraeumen   # Vorgänger älterer Fassungen (wöchentlich, auch mit Präfix)
-cat > /usr/local/bin/runner-aufraeumen <<'SKRIPT'
-#!/bin/sh
-# Aufruf: runner-aufraeumen [mindest-frei-in-GB]  (ohne Angabe: immer gründlich)
-GRENZE="${1:-}"
-FREI="$(df --output=avail -BG / | tail -n 1 | tr -dc 0-9)"
-if [ -n "$GRENZE" ] && [ "$FREI" -ge "$GRENZE" ]; then exit 0; fi
-echo "runner-aufraeumen: ${FREI} GB frei – räume auf"
-docker container prune -f >/dev/null 2>&1 || true
-docker image prune -af --filter "until=24h" >/dev/null 2>&1 || true
-docker volume prune -af >/dev/null 2>&1 || true
-docker builder prune -af --max-used-space 20gb >/dev/null 2>&1 \
-  || docker builder prune -af --keep-storage 20GB >/dev/null 2>&1 || true
-find /opt/actions-runner/_diag -name '*.log' -mtime +7 -delete 2>/dev/null || true
-journalctl --vacuum-size=500M >/dev/null 2>&1 || true
-echo "runner-aufraeumen: jetzt $(df --output=avail -BG / | tail -n 1 | tr -dc 0-9) GB frei"
-SKRIPT
-chmod 755 /usr/local/bin/runner-aufraeumen
-cat > "$VERZ/vor-dem-job.sh" <<'HOOK'
-#!/bin/sh
-/usr/local/bin/runner-aufraeumen 25
-HOOK
-chmod 755 "$VERZ/vor-dem-job.sh"; chown "$NUTZER:$NUTZER" "$VERZ/vor-dem-job.sh"
-if ! grep -q '^ACTIONS_RUNNER_HOOK_JOB_STARTED=' "$VERZ/.env" 2>/dev/null; then
-  echo "ACTIONS_RUNNER_HOOK_JOB_STARTED=$VERZ/vor-dem-job.sh" >> "$VERZ/.env"
-  # Der Dienst liest .env nur beim Start. Neu starten, aber nie mitten in einem Job.
-  if pgrep -f Runner.Worker >/dev/null 2>&1; then
-    # Neustart einmalig nachholen, sobald kein Job mehr läuft (überlebt das Abmelden von SSH).
-    systemctl stop runner-neustart >/dev/null 2>&1 || true
-    systemd-run --unit=runner-neustart --description="Runner neu starten, sobald frei" /bin/sh -c \
-      'while pgrep -f "[R]unner.Worker" >/dev/null; do sleep 20; done; systemctl restart "actions.runner.*"' >/dev/null
-    echo "    Runner arbeitet gerade – Neustart folgt automatisch, sobald der Job fertig ist"
-    echo "    (prüfen: systemctl status runner-neustart)"
-  else
-    ( cd "$VERZ" || exit 0; ./svc.sh stop >/dev/null 2>&1; ./svc.sh start >/dev/null 2>&1 ) || true
-  fi
-fi
-cat > /etc/cron.daily/runner-aufraeumen <<'CRON'
-#!/bin/sh
-/usr/local/bin/runner-aufraeumen >/dev/null 2>&1
-fstrim -a >/dev/null 2>&1 || true
-CRON
-chmod 755 /etc/cron.daily/runner-aufraeumen
-systemctl enable --now fstrim.timer >/dev/null 2>&1 || true
+# Die Platte darf nie volllaufen (eine volle Platte legt Runner-VM und Hypervisor lahm). Gemeinsam für alle
+# Runner in aufraeumen-einrichten.sh (#144, auch „einrichten.sh aufraeumen“): /usr/local/bin/runner-aufraeumen,
+# jede Nacht gründlich mit fstrim, alle 15 Minuten unter 25 GB frei – und hier zusätzlich vor JEDEM Job
+# (Hook vor-dem-job.sh). Ein laufender Job wird nie gestört.
+RUNNER_VERZ="$VERZ" RUNNER_NUTZER="$NUTZER" bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/aufraeumen-einrichten.sh" \
+  || echo "    Aufräumen nicht vollständig eingerichtet – später erneut: sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen"
 
 echo
 echo "Fertig. Runner: $NAME ($ZIEL_URL), Labels: self-hosted, linux, x64${LABELS:+, ${LABELS//,/, }}"

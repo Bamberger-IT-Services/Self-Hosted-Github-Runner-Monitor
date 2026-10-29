@@ -8,6 +8,7 @@
 #   sudo ./einrichten.sh token           # GitHub-Token eintragen oder erneuern
 #   sudo ./einrichten.sh zugang <runner> # Zugangsdaten eines Runners (Forgejo/Gitea/GitLab: mit Server) eintragen (ohne: Liste)
 #   sudo ./einrichten.sh runner          # GitHub-Runner auf dieser VM einrichten (--umziehen: neu anmelden)
+#   sudo ./einrichten.sh aufraeumen      # Aufräumen der Platte einrichten – für jeden Runner (nachts, alle 15 Min.)
 #   sudo ./einrichten.sh aktualisieren   # neueste Version von GitHub installieren
 #   sudo ./einrichten.sh zurueck         # zur vorherigen Version zurück
 #   sudo ./einrichten.sh status          # Dienste und Version anzeigen
@@ -199,6 +200,7 @@ installieren() {
   else
     hinweis "ufw nicht installiert (sudo apt install ufw) – Port $PORT ist offen"
   fi
+  aufraeumen_anbieten
   systempruefung
 
   if [ -s "$DATEN/zugang.json" ]; then
@@ -486,6 +488,35 @@ runner_einrichten() {
   if [ -d "$DATEN" ]; then systempruefung; fi
 }
 
+# Aufräumen der Platte (#144): gemeinsam für alle Runner in deploy/aufraeumen-einrichten.sh (auch von
+# deploy/runner-einrichten.sh genutzt) – /usr/local/bin/runner-aufraeumen, jede Nacht gründlich mit fstrim,
+# alle 15 Minuten unter 25 GB frei, beim GitHub-Runner zusätzlich vor jedem Job. Idempotent, ein laufender
+# Job wird nie gestört. Den Stand prüft der Sammler (Info › Was tun, wenn … › „Platte knapp“).
+aufraeumen() {
+  abschnitt "Platz sichern (Aufräumen der Platte)"
+  if ! RUNNER_VERZ="$RUNNER_VERZ" bash "$QUELLE/deploy/aufraeumen-einrichten.sh"; then
+    hinweis "Aufräumen nicht vollständig eingerichtet – siehe oben; erneut: sudo $BASIS/aktuell/einrichten.sh aufraeumen"
+    return 1
+  fi
+  hin "Sofort aufräumen: sudo /usr/local/bin/runner-aufraeumen · Der Monitor zeigt den Stand in spätestens 1 Minute."
+}
+
+# Beim Installieren und Aktualisieren: schon eingerichtet → auf den Stand dieses Pakets bringen (idempotent);
+# sonst anbieten (nur mit Terminal, ohne Antwort wird nichts eingerichtet).
+aufraeumen_anbieten() {
+  if [ -e /usr/local/bin/runner-aufraeumen ] && systemctl is-enabled --quiet runner-aufraeumen.timer 2>/dev/null; then
+    aufraeumen || true; return
+  fi
+  abschnitt "Platz sichern"
+  hin "Eine volle Platte legt Runner-VM und Hypervisor lahm. Das Aufräumen läuft jede Nacht und alle 15 Minuten,"
+  hin "sobald weniger als 25 GB frei sind – für jeden Runner auf dieser VM; ein laufender Job wird nie gestört."
+  if { : </dev/tty; } 2>/dev/null && frage_ja "Aufräumen der Platte jetzt einrichten (empfohlen)?"; then
+    aufraeumen || true
+  else
+    hinweis "nicht eingerichtet – später: sudo $BASIS/aktuell/einrichten.sh aufraeumen"
+  fi
+}
+
 passwort() {
   frage "Zugang (Benutzer und Passwort) zurücksetzen? Alle Browser werden abgemeldet." || exit 0
   rm -f "$DATEN/zugang.json" "$DATEN/sitzungen.json" "$DATEN/sperren.json"
@@ -542,10 +573,11 @@ case "${1:-installieren}" in
   token) token ;;
   zugang) zugang "${2:-}" ;;
   runner) runner_einrichten "${2:-}" ;;
+  aufraeumen) aufraeumen || exit 1 ;;
   aktualisieren) aktualisieren ;;
   zurueck) zurueck ;;
   status) status ;;
   entfernen) entfernen "${2:-}" ;;
-  -h|--help|hilfe) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//' ;;
+  -h|--help|hilfe) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) fehler "Unbekannter Befehl: $1 (Hilfe: $0 hilfe)" ;;
 esac

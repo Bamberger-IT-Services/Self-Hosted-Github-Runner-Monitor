@@ -1,5 +1,6 @@
 """Sammler (läuft als root): Docker-Status, GitHub-Abfrage, Abfrage weiterer Dienste (Forgejo/Gitea #93,
-GitLab #115 – je Runner ein eigener Faden mit Frist), Update-Prüfung, Runner-Erkennung, Aufträge.
+GitLab #115 – je Runner ein eigener Faden mit Frist), Update-Prüfung, Runner-Erkennung, Stand des
+Aufräumens der Platte (#144), Aufträge.
 
 Warum root? Wer Docker abfragen darf, ist praktisch root, und das GitHub-Token soll nur
 root lesen können. Deshalb macht der Weboberflächen-Dienst beides nicht selbst, sondern
@@ -32,7 +33,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import VERSION, anbieter, einrichtung, erkennung, github, runner
+from . import VERSION, anbieter, aufraeumen, einrichtung, erkennung, github, runner
 from .anbieter import github as gh_adapter
 from .anbieter import token as zugangsdaten
 from .konfig import Konfig, lade
@@ -56,6 +57,7 @@ TAKT_NICHT_BEREIT = 120  # Release ohne Paket (Workflow lädt noch hoch): bald e
 MANUELL_MIN_ABSTAND = 60  # „Jetzt prüfen“ schont das GitHub-Kontingent
 ERKENNUNG_MIN_ABSTAND = 10  # „Neu erkennen“ aus der Einrichtung: höchstens alle 10 s (#96)
 PRUEFEN_MIN_ABSTAND = 10    # „Verbindung prüfen“ aus der Einrichtung: höchstens alle 10 s (#96)
+TAKT_AUFRAEUMEN = 60        # Stand des Aufräumens der Platte (#144): jede Minute
 
 
 def schreibe_oeffentlich(pfad: Path, daten: object) -> None:
@@ -146,6 +148,8 @@ class Sammler:
         self._anbieter_wartend: dict[str, anbieter.Anbieter] = {}  # fällig, noch nicht gestartet (Reihenfolge = Ankunft)
         self._anbieter_laeufe: dict[str, tuple[threading.Thread, float, anbieter.Anbieter]] = {}  # je Runner: (Faden, Start monoton, Adapter)
         self._anbieter_haengend: set[str] = set()                # Runde über RUNDENFRIST, Ergebnis schon „nicht erreichbar“
+        self.naechste_aufraeumen = 0.0
+        self._aufraeumen_stand: dict | None = None  # zuletzt geschrieben (ohne Zeit)
 
     def github_adapter(self) -> gh_adapter.GitHub:
         """Adapter des GitHub-Runners aus ``MONITOR_RUNNER_VERZ`` – Server, Organisation und Token aus
@@ -537,6 +541,18 @@ class Sammler:
             except OSError as fehler:
                 LOG.warning("anbieter.json nicht geschrieben: %s", fehler)
 
+    def aufraeumen(self, jetzt: float) -> None:
+        """Ist das Aufräumen der Platte eingerichtet (#144)? Jede Minute → ``aufraeumen.json`` (0644), nur bei
+        Änderung neu geschrieben. Prüft ohne Symlinks zu folgen (``runner_monitor.aufraeumen``)."""
+        if jetzt < self.naechste_aufraeumen:
+            return
+        self.naechste_aufraeumen = jetzt + TAKT_AUFRAEUMEN
+        stand = aufraeumen.pruefe(self.k.runner_verz)
+        if stand == self._aufraeumen_stand:
+            return
+        schreibe_oeffentlich(self.k.lauf_verz / "aufraeumen.json", {**stand, "geprueft": jetzt})
+        self._aufraeumen_stand = stand
+
     def release(self) -> dict:
         klient = github.Klient(self.token())
         daten = github.neueste_version(klient, self.k.release_repo)
@@ -692,6 +708,10 @@ class Sammler:
             self.erkennung(mono)
         except Exception:  # noqa: BLE001 – die Erkennung darf GitHub und Docker nie aufhalten
             LOG.exception("Fehler bei der Runner-Erkennung")
+        try:
+            self.aufraeumen(jetzt)
+        except Exception:  # noqa: BLE001 – die Prüfung des Aufräumens darf den Sammler nie aufhalten
+            LOG.exception("Stand des Aufräumens nicht geprüft")
         if jetzt >= self.naechste_github:
             self.naechste_github = jetzt + TAKT_GITHUB
             self.github()

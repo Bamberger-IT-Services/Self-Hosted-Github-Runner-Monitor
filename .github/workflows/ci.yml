@@ -46,7 +46,8 @@ jobs:
         env:
           LC_ALL: C.UTF-8   # ohne UTF-8-Locale bricht shellcheck an „…“ in einrichten.sh ab (commitBuffer)
         run: |
-          for f in einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh werkzeuge/zap-baseline.sh; do bash -n "$f"; done
+          for f in einrichten.sh deploy/runner-einrichten.sh deploy/aufraeumen-einrichten.sh werkzeuge/paket.sh werkzeuge/zap-baseline.sh; do bash -n "$f"; done
+          sh -n deploy/runner-aufraeumen
           # GitHub-Rechner haben shellcheck; das Image des Forgejo-Runners nicht, dort laufen die Schritte als root (#133).
           # Quelle ist in beiden Fällen das signierte Ubuntu-Paketarchiv.
           if ! command -v shellcheck >/dev/null; then
@@ -55,7 +56,7 @@ jobs:
             $als_root apt-get install -y -qq --no-install-recommends shellcheck
           fi
           shellcheck --version
-          shellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh werkzeuge/zap-baseline.sh
+          shellcheck einrichten.sh deploy/runner-einrichten.sh deploy/aufraeumen-einrichten.sh deploy/runner-aufraeumen werkzeuge/paket.sh werkzeuge/zap-baseline.sh
       - uses: actions/setup-node@v7
         with:
           node-version: 22
