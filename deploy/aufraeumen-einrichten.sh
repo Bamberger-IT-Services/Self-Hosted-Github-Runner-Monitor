@@ -106,12 +106,17 @@ if [ -f "$GH_VERZ/.runner" ] && [ ! -L "$GH_VERZ" ]; then
     neu)
       # Der Dienst liest .env nur beim Start. Neu starten, aber nie mitten in einem Job.
       if pgrep -f 'Runner\.Worker' >/dev/null 2>&1; then
-        # Neustart einmalig nachholen, sobald kein Job mehr läuft (überlebt das Abmelden von SSH).
+        # Neustart einmalig nachholen, sobald kein Job mehr läuft (überlebt das Abmelden von SSH). Ein
+        # gescheiterter Vorgänger gleichen Namens bliebe sonst geladen, und systemd-run lehnte den Namen ab.
         systemctl stop runner-neustart >/dev/null 2>&1 || true
-        systemd-run --unit=runner-neustart --description="Runner neu starten, sobald frei" /bin/sh -c \
-          'while pgrep -f "[R]unner\.Worker" >/dev/null; do sleep 20; done; systemctl try-restart "actions.runner.*"' >/dev/null
-        ok "GitHub-Runner: vor jedem Job unter $SCHWELLE GB frei – der Runner arbeitet gerade, Neustart folgt automatisch nach dem Job"
-        echo "    (prüfen: systemctl status runner-neustart)"
+        systemctl reset-failed runner-neustart >/dev/null 2>&1 || true
+        if systemd-run --unit=runner-neustart --description="Runner neu starten, sobald frei" /bin/sh -c \
+          'while pgrep -f "[R]unner\.Worker" >/dev/null; do sleep 20; done; systemctl try-restart "actions.runner.*"' >/dev/null; then
+          ok "GitHub-Runner: vor jedem Job unter $SCHWELLE GB frei – der Runner arbeitet gerade, Neustart folgt automatisch nach dem Job"
+          echo "    (prüfen: systemctl status runner-neustart)"
+        else
+          hinweis "GitHub-Runner: Hook eingetragen, wirkt aber erst nach einem Neustart – nach dem Job: sudo systemctl try-restart 'actions.runner.*'"
+        fi
       else
         systemctl try-restart 'actions.runner.*' >/dev/null 2>&1 || true
         ok "GitHub-Runner: vor jedem Job unter $SCHWELLE GB frei (Hook eingetragen, Dienst neu gestartet)"

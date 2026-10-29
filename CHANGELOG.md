@@ -8,7 +8,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 - Aufräumen der Platte für jeden Runner (#144): `sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen` richtet
   `/usr/local/bin/runner-aufraeumen`, den nächtlichen Lauf mit `fstrim` und neu `runner-aufraeumen.timer` (alle 15 Minuten
   unter 25 GB frei) ein – auch für Forgejo-, Gitea- und GitLab-Runner, die keinen Hook vor Jobs kennen; beim GitHub-Runner
-  zusätzlich vor jedem Job wie bisher. Idempotent; läuft gerade ein Job, räumt das Skript nur schonend auf (E-31).
+  zusätzlich vor jedem Job wie bisher. Idempotent; läuft gerade ein Job, räumt das Skript schonend auf: unbenutzte Images erst, wenn sie seit mindestens
+  30 Minuten auf der VM liegen und nicht gerade gebaut, geladen oder gezogen wurden, Container und Build-Cache erst nach
+  24 Stunden, nur anonyme Volumes (E-31).
   `einrichten.sh runner` nutzt denselben Ablauf, die Erstinstallation bietet ihn an.
 - Der Monitor meldet, ob das Aufräumen eingerichtet ist (neuer Bereich `aufraeumen` in `/events` und `/api/zustand`,
   additiv; der Sammler prüft als root ohne Symlinks zu folgen, S-AUFR-01).

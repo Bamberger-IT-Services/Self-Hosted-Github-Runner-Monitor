@@ -143,10 +143,18 @@ Konfiguration des Forgejo-Runners, `config.example.yaml`, hat nur Umgebungsvaria
 24 Stunden, unbenutzte Volumes und Build-Cache über 20 GB (wie bisher). Läuft gerade ein Job (GitHub:
 `Runner.Worker`; Forgejo/Gitea: Container `FORGEJO-ACTIONS-TASK-…`/`GITEA-ACTIONS-TASK-…`; GitLab: Container
 `runner-…-project-…-concurrent-…`), räumt es nur **schonend** auf: gestoppte Container und Build-Cache erst nach 24
-Stunden, nur Images ohne Namen und nur anonyme Volumes – was der Job gerade gebaut, geladen oder angelegt hat,
-bleibt. Laufende Container, ihre Images und Volumes entfernt Docker ohnehin nie. Zwei Läufe gleichzeitig gibt es
-nicht (Sperre auf das Skript). Grenze: Jobs im Host-Modus (Forgejo-Label `:host`, GitLab-Executor `shell`) ohne
-Container erkennt das Skript nicht als laufend – dann gilt „gründlich“, was nur Docker-Reste betrifft.
+Stunden, nur anonyme Volumes. **Images** auch während eines Jobs (E-31), aber nur solche, die kein Container nutzt
+(auch kein gestoppter), die seit mindestens **30 Minuten** auf der VM liegen und die in dieser Zeit weder gebaut,
+geladen, gezogen noch neu benannt wurden. Docker selbst kennt nur, wann ein Image *gebaut* wurde (darauf bezieht
+sich auch `docker image prune --filter until=…`) – ein gerade gezogenes, aber vor Wochen gebautes Image sähe alt
+aus. Deshalb merkt sich jeder Lauf als root (auch über 25 GB frei) in `/var/lib/runner-aufraeumen/images`, seit
+wann es jedes Image gibt; dazu zählen `LastTagTime` des Images und die Docker-Ereignisse `pull`/`tag`/`load`/`import`
+der letzten 30 Minuten. Laufende Container, ihre Images und Volumes entfernt Docker ohnehin nie. Zwei Läufe
+gleichzeitig gibt es nicht (Sperre auf das Skript). Grenzen: Jobs im Host-Modus (Forgejo-Label `:host`,
+GitLab-Executor `shell`) ohne Container erkennt das Skript nicht als laufend – dann gilt „gründlich“, was nur
+Docker-Reste betrifft. Zieht ein Job ein Image, das schon länger auf der VM lag, erneut und startet es erst
+Sekunden später, kann es dazwischen verschwinden, wenn Docker das Ereignis nicht mehr kennt (es hält nur die
+letzten 256) – `docker run` und die Runner ziehen es dann einfach noch einmal.
 
 **Im Monitor:** Der Sammler prüft jede Minute, was davon eingerichtet ist (Skript und nächtlicher Lauf als reguläre
 root-Dateien, Timer aktiv, Hook in `.env`). Info › Was tun, wenn … › „Platte knapp“ zeigt den Befehl
@@ -154,7 +162,7 @@ root-Dateien, Timer aktiv, Hook in `.env`). Info › Was tun, wenn … › „Pl
 Meldung „Platte knapp“ sagt, was wirklich aufräumt („vor jedem Job“, „alle 15 Minuten“ oder „nicht eingerichtet“).
 
 **Entfernen** (falls gewünscht): `sudo systemctl disable --now runner-aufraeumen.timer`, dann
-`sudo rm /etc/systemd/system/runner-aufraeumen.{service,timer} /etc/cron.daily/runner-aufraeumen /usr/local/bin/runner-aufraeumen`;
+`sudo rm -r /etc/systemd/system/runner-aufraeumen.{service,timer} /etc/cron.daily/runner-aufraeumen /usr/local/bin/runner-aufraeumen /var/lib/runner-aufraeumen`;
 beim GitHub-Runner die Zeile `ACTIONS_RUNNER_HOOK_JOB_STARTED=…` aus `/opt/actions-runner/.env` löschen und den
 Dienst neu starten, wenn kein Job läuft.
 

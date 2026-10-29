@@ -33,7 +33,8 @@ zusätzlich vor jedem Job (`vor-dem-job.sh`). Für jeden Runner: GitHub, Forgejo
    ```bash
    sudo /usr/local/bin/runner-aufraeumen
    ```
-   Erwartet: „runner-aufraeumen: jetzt nn GB frei (gruendlich)“ bzw. „(schonend)“. Reicht „schonend“ nicht,
+   Erwartet: „runner-aufraeumen: jetzt nn GB frei (gruendlich)“ bzw. „(schonend)“. „Schonend“ entfernt auch
+   während eines Jobs unbenutzte Images, die seit mindestens 30 Minuten auf der VM liegen. Reicht das nicht,
    nach dem Job erneut ausführen. Protokoll der Läufe alle 15 Minuten: `journalctl -u runner-aufraeumen -n 20`.
 4. Freien Platz an den Hypervisor zurückgeben (VM-Platte mit „Discard“):
    ```bash

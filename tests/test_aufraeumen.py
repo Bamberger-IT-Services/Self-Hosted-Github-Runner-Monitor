@@ -170,16 +170,60 @@ class SammlerZustandTest(unittest.TestCase):
         self.assertNotIn("aufraeumen", z.zustand_api())
 
 
-DOCKER = """#!/bin/sh
-echo "$*" >> "$PROTOKOLL"
-if [ "$1" = ps ]; then cat "$CONTAINER" 2>/dev/null; fi
-exit 0
+# Attrappe für docker: protokolliert jeden Aufruf; Lage aus $LAGE (JSON): „namen“ der laufenden Container,
+# „images“ {id: {"tags": [...], "tagzeit": Unix-Zeit}}, „container“ {id: image-id}, „events“ [Actor.ID …],
+# „ref“ {name: image-id}; „kaputt“: true → jeder Aufruf scheitert (Docker nicht erreichbar).
+DOCKER = """#!/usr/bin/env python3
+import json, os, sys
+a = sys.argv[1:]
+with open(os.environ["PROTOKOLL"], "a", encoding="utf-8") as f:
+    f.write(" ".join(a) + "\\n")
+try:
+    with open(os.environ["LAGE"], encoding="utf-8") as f:
+        lage = json.load(f)
+except (KeyError, OSError, ValueError):
+    lage = {}
+if lage.get("kaputt"):
+    sys.exit(1)
+images, container = lage.get("images", {}), lage.get("container", {})
+def ref(n):
+    return n if n in images else lage.get("ref", {}).get(n)
+if a[:2] == ["ps", "--format"]:
+    print("\\n".join(lage.get("namen", [])))
+elif a[:2] == ["ps", "-aq"]:
+    print("\\n".join(container))
+elif a[:1] == ["inspect"]:
+    print("\\n".join(container[c] for c in a[3:] if c in container))
+elif a[:2] == ["image", "ls"]:
+    print("\\n".join(i for i, d in images.items() for _ in (d.get("tags") or [None])))
+elif a[:2] == ["image", "inspect"]:
+    fmt, ziele, fehler = a[3], a[4:], 0
+    for z in ziele:
+        i = ref(z)
+        if i not in images:
+            fehler = 1
+            continue
+        if "LastTagTime" in fmt:
+            print(i, images[i].get("tagzeit", -62135596800))
+        elif "RepoTags" in fmt:
+            print("".join(t + " " for t in images[i].get("tags", [])))
+        else:
+            print(i)
+    sys.exit(fehler)
+elif a[:1] == ["events"]:
+    print("\\n".join(lage.get("events", [])))
 """
+
+
+def sha(zeichen: str) -> str:
+    return "sha256:" + zeichen * 64
 
 
 @unittest.skipUnless(shutil.which("sh"), "sh fehlt")
 class SkriptTest(unittest.TestCase):
-    """deploy/runner-aufraeumen mit Attrappen: df meldet $FREI GB, pgrep -fc zählt $WORKER."""
+    """deploy/runner-aufraeumen mit Attrappen: df meldet $FREI GB, pgrep -fc zählt $WORKER, docker liest $LAGE."""
+
+    SHELL = "sh"
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -191,23 +235,37 @@ class SkriptTest(unittest.TestCase):
         ausfuehrbar(self.bin / "pgrep", '#!/bin/sh\necho "${WORKER:-0}"\n[ "${WORKER:-0}" -gt 0 ]\n')
         ausfuehrbar(self.bin / "journalctl", "#!/bin/sh\nexit 0\n")
         self.protokoll = self.d / "docker.log"
-        self.container = self.d / "container.txt"
+        self.lage = self.d / "lage.json"
+        self.w = self.d / "wurzel"
+        self.liste = self.w / "var/lib/runner-aufraeumen/images"
 
-    def lauf(self, *argumente: str, frei: int = 10, worker: int = 0, container: str = "") -> subprocess.CompletedProcess:
+    def lauf(self, *argumente: str, frei: int = 10, worker: int = 0, container: str = "",
+             lage: dict | None = None, wurzel: bool = True) -> subprocess.CompletedProcess:
         self.protokoll.write_text("")
-        self.container.write_text(container)
+        self.lage.write_text(json.dumps({"namen": [n for n in container.splitlines() if n], **(lage or {})}))
         umgebung = {"PATH": f"{self.bin}:/usr/bin:/bin", "FREI": str(frei), "WORKER": str(worker),
-                    "PROTOKOLL": str(self.protokoll), "CONTAINER": str(self.container), "LANG": "C.UTF-8"}
-        return subprocess.run(["sh", str(SKRIPT), *argumente], capture_output=True, text=True, env=umgebung, timeout=30, check=False)
+                    "PROTOKOLL": str(self.protokoll), "LAGE": str(self.lage), "LANG": "C.UTF-8"}
+        if wurzel:
+            umgebung["AUFRAEUMEN_WURZEL"] = str(self.w)
+        return subprocess.run([self.SHELL, str(SKRIPT), *argumente], capture_output=True, text=True, env=umgebung, timeout=60, check=False)
 
     def befehle(self) -> list[str]:
-        return [z for z in self.protokoll.read_text().splitlines() if not z.startswith("ps")]
+        return [z for z in self.protokoll.read_text().splitlines()
+                if not z.startswith(("ps", "image ls", "image inspect", "inspect", "events"))]
+
+    def gemerkt(self) -> dict[str, int]:
+        return {z.split()[0]: int(z.split()[1]) for z in self.liste.read_text().splitlines()}
 
     def test_ueber_der_schwelle_nichts(self):
         r = self.lauf("25", frei=30)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(self.protokoll.read_text(), "")
+        self.assertEqual(self.befehle(), [])  # nur die Liste der Images wird gelesen
         self.assertEqual(r.stdout, "")
+
+    def test_ohne_schreibrecht_kein_docker_aufruf(self):
+        r = self.lauf("25", frei=30, wurzel=False)  # /var/lib/runner-aufraeumen nicht schreibbar (kein root)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.protokoll.read_text(), "")
 
     def test_gruendlich_ohne_job(self):
         r = self.lauf("25", frei=10)
@@ -218,14 +276,23 @@ class SkriptTest(unittest.TestCase):
         self.assertIn("image prune -af --filter until=24h", b)
         self.assertIn("(gruendlich)", r.stdout)
 
+    def test_gruendlich_docker_vor_23(self):
+        """volume prune -af scheitert (Docker < 23 kennt -a nicht) → volume prune -f."""
+        ausfuehrbar(self.bin / "docker", '#!/bin/sh\necho "$*" >> "$PROTOKOLL"\n'
+                    'case "$*" in "volume prune -af") exit 1 ;; esac\nexit 0\n')
+        r = self.lauf(frei=10)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        b = self.befehle()
+        self.assertEqual(b[b.index("volume prune -af") + 1], "volume prune -f")
+
     def test_schonend_waehrend_github_job(self):
         r = self.lauf("25", frei=10, worker=1)
         self.assertEqual(r.returncode, 0, r.stderr)
         b = self.befehle()
         self.assertIn("container prune -f --filter until=24h", b)
-        self.assertIn("image prune -f", b)  # nur Images ohne Namen
         self.assertIn("volume prune -f --filter all=false", b)  # nur anonyme Volumes
-        self.assertFalse(any("-af" in x and ("image" in x or "volume" in x) for x in b), b)
+        self.assertFalse(any(x.startswith("image prune") for x in b), b)  # Images nur einzeln und geprüft
+        self.assertFalse(any("-af" in x and "volume" in x for x in b), b)
         self.assertFalse(any(x == "container prune -f" for x in b), b)
         self.assertIn("(schonend)", r.stdout)
 
@@ -243,6 +310,68 @@ class SkriptTest(unittest.TestCase):
         r = self.lauf(frei=50, container="postgres\nmein-dienst\n")
         self.assertIn("(gruendlich)", r.stdout)
 
+    def test_liste_der_images_seit_wann(self):
+        """Jeder Lauf (auch über der Schwelle) merkt sich, seit wann es jedes Image gibt; bekannte Zeiten bleiben."""
+        self.liste.parent.mkdir(parents=True)
+        self.liste.write_text(f"{sha('a')} 1000\n{sha('f')} 2000\nkaputt zeile\n")
+        lage = {"images": {sha("a"): {"tags": ["alt:1", "alt:2"]}, sha("b"): {}}}
+        r = self.lauf("25", frei=30, lage=lage)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        stand = self.gemerkt()
+        self.assertEqual(stand[sha("a")], 1000)                  # bekannt: Zeit bleibt
+        self.assertNotIn(sha("f"), stand)                        # nicht mehr da: vergessen
+        self.assertGreater(stand[sha("b")], 1_600_000_000)       # neu: jetzt
+        self.assertEqual(len(stand), 2)                          # „alt:1“ und „alt:2“ nur einmal
+        self.assertEqual(stat.S_IMODE(self.liste.stat().st_mode), 0o644)
+        self.assertEqual([p.name for p in self.liste.parent.iterdir()], ["images"])  # keine Zwischendatei
+        # Docker nicht erreichbar: die Liste bleibt, wie sie ist
+        vorher = self.liste.read_text()
+        self.lauf("25", frei=30, lage={"kaputt": True})
+        self.assertEqual(self.liste.read_text(), vorher)
+
+    def test_schonend_images_nur_alt_unbenutzt_und_nicht_frisch(self):
+        """E-31: während eines Jobs nur Images, die ≥ 30 Min. bekannt sind, die kein Container nutzt und die
+        nicht gerade gezogen, gebaut, geladen oder neu benannt wurden."""
+        alt, neu = 1000, 4_000_000_000  # „neu“ liegt in der Zukunft, ist also jünger als 30 Minuten
+        self.liste.parent.mkdir(parents=True)
+        self.liste.write_text("".join(f"{sha(z)} {alt}\n" for z in "abdef") + f"{sha('c')} {neu}\n")
+        lage = {
+            "namen": ["FORGEJO-ACTIONS-TASK-1_x"],
+            "images": {
+                sha("a"): {"tags": ["weg:1", "weg:2"]},          # alt, unbenutzt → weg
+                sha("b"): {"tags": ["dienst:1"]},                # ein gestoppter Container nutzt es → bleibt
+                sha("c"): {"tags": ["frisch:1"]},                # erst seit Kurzem bekannt → bleibt
+                sha("d"): {"tags": ["gebaut:1"], "tagzeit": neu},  # gerade gebaut/benannt (LastTagTime) → bleibt
+                sha("e"): {"tags": ["node:20"]},                 # gerade gezogen (Ereignis „pull node:20“) → bleibt
+                sha("f"): {},                                    # alt, ohne Namen, unbenutzt → weg
+                sha("9"): {"tags": ["unbekannt:1"]},             # nicht in der Liste (neu) → bleibt
+            },
+            "container": {"c" * 64: sha("b")},
+            "events": ["node:20"],
+            "ref": {"node:20": sha("e")},
+        }
+        r = self.lauf("25", frei=10, lage=lage)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("(schonend)", r.stdout)
+        rmi = [x for x in self.befehle() if x.startswith("rmi")]
+        self.assertEqual(rmi, ["rmi weg:1 weg:2", f"rmi {sha('a')}", f"rmi {sha('f')}"])
+        self.assertIn(sha("9"), self.gemerkt())
+
+    def test_schonend_ohne_liste_oder_ohne_docker_kein_image(self):
+        lage = {"namen": ["GITEA-ACTIONS-TASK-1_x"], "images": {sha("a"): {"tags": ["x:1"]}}}
+        r = self.lauf("25", frei=10, lage=lage, wurzel=False)  # keine Liste lesbar
+        self.assertIn("(schonend)", r.stdout)
+        self.assertFalse(any(x.startswith("rmi") for x in self.befehle()))
+        # Liste da, aber „docker ps -a“ scheitert: kein Image
+        self.liste.parent.mkdir(parents=True)
+        self.liste.write_text(f"{sha('a')} 1000\n")
+        ausfuehrbar(self.bin / "docker", '#!/bin/sh\necho "$*" >> "$PROTOKOLL"\n'
+                    'case "$1 $2" in "ps --format") echo GITEA-ACTIONS-TASK-1_x ;; "image ls") echo ' + sha("a") + ' ;; '
+                    '"ps -aq") exit 1 ;; esac\nexit 0\n')
+        r = self.lauf("25", frei=10, lage=lage)
+        self.assertIn("(schonend)", r.stdout)
+        self.assertFalse(any(x.startswith("rmi") for x in self.befehle()))
+
     def test_ohne_schwelle_immer(self):
         r = self.lauf(frei=500)
         self.assertIn("(gruendlich)", r.stdout)
@@ -257,9 +386,17 @@ class SkriptTest(unittest.TestCase):
         r = self.lauf("--help")
         self.assertEqual(r.returncode, 0)
         self.assertIn("--vor-dem-job", r.stdout)
+        self.assertIn("30 Minuten", r.stdout)
         self.assertNotIn("GRENZE", r.stdout)
         self.assertNotIn("shellcheck", r.stdout)
         self.assertEqual(self.protokoll.read_text(), "")
+
+
+@unittest.skipUnless(shutil.which("dash"), "dash fehlt")
+class DashSkriptTest(SkriptTest):
+    """Dasselbe unter dash (/bin/sh auf Ubuntu/Debian)."""
+
+    SHELL = "dash"
 
 
 @unittest.skipUnless(shutil.which("bash"), "bash fehlt")
@@ -338,6 +475,27 @@ class EinrichtenTest(unittest.TestCase):
         self.assertTrue(os.access(self.runner / "vor-dem-job.sh", os.X_OK))
         # und der Monitor erkennt den Hook
         self.assertIs(aufraeumen._hook(self.runner), True)
+
+    def test_hook_neu_waehrend_eines_jobs_neustart_erst_danach(self):
+        """Läuft ein Job, startet der Runner nicht sofort neu, sondern per systemd-run nach dem Job; ein
+        gescheiterter Vorgänger gleichen Namens wird vorher zurückgesetzt. Scheitert systemd-run, endet das
+        Einrichten nicht mit Fehler, sondern nennt den Befehl für später."""
+        self.runner.mkdir()
+        (self.runner / ".runner").write_text("{}")
+        ausfuehrbar(self.bin / "pgrep", "#!/bin/sh\nexit 0\n")  # Runner.Worker läuft
+        r = self.lauf()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        log = self.log.read_text()
+        self.assertIn("systemctl reset-failed runner-neustart", log)
+        self.assertLess(log.index("reset-failed runner-neustart"), log.index("systemd-run --unit=runner-neustart"))
+        self.assertNotIn("systemctl try-restart actions.runner.*", log.splitlines())  # kein sofortiger Neustart
+        self.assertIn("Neustart folgt automatisch", r.stdout)
+        # systemd-run scheitert (z. B. Name noch belegt)
+        (self.runner / ".env").write_text("")
+        ausfuehrbar(self.bin / "systemd-run", "#!/bin/sh\nexit 1\n")
+        r = self.lauf()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("erst nach einem Neustart", r.stdout)
 
     def test_fremder_hook_bleibt(self):
         self.runner.mkdir()

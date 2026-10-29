@@ -10,3 +10,13 @@ Type=oneshot
 ExecStart=/usr/local/bin/runner-aufraeumen 25
 Nice=10
 IOSchedulingClass=idle
+# hängt Docker, endet der Lauf; der nächste Takt versucht es erneut
+TimeoutStartSec=1h
+# Härtung: schreibt nur nach /var/lib/runner-aufraeumen, /opt/actions-runner/_diag und ins Journal; Docker über den Socket
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+LockPersonality=yes
