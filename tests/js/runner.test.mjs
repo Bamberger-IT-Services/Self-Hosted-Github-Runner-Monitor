@@ -207,7 +207,7 @@ test('dashboard.js entscheidet Karten und Log nicht nach dem Dienstnamen', () =>
     const start = js.indexOf(`function ${name}(`);
     assert.ok(start > 0, name);
     const rumpf = js.slice(start, js.indexOf('\n  }\n', start));
-    assert.doesNotMatch(rumpf, /istGitHub\(|anbieter\s*===|\.dienst\s*===|===\s*'(github|forgejo|gitea|gitlab|unbekannt)'/, name);
+    assert.doesNotMatch(rumpf, /istGitHub\(|anbieter\s*===|\.dienst\s*===|===\s*'(github|forgejo|gitea|gitlab)'/, name);
   }
 });
 
@@ -248,4 +248,14 @@ test('Neustarts aus NRestarts', () => {
   assert.deepEqual(R.neustarts({ neustarts: 3 }), { art: 'zahl', n: 3 });
   for (const w of [null, undefined, -1, 1.5, '3']) assert.deepEqual(R.neustarts({ neustarts: w }), { art: 'unbekannt', n: null });
   assert.deepEqual(R.neustarts(null), { art: 'unbekannt', n: null });
+});
+
+test('ansicht reicht „unbekannt“ und nicht zuordenbare Jobs durch (#93)', () => {
+  const r = { id: 'runner-vm-02', name: 'runner-vm-02', dienst: 'forgejo', faehig: { jobs: true, schritte: true },
+    status: { zustand: 'unbekannt', dienst: { zustand: 'aktiv', seit: 1 }, beimDienst: { zustand: 'unbekannt', seit: null } }, job: null };
+  assert.equal(R.ansicht(r).zustand, 'unbekannt');
+  assert.equal(R.zustand(r).wort, 'unbekannt');
+  const j = R.ansicht({ ...r, status: { ...r.status, zustand: 'job' }, job: { name: '', zuordenbar: false } });
+  assert.equal(j.job.zuordenbar, false);
+  assert.equal(R.ansicht({ id: 'x' }).zustand, null);
 });

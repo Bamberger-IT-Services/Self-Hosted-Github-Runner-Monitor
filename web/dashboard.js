@@ -388,7 +388,10 @@
     // Grundüberwachung (faehig.jobs false, #95): Dienst, Neustarts und Journal; ohne „Online bei …“ und „Letzte Jobs“.
     // Teilweise (Jobs ja, Schritte nein): „Schritte nicht verfügbar“. Gesteuert nur über faehig (RUNNER.ansicht).
     const grund = !!st.nurGrund, ohneSchritte = !!st.ohneSchritte;
-    const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : 'bereit';
+    // „unbekannt“ (#93): Runner-Liste oder Läufe beim Dienst nicht lesbar – dann nie „Bereit“ behaupten
+    const unbekannt = st.zustand === 'unbekannt' && st.dienst.zustand === 'aktiv';
+    const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : unbekannt ? 'unbekannt' : 'bereit';
+    const nichtZuordenbar = art === 'job' && st.job.zuordenbar === false;  // beschäftigt, Job nicht gefunden (#93)
     const pillD = st.dienst.zustand === 'aktiv' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Dienst aktiv')}</span>` : st.dienst.zustand === 'fehlt' ? `<span class="pill neutral">${IC.unklar()}${t('Kein Dienst')}</span>` : `<span class="pill fehler">${IC.x(13, 1.7)}${t('Dienst gestoppt')}</span>`;
     const g = st.github.zustand;
     const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei {dienst}', { dienst: dn })}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei {dienst}', { dienst: dn })}</span>` : `<span class="pill neutral">${IC.unklar()}${t('{dienst}: unbekannt', { dienst: dn })}</span>`;
@@ -399,11 +402,17 @@
       aktiv: ['ok', IC.ok(28, 1.3), t('Dienst aktiv')],
       job: ['laeuft', IC.play(28, 1.3), t('Job läuft')], bereit: ['ok', IC.ok(28, 1.3), t('Bereit')], fehlt: ['warn', IC.warn(28, 1.3), t('Kein Runner')],
       gestoppt: ['fehler', IC.stop(28), t('Dienst gestoppt')], offline: ['warn', IC.warn(28, 1.3), t('Offline bei {dienst}', { dienst: dn })],
+      unbekannt: ['neutral', IC.unklar(28), t('Zustand unbekannt')],
     }[art];
     const l0 = (st.letzteJobs || [])[0];
     const letzter = l0 ? `${l0.repo ? esc(l0.repo) + ' · ' : ''}${l0.workflow ? esc(l0.workflow) + ' · ' : ''}${esc(l0.name)} · ${vor((jetzt - ms(l0.ende)) / 1000)}` : '–';
     let mitte, dyn = null;
-    if (art === 'job') {
+    if (nichtZuordenbar) {
+      const dienstSeit = st.dienst.seit ? t('aktiv seit {d}', { d: seit((jetzt - ms(st.dienst.seit)) / 1000) }) : t('aktiv');
+      mitte = `<div class="job-repo">${t('Job nicht zuordenbar')}</div>`
+        + `<p class="zustand-text">${t('{dienst} meldet den Runner als beschäftigt, der Job lässt sich aber keinem Repository der Organisation zuordnen.', { dienst: dn })}</p>`
+        + `<dl class="kv"><div class="kv-z"><dt>${t('Dienst')}</dt><dd>${dienstSeit}</dd></div><div class="kv-z"><dt>${t('Letzter Job')}</dt><dd>${letzter}</dd></div></dl>`;
+    } else if (art === 'job') {
       // Ein Schritt aus einer Quelle (Server, Design 0.4.0). Ohne Liste von GitHub: „3 von –“,
       // Name gedämpft, ein gestrichelter Rest – der Aufbau bleibt gleich, wenn GitHub nachliefert.
       // Gerüst nur mit der Zahl der Segmente; Zahl, Name, Klassen und Laufzeit setzt dynamik() unten
@@ -436,6 +445,7 @@
         gestoppt: grund ? t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.') : t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.')
           + (st.dienst.grund === 'oom-kill' ? ' ' + t('Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.') : ''),
         offline: t('Der Dienst läuft, aber {dienst} sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.', { dienst: dn }),
+        unbekannt: t('Der Dienst läuft, aber {dienst} liefert gerade keinen lesbaren Stand – ob ein Job läuft, ist unbekannt. Verbindung und Rechte des Tokens prüfen.', { dienst: dn }),
         fehlt: keinDienst ? t('Für diesen Runner wurde kein Dienst gefunden.') : t('Auf dieser VM ist kein GitHub-Runner eingerichtet. Das Einrichtungsskript kann ihn mit einrichten.'),
       }[art];
       const wartend = w && w.abfrage === 'ok' ? w.repos.reduce((a, r) => a + r.wartet, 0) : null;
@@ -655,7 +665,7 @@
     if (S.logQuelle === 'journal') {
       // Journal der Unit (Grundüberwachung, „teilweise“): Chip nennt die Quelle, keine Schritte
       chip.hidden = false; chip.textContent = t('Journal · {unit}', { unit: S.journalUnit });
-    } else if (j && st.dienst.zustand === 'aktiv' && !S.logFremd && !st.ohneSchritte) {
+    } else if (j && j.zuordenbar !== false && st.dienst.zustand === 'aktiv' && !S.logFremd && !st.ohneSchritte) {
       const { nr, von, name } = schrittVon(j);
       chip.hidden = false; chip.textContent = t('Schritt {nr}/{von}', { nr, von: von || '–' }) + (name ? ' · ' + name : '');
     } else chip.hidden = true;

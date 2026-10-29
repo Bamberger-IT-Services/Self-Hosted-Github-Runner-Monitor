@@ -272,7 +272,7 @@ class ForgejoGiteaTest(Basis):
         self.assertEqual(f["server"], "https://git.example.org")
         self.assertEqual(f["version"], "13.0 / Runner 9.1")
         self.assertEqual(f["grad"], "sicher")
-        self.assertEqual(f["einstufung"], "teil")
+        self.assertEqual(f["einstufung"], "teil")  # bis zur Anbindung (#96/#115, E-23)
         self.assertEqual(f["unit"], "forgejo-runner.service")
         self.assertIsNone(f["log"])
         self.assertFalse(f["faehig"]["jobs"])

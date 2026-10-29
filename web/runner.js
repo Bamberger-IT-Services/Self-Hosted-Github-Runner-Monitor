@@ -108,6 +108,7 @@ const RUNNER = (() => {
       anbieter: r.dienst, unit,
       nurGrund: !faehig.jobs, ohneSchritte: !!faehig.jobs && !faehig.schritte,
       logQuelle: quelle, journalUnit: quelle === 'journal' ? r.log.unit : '',
+      zustand: s.zustand || null,  // „unbekannt“: Dienst liefert keinen lesbaren Stand (Forgejo/Gitea, #93)
     };
   }
 

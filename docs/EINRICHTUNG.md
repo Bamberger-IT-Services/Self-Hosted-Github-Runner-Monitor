@@ -147,6 +147,61 @@ letzte Jobs, laufende Jobs je Projekt. **Nicht verfügbar:** Schritte eines Jobs
 GitLab-API liefert beides nicht). Ein bei GitLab pausierter Runner gilt als offline. **Instanz-Runner** (von der
 Instanz-Verwaltung angelegt) kann der Monitor nicht abfragen (dafür braucht GitLab Administratorrechte).
 
+### Forgejo- oder Gitea-Runner anbinden (#93)
+
+Erkennt der Monitor einen Forgejo- oder Gitea-Runner (System prüfen › „Runner auf dieser VM“),
+überwacht er ihn zunächst nur über Dienst und Journal (ausgeliefert gilt er als „teil“, bis die
+Einrichtung im Browser ihn anbindet, E-23). Von Hand angebunden zeigt er zusätzlich, ob der
+Runner beim Server online ist, Jobs je Repository, den laufenden Job mit Schritten (Forgejo ab 17,
+Gitea) und die letzten Jobs. Bis die Einrichtung im Browser das übernimmt (#96/#97), geht es so:
+
+**1. Token erstellen** – auf dem Server (z. B. `https://git.example.org`) anmelden: Einstellungen ›
+Anwendungen › „Zugriffstoken erstellen“ (Gitea: „Neues Token generieren“).
+
+| Feld | Wert |
+|---|---|
+| Name | z. B. `runner-monitor` |
+| Repository- und Organisationszugriff | alle (öffentliche und private) |
+| `repository` | **Lesen** – Repositories, Läufe, Jobs, Schritte, Log-Anfang |
+| `organization` | **Lesen** – Organisation und Runner-Liste („Online“) |
+| `user` | **Lesen**, nur wenn die Runner einem Benutzer statt einer Organisation gehören |
+| alles andere | keine Rechte |
+
+Die Runner-Liste der Organisation zeigt Forgejo und Gitea nur ihren **Besitzern**. Gehört das Konto
+des Tokens nicht zu den Besitzern, bleibt „beim Dienst“ unbekannt, und bei Forgejo lassen sich
+Jobs keinem Runner zuordnen (Jobs je Repository gibt es trotzdem). Ein eigenes Konto nur für den
+Monitor im Team „Owners“ ist die sauberste Lösung. Forgejo und Gitea melden einen Ablauf des Tokens
+nicht über die API; der Monitor kann deshalb nicht vorher warnen, sondern meldet erst „Token ungültig“.
+
+**2. Token auf der VM ablegen** (ID aus der Liste, z. B. `runner-vm-02`):
+
+```bash
+sudo /opt/runner-monitor/aktuell/einrichten.sh zugang                # erkannte Runner
+sudo /opt/runner-monitor/aktuell/einrichten.sh zugang runner-vm-02   # Token verdeckt eingeben
+```
+
+**3. Server und Organisation eintragen** in `/etc/runner-monitor/runner.json` (root, Gruppe
+`runner-monitor`, 0640). Nur diese Angaben bestimmen, wohin der Monitor mit dem Token fragt –
+die Adresse aus der Erkennung ist nur ein Vorschlag:
+
+```json
+{ "version": 1,
+  "runner": {
+    "runner-vm-02": { "server": "https://git.example.org", "org": "beispiel-org" } } }
+```
+
+`server` ohne `/api/v1` und ohne Zugangsdaten; `org` ist die Organisation (oder der Benutzer), der
+die Repositories gehören. Mit Token gilt nur **`https://`**; ein Server nur mit `http://` (z. B. im LAN)
+wird erst abgefragt, wenn bei diesem Runner zusätzlich `"http_erlaubt": true` steht (E-21) – das
+Token läuft dann unverschlüsselt durchs Netz, `HTTP_PROXY` wird dabei bewusst nicht benutzt. Der Sammler liest Datei und Token in jeder Runde (alle 30 s) neu – ein
+Neustart ist nicht nötig. Ob es klappt, steht in `/run/runner-monitor/anbieter.json` (`"abfrage":
+"ok"`) bzw. im Journal des Sammlers.
+
+**Sicherheit:** `http_erlaubt` nur in einem vertrauenswürdigen Netz
+([Sicherheitsbericht](sicherheit/bericht.md), S-FORGEJO-01). Der Monitor folgt keiner Weiterleitung –
+leitet der Server z. B. von `http` auf `https` um, die `https`-Adresse eintragen. Ein Konto im Team
+„Owners“ hat volle Rechte an der Organisation – das Token selbst bekommt trotzdem nur Leserechte.
+
 ## Prüfen
 
 ```bash

@@ -60,9 +60,11 @@ STAENDE = ("angebunden", "grund", "ignoriert", "offen")
 GEPRUEFT = ["systemd-Units", "Prozesse", ".runner-Dateien", "Server-API"]
 
 # Was der Monitor in dieser Version je Dienst liefern kann (README › „Nicht verfügbar“ ehrlich zeigen).
-# Forgejo, Gitea und GitLab sind erkannt, aber noch nicht angebunden: nur Grundüberwachung (Dienst
-# und Journal). Der GitLab-Adapter (#99) kann mehr (Jobs, ohne Schritte), die Tabelle hebt aber erst an,
-# wenn der Sammler ihn aufruft (E-20). Kommt eine Anbindung dazu, ändert sich nur diese Tabelle.
+# Forgejo, Gitea und GitLab sind erkannt, ausgeliefert aber als Grundüberwachung (Dienst und Journal).
+# Ihre Adapter können mehr (Forgejo/Gitea #93: Jobs und Schritte; GitLab #99: Jobs ohne Schritte); die
+# Tabelle hebt erst an, wenn die Einrichtung sie anbindet (#96) und der Sammler sie regulär aufruft
+# (#115), Gitea zusätzlich erst nach Prüfung an einem echten Server (E-20, E-23). Ein von Hand in
+# runner.json angebundener Forgejo-/Gitea-Runner meldet in runner[] die Fähigkeiten seines Adapters.
 FAEHIG = {
     "github": {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False},
     "forgejo": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
@@ -76,6 +78,7 @@ UNIT_VERZEICHNISSE = ("/etc/systemd/system", "/run/systemd/system", "/usr/local/
                       "/usr/lib/systemd/system", "/lib/systemd/system")
 UNIT_NAME = re.compile(r"(?:[A-Za-z0-9:_.@-]|\\x[0-9a-fA-F]{2}){1,200}\.service")
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}")
+ORG = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,63}")
 HOST = re.compile(r"(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*")
 URL_PFAD = re.compile(r"(?:/[A-Za-z0-9._~%_-]{1,80}){0,8}/?")
 VERSION = re.compile(r"v?(\d{1,5}(?:\.\d{1,6}){0,3})(?:[+-][A-Za-z0-9.+-]{0,60})?")
@@ -125,6 +128,13 @@ def pruefe_unit(name: object) -> str | None:
 def pruefe_name(name: object) -> str | None:
     if isinstance(name, str) and NAME.fullmatch(name.strip()):
         return name.strip()
+    return None
+
+
+def pruefe_org(org: object) -> str | None:
+    """Organisation oder Benutzer beim Dienst (Forgejo/Gitea: ``A-Z a-z 0-9 . _ -``), höchstens 64 Zeichen."""
+    if isinstance(org, str) and ORG.fullmatch(org.strip()) and org.strip() not in (".", ".."):
+        return org.strip()
     return None
 
 
@@ -819,8 +829,11 @@ def lies_zuordnung(pfad: Path | str | None) -> dict[str, dict]:
 
     ``{"version": 1, "runner": {"<id>": {"stand": "angebunden|grund|ignoriert|offen",
     "dienst": "github|forgejo|gitea|gitlab|unbekannt", "name": "…", "unit": "….service",
-    "log": "/pfad" | null, "http_erlaubt": true}}}`` – jedes Feld außer der ID ist freiwillig. Ungültige Einträge oder
-    Felder werden verworfen; fehlt die Datei oder ist sie kaputt, gilt „keine Zuordnung“."""
+    "log": "/pfad" | null, "http_erlaubt": true, "server": "https://…", "org": "…"}}}`` – jedes Feld
+    außer der ID ist freiwillig. ``server`` und ``org`` sind die **einzige** Quelle, wohin ein Adapter
+    (Forgejo, Gitea, #93) mit Token fragt (E-18); ``http://`` nur mit ``http_erlaubt`` (E-21).
+    Ungültige Einträge oder Felder werden verworfen; fehlt die Datei oder ist sie kaputt, gilt „keine
+    Zuordnung“."""
     if not pfad or not str(pfad).startswith("/"):
         return {}
     roh = Quelle("/").lies(str(pfad), MAX_REGISTRIERUNG)  # wie alle Dateien: ohne Symlink, regulär, begrenzt
@@ -850,6 +863,10 @@ def lies_zuordnung(pfad: Path | str | None) -> dict[str, dict]:
             sauber["http_erlaubt"] = True  # nur für Adapter, die ein Token an einen Server schicken (E-21)
         if "log" in eintrag and (eintrag["log"] is None or pruefe_pfad(eintrag["log"])):
             sauber["log"] = pruefe_pfad(eintrag["log"]) if eintrag["log"] else None
+        if (server := pruefe_url(eintrag.get("server"))) and not any(z in eintrag["server"] for z in "@?#"):
+            sauber["server"] = server  # Zugangsdaten, Abfrage oder Anker in der Adresse: verworfen statt still gekürzt
+        if (org := pruefe_org(eintrag.get("org"))):
+            sauber["org"] = org
         ergebnis[rid] = sauber
     return ergebnis
 

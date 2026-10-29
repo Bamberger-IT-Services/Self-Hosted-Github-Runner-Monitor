@@ -180,6 +180,7 @@ def workflows_aus(ergebnis: dict | None) -> dict:
 class GitHub(Anbieter):
     dienst = "github"
     FAEHIG = {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False}
+    ANBINDUNG = True
 
     def faehig(self) -> dict[str, bool]:
         # Wie bis 0.7: Status (Dienst „fehlt“ bzw. Online bei GitHub) und Live-Log aus _diag/pages

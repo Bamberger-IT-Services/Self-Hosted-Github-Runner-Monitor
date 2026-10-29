@@ -73,6 +73,7 @@ Aufträge an (ein Token zum Ablegen, eine Versionsnummer zum Aktualisieren, `rel
 | Online bei GitHub | GitHub-API `orgs/{org}/actions/runners` (Recht „Self-hosted runners: Read“, optional) | 30 s |
 | Workflows je Repository | GitHub-API `orgs/{org}/repos`, dann je Repository `actions/runs?per_page=30`; bedingt mit ETag (304 kostet kein Kontingent), ruhige Repositories (über 1 Std. kein Push, nichts läuft oder wartet) nur alle 5 Min. | 30 s |
 | Token-Ablauf, API-Kontingent | Antwort-Header `github-authentication-token-expiration`, `x-ratelimit-*` | 30 s |
+| Forgejo-/Gitea-Runner: Online, Jobs je Repository, aktueller Job mit Schritten, letzte Jobs | API des Servers aus `runner.json` (`/api/v1`, Token aus `zugang/<id>.token`), siehe „Fähigkeiten je Anbieter“ | 30 s |
 | Neue Version | GitHub-API `repos/<release-repo>/releases/latest` | 6 h |
 | Docker-Container | `docker ps --format json` (wird gesammelt, in Version 0.1 nicht angezeigt) | 10 s |
 
@@ -114,8 +115,9 @@ Unit enthält „runner“, „agent“, „build“ …, startet Container). Be
 oder aktiv sind. Zwischen Forgejo und Gitea entscheidet die Antwort des Servers.
 
 **Einstufung und Fähigkeiten** richten sich nach dem, was diese Version liefern kann (Tabelle
-`FAEHIG` in `erkennung.py`): GitHub `voll` (Status, Jobs, Schritte, Logs); Forgejo, Gitea, GitLab
-`teil` (erkannt, noch ohne Adapter: Dienst und Journal); unbekannt `unbekannt` (Grundüberwachung).
+`FAEHIG` in `erkennung.py`): GitHub `voll` (Status, Jobs, Schritte, Logs); Forgejo, Gitea und GitLab
+`teil` (ausgeliefert als Dienst und Journal – ihre Adapter können mehr, die Tabelle hebt erst mit der
+Anbindung in Einrichtung und Sammler an, E-20, E-23); unbekannt `unbekannt` (Grundüberwachung).
 `updates` ist überall `false` (E-16). Ein Fund ohne Unit hat weder `status` noch `logs`.
 
 Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README):
@@ -153,6 +155,7 @@ sie der Sammler auf Auftrag der Oberfläche (POST-Endpunkt mit #96/#97):
   "runner": {
     "buildagent":   { "stand": "grund", "dienst": "unbekannt", "name": "Build-Agent",
                       "unit": "buildagent.service", "log": "/var/log/buildagent/agent.log" },
+    "runner-vm-02": { "server": "https://git.example.org", "org": "beispiel-org" },
     "runner-vm-03": { "stand": "ignoriert" },
     "runner-vm-04": { "http_erlaubt": true } } }
 ```
@@ -160,6 +163,11 @@ sie der Sammler auf Auftrag der Oberfläche (POST-Endpunkt mit #96/#97):
 Schlüssel ist die `id` des Funds; jedes Feld ist freiwillig. `http_erlaubt` (nur `true` gilt) erlaubt einem
 Adapter, das Token dieses Runners über `http://` zu senden (E-21, GitLab); ohne dieses Feld nur `https://`. Ungültige Einträge oder Felder werden
 verworfen. Ein Eintrag mit `unit`, der nicht gefunden wurde, erscheint als „von Hand zugeordnet“.
+`server` (`http(s)://host[:port][/pfad]`, ohne Zugangsdaten, Abfrage und Anker – sonst verworfen)
+und `org` (Organisation oder Benutzer beim Dienst, `A-Z a-z 0-9 . _ -`) binden einen Forgejo- oder
+Gitea-Runner an (#93); sie sind die **einzige** Quelle, wohin der Sammler mit Token fragt (E-18).
+Mit Token nur `https://`; `http://` nur mit `"http_erlaubt": true` beim selben Runner (E-21).
+Bis die Einrichtung im Browser sie schreibt (#96/#97), trägt root sie von Hand ein (EINRICHTUNG.md).
 
 **Sicherheit (S-ERK-01):** Bei Funden mit Unit-Datei kommen Name, Server und Dienst nur aus Registrierungen, die die Unit vorgibt
 (`--config` im ExecStart, Programmordner, WorkingDirectory); was nur ein Prozess in der cgroup nennt
@@ -195,6 +203,7 @@ dahintersteht ([ADR-0006](adr/0006-anbieter-adapter-und-zustand.md), E-19). Pake
 | `__init__.py` | Basisklasse `Anbieter` (zugleich Grundüberwachung), `RunnerKonfig`, Registry (`registriere`, `klasse_fuer`, `faehigkeiten_tabelle`) |
 | `github.py` | GitHub-Adapter: Abfrage einer Runde (bisher `github.abfrage`), Jobs je Repository, aktueller Job mit Schritten, Online-Status, Log-Quelle `_diag/pages` |
 | `gitlab.py` | GitLab-Adapter (#99): REST-Klient (`/api/v4`, nur lesend, ohne Weiterleitungen), Runner-Status, aktueller Job, letzte Jobs, Jobs je Projekt; ohne Schritte |
+| `forgejo.py` | Forgejo- und Gitea-Adapter (#93): eigener REST-Klient (nur GET, ohne Weiterleitungen), Online-Status, Jobs je Repository, aktueller Job mit Schritten, letzte Jobs; Log aus dem Journal der Unit |
 | `token.py` | Zugangsdaten je Runner, Übernahme des alten Tokens, Kommandozeile für `einrichten.sh` |
 
 Schnittstelle je Runner: `faehig()`, `abfrage(speicher, …)` (nur im Sammler, root, mit Token),
@@ -209,18 +218,102 @@ REST-Klient (auch für Releases und die Prüfung in der Einrichtung) und reicht 
 | Dienst | Adapter | status | jobs | schritte | logs | updates |
 |---|---|---|---|---|---|---|
 | GitHub | `GitHub` | ✓ | ✓ | ✓ | ✓ | – |
-| Forgejo, Gitea | Grundüberwachung (bis #93) | ✓ | – | – | ✓ | – |
+| Forgejo | `Forgejo` (#93), ausgeliefert als Grundüberwachung bis #96/#115 (E-23); von Hand angebunden: | ✓ | ✓ (ausgeliefert: –) | ✓ ab Forgejo 17 (ausgeliefert: –) | ✓ (Journal) | – |
+| Gitea | `Gitea` (#93, nur nach OpenAPI), ausgeliefert als Grundüberwachung (E-23) | ✓ | ✓ (ausgeliefert: –) | ✓ (ausgeliefert: –) | ✓ (Journal) | – |
 | GitLab | `GitLab` (#99), bis zur Anbindung (#94) ausgeliefert als Grundüberwachung | ✓ | ✓ (ausgeliefert: –) | – | ✓ | – |
 | unbekannt | Grundüberwachung | ✓ | – | – | ✓ | – |
 
 Ohne Unit gibt es weder `status` noch `logs` (außer beim GitHub-Runner aus `MONITOR_RUNNER_VERZ`,
 dessen Status wie bisher „fehlt“ zeigt und dessen Live-Log aus `_diag/pages` kommt). Weitere
 GitHub-Runner neben dem aus `MONITOR_RUNNER_VERZ` laufen bis #94 in der Grundüberwachung.
+**Angebunden** ist ein Forgejo- oder Gitea-Runner, wenn er eine Unit hat, `runner.json` Server (mit
+`https://`, `http://` nur mit `http_erlaubt`) und Organisation nennt und sein Stand nicht
+`grund`/`ignoriert` ist (`anbieter.angebunden`; GitLab kann denselben Weg mit #115 nutzen, er braucht
+keine Organisation – `BRAUCHT_ORG`). Sonst gilt die Grundüberwachung. Ausgeliefert ist die Einstufung
+bis #96/#115 `teil` (E-23); ein von Hand angebundener Runner meldet in `runner[]` die Fähigkeiten
+seines Adapters. Liefert der Server keine Schritte (Forgejo vor 17), meldet der Eintrag
+`faehig.schritte: false` – die Oberfläche zeigt dann „Schritte nicht verfügbar“ (Design ›
+„Teilweise“). **Ehrlich statt „Bereit“:** Ist der Runner beim Dienst beschäftigt, der Job aber in
+keinem Repository der Organisation zu finden, ist der Zustand `job` mit `job.zuordenbar: false`
+(„Job nicht zuordenbar“); ist die Runner-Liste oder sind die Läufe eines Repositorys nicht lesbar
+(`laeufeNichtLesbar`, z. B. 404 auf `/actions/runs`) oder schlug die Abfrage fehl, ist er
+`unbekannt`.
+
+### Fähigkeiten je Anbieter (API-Prüfung, #93)
+
+Geprüft am 29.10.2026 nur lesend gegen **Forgejo 17.0.1** (`17.0.1+gitea-1.22.0`) und anhand der
+OpenAPI-Beschreibungen (`/swagger.v1.json`) von Forgejo 17, Forgejo 16 (Entwicklungsstand) und
+Gitea (Entwicklungsstand nach 1.24). **Gitea ist nur nach der Beschreibung umgesetzt**, nicht gegen
+einen laufenden Server geprüft. Alle Pfade unter `/api/v1`, Anmeldung `Authorization: token …`.
+
+| Was | Forgejo | Gitea | Monitor nutzt |
+|---|---|---|---|
+| Version | `/version` → `17.0.1+gitea-1.22.0` (nennt die Gitea-Basis) | `/version` → z. B. `1.24.6` | Art des Servers (Forgejo/Gitea), Anzeige |
+| Runner-Status | `/orgs/{org}/actions/runners?visible=true` (auch globale Runner), `/user/actions/runners`, `/repos/{o}/{r}/actions/runners`, `/admin/actions/runners`; Liste `[{name, uuid, status: offline/idle/active, labels: ["…"], version}]` | gleiche Pfade; `{runners: [{name, status: online/offline, busy, labels: [{name}]}]}` | Online/Offline, beschäftigt, Labels; braucht **Besitzerrechte** an der Organisation (sonst „unbekannt“ mit Grund) |
+| Läufe je Repository | `/repos/{o}/{r}/actions/runs` → `{workflow_runs: [{id, status: running/waiting/blocked/success/failure/cancelled/skipped, workflow_id, prettyref, trigger_event, title, started}]}` | `/repos/{o}/{r}/actions/runs` wie GitHub (`in_progress`, `queued`, `completed` + `conclusion`, `head_branch`, `pull_requests`, `path`); zusätzlich `/orgs/{org}/actions/runs` und `/orgs/{org}/actions/jobs` | Jobs je Repository (läuft/wartet), ruhige Repositories seltener |
+| Jobs eines Laufs | `/repos/{o}/{r}/actions/runs/{id}/jobs` → `[{id, name, status, task_id, attempt, html_url}]` – **ohne Runner, ohne Schritte, ohne Zeiten** | `{jobs: [{id, name, status, conclusion, runner_name, runner_id, started_at, completed_at, steps}]}` | aktueller Job dieses Runners |
+| Welcher Runner hat den Job? | nur in der **ersten Log-Zeile**: „Runner <uuid> (version:…) received task …“ (Forgejo Runner) bzw. „<name>(version:…) received task …“ (act_runner) | `runner_name` im Job | Forgejo: Log-Anfang (`Range: bytes=0-4095`), Vergleich mit der UUID aus der Runner-Liste, je Job einmal |
+| Schritte | `/repos/{o}/{r}/actions/jobs/{id}` (**ab Forgejo 17**) → `steps: [{number, name, status: success/failure/running/waiting/skipped/cancelled, started, stopped}]`, von Anfang an vollständig von „Set up job“ bis „Complete job“; Forgejo 16 hat den Pfad nicht | `steps` im Job (`status` + `conclusion`) | Schritt `{nr, von, name}`; ohne Pfad `faehig.schritte: false` |
+| Logs | `/repos/{o}/{r}/actions/jobs/{id}/logs` – Text, ab 17 mit `?step=N`, `?format=ndjson`, `Range`; `/runs/{id}/logs` als ZIP | `/repos/{o}/{r}/actions/jobs/{id}/logs` (Text) | nur der Anfang (Runner-Zuordnung). Live-Log weiter aus dem Journal der Unit; ein Log über die API mit Schritt-Trennern wäre möglich (eigenes Issue) |
+| Letzte Jobs | `/actions/jobs/{id}` (Ergebnis, Ende des letzten Schritts); vor 17 nur `status` in der Job-Liste | `/actions/jobs/{id}` (`conclusion`, `completed_at`) | Jobs, die der Sammler laufen sah (bis 5); kurze Jobs zwischen zwei Runden (30 s) fehlen |
+| Kontingent, Token-Ablauf | keine Kopfzeilen (ohne eigene Einstellung kein Kontingent; Ablauf nicht abfragbar) | ebenso | `kontingent: {}`, `tokenAblauf: null`; 429 → „Kontingent“ |
+| Updates des Runners | – | – | `updates: false` |
+
+**Ohne Anmeldung** antwortet eine Instanz mit `REQUIRE_SIGNIN_VIEW` auch auf `/api/v1/version` und
+`/api/forgejo/v1/version` nur mit „Only signed in user is allowed“ – die Erkennung kann Forgejo und
+Gitea dann nicht unterscheiden (Grad „wahrscheinlich“). Der Adapter braucht das nicht: Er erkennt
+die Art an der Version und richtet sich nach der **Form** jeder Antwort.
+
+**Token-Rechte** (Forgejo und Gitea, Einstellungen › Anwendungen › „Zugriffstoken“): `read:repository`
+(Repositories, Läufe, Jobs, Schritte, Logs) und `read:organization` (Organisation; die Runner-Liste
+nur für Besitzer der Organisation), bei einem Benutzer statt einer Organisation `read:user`. Kein
+Schreibrecht. Ohne Recht auf die Runner-Liste bleibt „beim Dienst“ unbekannt und Forgejo kann
+Jobs keinem Runner zuordnen (die UUID fehlt) – Jobs je Repository gibt es trotzdem. Die Bereiche
+stammen aus der Beschreibung; mit einem eingeschränkten Token sind sie noch nicht geprüft.
+
+**Eine Runde** (Sammler, alle 30 s in einem **eigenen Faden** – ein hängender Server hält GitHub, Docker
+und Updates nie auf; eine Runde je Runner höchstens 25 s, je Anfrage eine harte Frist von 10 s in einem
+Daemon-Faden, die auch DNS und tröpfelnde Antworten abdeckt; Antworten werden stückweise gelesen, `NaN`
+und `Infinity` abgelehnt, eine Antwort in unerwarteter Form wird „unerwartete Antwort“ mit dem letzten
+guten Stand): Version → Organisation oder
+Benutzer (einmal je Token) → Runner-Liste → Repositories (ohne archivierte und ohne Actions, 50 je
+Seite) → Läufe je Repository (ruhige Repositories nur alle 5 Min., wie bei GitHub) → Jobs der
+laufenden Läufe → bei Forgejo Log-Anfang je neuem Job → Schritte des eigenen Jobs → Ergebnis der
+Jobs, die seit der letzten Runde fertig sind. Bei einer Instanz mit 7 Repositories ohne laufende
+Jobs waren das 11 Anfragen in 0,2 s, in der Runde danach 6.
+
+Ergebnis je Runner in `/run/runner-monitor/anbieter.json` (0644, ohne Token):
+
+```json
+{ "zeit": 1761730000,
+  "runner": { "runner-vm-02": {
+    "org": "beispiel-org", "abfrage": "ok", "abgefragt": 1761730000, "letzterErfolg": 1761730000,
+    "art": "forgejo", "serverVersion": "17.0.1", "tokenAblauf": null, "kontingent": {},
+    "runner": { "zustand": "online", "beschaeftigt": true, "labels": ["ubuntu-latest"] },
+    "repos": [ { "name": "web-portal", "privat": false, "laeuft": 1, "wartet": 0 } ],
+    "job": { "repo": "web-portal", "privat": false, "workflow": "ci", "name": "build",
+             "ref": { "art": "Branch", "name": "main", "titel": "…" }, "schritte": ["Set up job", "…"],
+             "schritt": { "nr": 3, "von": 5, "name": "Tests" }, "start": 1761729601, "url": "https://git.example.org/…" },
+    "letzteJobs": [ { "name": "lint", "ergebnis": "erfolg", "dauer": 42, "ende": 1761729500, "repo": "web-portal", "workflow": "ci" } ],
+    "schritte": true, "fehler": "", "anfragen": { "anfragen": 9 } } } }
+```
+
+`abfrage`: `ok`, `kein-token`, `token-ungueltig` (401), `keine-rechte` (403, Organisation nicht
+gefunden), `nicht-erreichbar` (Verbindung, Frist, 5xx), `kontingent` (429), `fehler` (Weiterleitung,
+keine JSON-Antwort, zu groß, kein Forgejo/Gitea, Server oder Organisation fehlt). Bei einem Fehler
+bleibt der letzte gute Stand (Repositories, Runner, Job, letzte Jobs) stehen; `stand` ist nur bei
+`ok`, `nicht-erreichbar` und `kontingent` „angebunden“. Die Meldungen (`token`, `abfrage`) entstehen
+wie beim GitHub-Runner. Ist der Runner beim Dienst „beschäftigt“, der Job aber keinem Repository der
+Organisation zuzuordnen (z. B. ein globaler Runner arbeitet für eine andere Organisation), zeigt der
+Eintrag `job` mit `zuordenbar: false` (siehe oben). Offen für #115: eigene Fäden je Server (heute
+nacheinander in einem Faden), GitLab im Sammler.
 
 **Woher ein Adapter seine Werte nimmt (E-18):** Server, Organisation, Log-Pfad und Token-Datei nur
 aus der Konfiguration – GitHub: Server fest `https://github.com`, Organisation aus
 `einstellungen.json` bzw. `MONITOR_ORG`, Token aus `zugang/<id>.token` (Rückfall `github-token`);
-Log-Datei anderer Runner nur aus `/etc/runner-monitor/runner.json`, sonst Journal der Unit. Vom Fund
+Forgejo/Gitea: Server und Organisation aus `runner.json`, Token aus `zugang/<id>.token`
+(`anbieter.konfig_aus`); Log-Datei anderer Runner nur aus `/etc/runner-monitor/runner.json`, sonst
+Journal der Unit. Der Runner-Name (aus dem Fund) dient nur als Filter in der Antwort des Servers. Vom Fund
 der Erkennung kommen nur ID, Anzeigename, Unit (geprüft), Version, Einstufung und Stand – zum
 Anzeigen, nie als Ziel einer Anfrage. Der Monitor prüft `erkennung.json` beim Lesen noch einmal
 (`erkennung.pruefe_ergebnis`), nimmt höchstens 20 Runner auf und fragt den Dienststatus von Runnern in
@@ -325,8 +418,8 @@ Ein Eintrag in `runner[]`:
 
 - `status.zustand`: `job|bereit|offline|gestoppt|fehlt` (mit Jobs), `aktiv|gestoppt|fehlt`
   (Grundüberwachung: „Dienst aktiv“). Ohne Unit (Fähigkeit `status` fehlt) ist er seit #95 `fehlt` – Reiter
-  und Karte zeigen beide „Kein Dienst“ (Review #114); `unbekannt` bleibt nur für einen Adapter ohne jeden
-  Status. `beimDienst` ist `null` ohne Anbindung.
+  und Karte zeigen beide „Kein Dienst“ (Review #114); `unbekannt` heißt: der Dienst liefert keinen lesbaren
+  Stand (Forgejo/Gitea, #93) oder der Adapter kann gar keinen Status. `beimDienst` ist `null` ohne Anbindung.
 - `status.dienst`: `zustand`, `seit` (aktiv seit bzw. gestoppt seit), `grund` (systemd-`Result`),
   `neustarts` (`NRestarts`: automatische Neustarts durch `Restart=` seit dem letzten Start von Hand, sonst
   `null`) und `letzterStopp` (`InactiveEnterTimestamp`, `null`, wenn die Unit seit dem Booten nie beendet
@@ -587,14 +680,15 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `/etc/runner-monitor/konfig.env` | root:runner-monitor, 0640 | Einstellungen ([Vorlage](../deploy/konfig.env.example)) |
 | `/etc/runner-monitor/zugang/` | root:root, 0700 (Dateien `<runner>.token` 0600) | Zugangsdaten je Runner (#92, nur der Sammler liest sie; siehe „Anbieter-Adapter“) |
 | `/etc/runner-monitor/github-token` | root, 0600 | bisheriger Ort des GitHub-Tokens, Rückfall bis #94/#96 (Update-Hilfsdienst und ältere Versionen lesen nur ihn) |
-| `/etc/runner-monitor/runner.json` | root:runner-monitor, 0640 | Zuordnung und Ignorieren erkannter Runner (siehe „Runner erkennen“) |
+| `/etc/runner-monitor/runner.json` | root:runner-monitor, 0640 | Zuordnung und Ignorieren erkannter Runner, Server und Organisation für Forgejo/Gitea (siehe „Runner erkennen“) |
 | `/var/lib/runner-monitor/` | runner-monitor, 0750 | `zugang.json` (scrypt-Hash), `sitzungen.json`, `sperren.json`, `einstellungen.json` (Organisation, Auto-Update), `einrichtungscode.json`, `systempruefung.json`, `update-status.json`, `verlauf.json` (Verlauf der letzten 10 Min., alle 10 s gesichert), `auftraege/` |
-| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner) – Ergebnisse des Sammlers |
+| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner), `anbieter.json` (Forgejo/Gitea, #93) – Ergebnisse des Sammlers, ohne Token |
 | `/etc/systemd/system/runner-monitor*.{service,path}` | root | Dienste ([deploy/systemd](../deploy/systemd/)) |
 
 ## Was der Monitor nicht kann
 
-- Nichts verändern: kein Neustart des Runners, kein Abbrechen von Jobs (nur anschauen).
+- Nichts verändern: kein Neustart des Runners, kein Abbrechen von Jobs (nur anschauen). Auch bei
+  Forgejo und Gitea nur GET-Anfragen.
 - Kein HTTPS von sich aus – gedacht für das lokale Netz. Wer von außen zugreifen will, setzt
   einen Reverse-Proxy mit TLS davor ([Sicherheitsbericht](sicherheit/bericht.md), S-01).
 - Das Dashboard zeigt alle Runner der VM als Reiter (ab #94); das Live-Log zeigt beim GitHub-Runner die
@@ -611,12 +705,12 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/runner.py` | Runner-Registrierung, Dienststatus, Journal- und Schritt-Logs |
 | `runner_monitor/erkennung.py` | Erkennung aller Runner auf der VM (Units, Prozesse, Registrierungen, Server-Probe), Zuordnung aus `runner.json`, Ausgabe für `einrichten.sh` |
 | `runner_monitor/github.py` | GitHub-REST-Klient (ETag, Fehlerarten), Releases, Versionen; alte Namen der Runner-Auswertung leiten an den Adapter weiter |
-| `runner_monitor/anbieter/` | Anbieter-Adapter: Basisklasse, Grundüberwachung, Registry und Fähigkeiten (`__init__.py`), GitHub-Adapter (`github.py`), Zugangsdaten je Runner und Token-Übernahme (`token.py`) |
+| `runner_monitor/anbieter/` | Anbieter-Adapter: Basisklasse, Grundüberwachung, Registry und Fähigkeiten (`__init__.py`), GitHub-Adapter (`github.py`), Forgejo-/Gitea-Adapter (`forgejo.py`), Zugangsdaten je Runner und Token-Übernahme (`token.py`) |
 | `runner_monitor/journal.py` | Journal je Unit fürs Live-Log (ein `journalctl` je Unit, Grenzen, Token-Filter) |
 | `runner_monitor/zustand.py` | Gesamtstand, Verlauf, `runner[]` und `meldungen[]`, Momentaufnahme, Verteilung an alle Browserfenster |
 | `runner_monitor/server.py` | HTTP, Anmeldung, Einrichtung, SSE, `GET /api/zustand` |
 | `runner_monitor/zugang.py` | Passwörter, Sitzungen, Sperren, Einrichtungscode |
-| `runner_monitor/sammler.py` | root-Sammler (GitHub, Docker, Releases, Aufträge) |
+| `runner_monitor/sammler.py` | root-Sammler (GitHub, Forgejo/Gitea, Docker, Releases, Aufträge) |
 | `runner_monitor/aktualisierer.py` | root-Update-Hilfsdienst |
 | `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `runner.js` (Reiter, „+N“, gemerkte Wahl, Ansicht eines Runners nach Fähigkeiten, Log-Quelle und Journal-Ziel), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
 | `einrichten.sh` | Installation, Wartung, Entfernen |
