@@ -99,6 +99,9 @@ const INFO = (() => {
       wahrscheinlich: t('wahrscheinlich – Server nicht erreichbar'),
       unklar: t('unklar – nur allgemeine Hinweise'),
     };
+    // „wahrscheinlich“ mit dem Grund aus der Erkennung (#145): z. B. „keine Registrierung gefunden“ statt pauschal „nicht erreichbar“
+    const gradText = (fund) => (fund.grad === 'wahrscheinlich' && typeof fund.grund === 'string' && fund.grund
+      ? t('wahrscheinlich – {grund}', { grund: t(fund.grund) }) : grad[fund.grad] || fund.grad);
     const pille = { angebunden: t('angebunden'), grund: t('Grundüberwachung'), noch: t('noch nicht angebunden'), neu: t('neu gefunden'), ignoriert: t('ignoriert') };
     const erkannt = daten.zeit ? (RM.tm(daten.zeit) === RM.tm(f.jetzt) ? t('heute') : RM.tm(daten.zeit)) + ' ' + RM.hm(daten.zeit) : '–';
     return (daten.funde || []).map((fund) => {
@@ -107,7 +110,7 @@ const INFO = (() => {
       const st = einstufung(fund, r, istNeu);
       const server = fund.dienst === 'github' ? ohneSchema(fund.server) : String(fund.server || '');
       const kv = [[t('Server'), server || '–']];
-      if (fund.grad) kv.push([t('Sicherheitsgrad'), grad[fund.grad] || fund.grad, fund.grad === 'sicher' ? '' : 'warn']);
+      if (fund.grad) kv.push([t('Sicherheitsgrad'), gradText(fund), fund.grad === 'sicher' ? '' : 'warn']);
       kv.push([t('Unit'), fund.unit || '–'], [t('Letzte Erkennung'), istNeu ? t('gerade eben') : erkannt]);
       return {
         id: fund.id, name: fund.name, dienst: dienstName(fund.dienst) || t('unbekannt'), dienstId: fund.dienst,
@@ -137,7 +140,7 @@ const INFO = (() => {
         [t('Server'), server || '–'],
         [t('Organisation'), r.org || j.org || '–'],
         ['Token', token, fehl ? 'warn' : ''],
-        [t('Rechte (nötig)'), rechte + (j.runnerGrund ? ` (${j.runnerGrund})` : ''), j.runnerGrund ? 'warn' : ''],
+        [t('Rechte (nötig)'), rechte + (j.runnerGrund ? ` (${t(j.runnerGrund)})` : ''), j.runnerGrund ? 'warn' : ''],
         [t('Ablauf'), tage != null ? t('{d} (in {n} {tage})', { d: RM.datum(j.tokenAblauf), n: tage, tage: RM.mehrzahl(tage, t('Tag'), t('Tagen')) }) : '–', tage != null && tage <= 14 ? 'warn' : ''],
         [t('Letzte Abfrage'), letzte, !['ok', 'kein-token', 'ausstehend'].includes(abf) ? 'warn' : ''],
         [t('Nächste Abfrage'), '', '', 'naechste'],
@@ -182,6 +185,7 @@ const INFO = (() => {
         [t('Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status zusätzlich Organization › Self-hosted runners „Read-only“.')],
         [t('Verlangt die Organisation eine Freigabe: Organisation › Settings › Personal access tokens › Pending requests. Vorher meldet der Monitor „ohne Zugriff“.')],
         [t('Forgejo / Gitea · Auf dem Server: Einstellungen › Anwendungen › „Neues Token generieren“. Rechte repository und organization jeweils „Lesen“.')],
+        [t('Forgejo / Gitea · Den Online-Status zeigt die Runner-Liste der Organisation nur ihren Besitzern. Ein Runner auf Instanz-Ebene (global) erscheint dort mit; ohne Besitzerrechte sieht ihn nur ein Administrator mit dem zusätzlichen Recht admin „Lesen“ (read:admin). Das ist freiwillig und weitreichend (Abwägung in docs/EINRICHTUNG.md) – ohne zeigt der Monitor „nicht sichtbar“, Dienst und Jobs bleiben sichtbar.')],
         [t('GitLab · Benutzer › Einstellungen › Zugriffstoken. Bereich read_api.')],
         [t('Auf der VM eintragen, die Eingabe bleibt unsichtbar. Das Skript fragt auch nach Server und Organisation, Enter behält die bisherigen:'), befehlZugang(zd.id)],
         ...(pruefenToken ? [[t('Prüfen, ob der Dienst das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):'), pruefenToken]] : []),

@@ -410,11 +410,16 @@
     const alt = grund ? { stufe: 'frisch' } : RUNNER.alter(w, jetzt);
     const veraltet = alt.stufe === 'veraltet' && st.dienst.zustand === 'aktiv';
     const unbekannt = (st.zustand === 'unbekannt' || veraltet) && st.dienst.zustand === 'aktiv';
-    const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : veraltet ? 'unbekannt' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : unbekannt ? 'unbekannt' : 'bereit';
+    // #145: Abfrage in Ordnung, der Runner fehlt nur in den lesbaren Runner-Listen – „Dienst aktiv“ mit Hinweis, nie „Bereit“
+    const nichtSichtbar = !grund && !veraltet && !!st.nichtSichtbar;
+    const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : veraltet ? 'unbekannt' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : unbekannt ? 'unbekannt' : nichtSichtbar ? 'aktiv' : 'bereit';
     const nichtZuordenbar = art === 'job' && st.job.zuordenbar === false;  // beschäftigt, Job nicht gefunden (#93)
     const pillD = st.dienst.zustand === 'aktiv' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Dienst aktiv')}</span>` : st.dienst.zustand === 'fehlt' ? `<span class="pill neutral">${IC.unklar()}${t('Kein Dienst')}</span>` : `<span class="pill fehler">${IC.x(13, 1.7)}${t('Dienst gestoppt')}</span>`;
     const g = veraltet ? 'unbekannt' : st.github.zustand;
-    const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei {dienst}', { dienst: dn })}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei {dienst}', { dienst: dn })}</span>` : `<span class="pill neutral">${IC.unklar()}${t('{dienst}: unbekannt', { dienst: dn })}</span>`;
+    const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei {dienst}', { dienst: dn })}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei {dienst}', { dienst: dn })}</span>`
+      // #145: „nicht sichtbar“ auch bei „Job läuft“ (Job über die UUID aus .runner zugeordnet)
+      : !grund && !veraltet && st.github.sichtbar === false ? `<span class="pill neutral">${IC.unklar()}${t('{dienst}: nicht sichtbar', { dienst: dn })}</span>`
+        : `<span class="pill neutral">${IC.unklar()}${t('{dienst}: unbekannt', { dienst: dn })}</span>`;
     // Runner aus runner[] ohne Dienst (keine Unit, Unit weg): neutral „Kein Dienst“ wie sein Reiter (Review #114).
     // „Kein Runner“ mit Einrichtungsbefehl nur, wenn es gar keinen Runner gibt (Altformat ohne runner[], ohne id).
     const keinDienst = art === 'fehlt' && !!st.id;
@@ -460,7 +465,8 @@
         </div>`;
     } else {
       const text = {
-        aktiv: t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.'),
+        aktiv: nichtSichtbar ? t('Der Dienst läuft. {dienst} zeigt den Runner in keiner Runner-Liste, die das Token lesen darf (globaler Runner? Token-Rechte) – ob er dort online ist, ist unbekannt. Laufende Jobs erscheinen, sobald sie sich dem Runner zuordnen lassen.', { dienst: dn })
+          : t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.'),
         bereit: t('Wartet auf den nächsten Job. Neue Jobs starten automatisch.'),
         gestoppt: grund ? t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.') : t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei {dienst} in der Warteschlange, bis er wieder startet.', { dienst: dn })
           + (st.dienst.grund === 'oom-kill' ? ' ' + t('Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.') : ''),
@@ -481,9 +487,10 @@
         : art === 'gestoppt' ? [[t('Dienst'), dienstSeit], ...(stoppGrund(st) ? [[t('Grund'), esc(stoppGrund(st))]] : []), [t('Wartende Jobs'), wartend == null ? t('unbekannt') : t('{n} in der Warteschlange', { n: wartend })], [t('Letzter Job'), letzter]]
         : art === 'offline' ? [[t('Dienst'), dienstSeit], [t('Bei {dienst}', { dienst: dn }), st.github.seit ? t('offline seit {z} ({vor})', { z: zeit(st.github.seit), vor: vor((jetzt - ms(st.github.seit)) / 1000) }) : t('offline')], [t('Letzter Job'), letzter]]
         : art === 'fehlt' ? [['Runner', t('nicht gefunden in /opt/actions-runner')], [t('Einrichten'), `${SKRIPT} runner`]]
-        : [[t('Dienst'), dienstSeit], [t('Letzter Job'), letzter], [t('Runner-Version'), esc(st.version || '–')]];
+        : [[t('Dienst'), dienstSeit], ...(nichtSichtbar ? [[t('Bei {dienst}', { dienst: dn }), t('nicht sichtbar')]] : []), [t('Letzter Job'), letzter], [t('Runner-Version'), esc(st.version || '–')]];
       mitte = `<p class="zustand-text">${text}</p><dl class="kv">${kv.map(([k, v]) => `<div class="kv-z"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
-        + (art === 'gestoppt' || art === 'offline' ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="logs">${IC.datei()}${t('Runner-Logs abrufen ›')}</button>` : '');
+        + (art === 'gestoppt' || art === 'offline' ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="logs">${IC.datei()}${t('Runner-Logs abrufen ›')}</button>` : '')
+        + (nichtSichtbar ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">${t('Anleitung: Token-Rechte ›')}</button>` : '');
     }
     const ERG = { erfolg: ['ok', IC.ok(), t('Erfolg')], fehler: ['fehler', IC.x(), t('Fehler')], abgebrochen: ['neutral', IC.abbr(), t('Abgebrochen')] };
     const letzte = (st.letzteJobs || []).slice(0, 5).map(j => {

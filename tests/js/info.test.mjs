@@ -285,6 +285,21 @@ test('Texte nennen Zugangsdaten nur als Befehl: nirgends ein Token-Feld oder Tok
   assert.doesNotMatch(alle, /ghp_|github_pat_|glpat-/);
 });
 
+test('Sicherheitsgrad „wahrscheinlich“ nennt den Grund der Erkennung, Runner-Grund übersetzbar (#145)', () => {
+  const uebersetzt = [];
+  const tt = (text, w) => { uebersetzt.push(text); return t(text, w); };
+  const z = INFO.runnerZeilen({ funde: [fund('forgejo-runner', 'forgejo', { grad: 'wahrscheinlich', grund: 'keine Registrierung gefunden' }),
+    fund('b', 'forgejo', { grad: 'wahrscheinlich' }), fund('c', 'forgejo', { server: 'https://git.example.org' })], runner: [], neu: [], zeit: sek }, { ...f, t: tt });
+  assert.deepEqual(z[0].kv.find(([k]) => k === 'Sicherheitsgrad'), ['Sicherheitsgrad', 'wahrscheinlich – keine Registrierung gefunden', 'warn']);
+  assert.equal(z[1].kv.find(([k]) => k === 'Sicherheitsgrad')[1], 'wahrscheinlich – Server nicht erreichbar');
+  assert.equal(z[2].kv[0][1], 'https://git.example.org');
+  assert.ok(uebersetzt.includes('keine Registrierung gefunden'));
+  const v = INFO.verbindungen([runner('forgejo-runner', 'forgejo', { jobsJeRepository: gh({ runnerGrund: 'Runner beim Dienst nicht sichtbar (globaler Runner? Token-Rechte)' }) })], { ...f, t: tt });
+  const kv = Object.fromEntries(v[0].kv.map(([k, ...rest]) => [k, rest]));
+  assert.match(kv['Rechte (nötig)'][0], /nicht sichtbar/);
+  assert.ok(uebersetzt.includes('Runner beim Dienst nicht sichtbar (globaler Runner? Token-Rechte)'));
+});
+
 test('Update-Quelle (#138): GitHub als Vorgabe, Forgejo mit Adresse, http als Hinweis', () => {
   assert.deepEqual(INFO.updateQuelle(undefined, t), { name: 'GitHub', text: 'GitHub', http: false, releases: null });
   const gh = INFO.updateQuelle({ art: 'github', adresse: 'https://github.com', http: false, releases: 'https://github.com/beispiel-org/runner-monitor/releases' }, t);

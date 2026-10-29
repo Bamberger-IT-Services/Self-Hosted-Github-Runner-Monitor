@@ -291,3 +291,16 @@ test('Zustand für Reiter und „+N“: veralteter Stand wird zu „unbekannt“
   assert.equal(R.zustand(r('job', 'nicht-erreichbar', 700, { faehig: { status: true, jobs: false } }), jetzt).wort, 'job');
   assert.equal(R.zustand(r('job', 'nicht-erreichbar', 700, { status: { zustand: 'job', dienst: { zustand: 'gestoppt' } } }), jetzt).wort, 'job');
 });
+
+test('Ansicht: Runner beim Dienst nicht sichtbar (#145) – „Dienst aktiv“ mit Hinweis, nie „Bereit“', () => {
+  const faehig = { status: true, jobs: true, schritte: true, logs: true, updates: false };
+  const r = (zustand, beimDienst, f = faehig) => ({ id: 'forgejo-runner', name: 'forgejo-runner', dienst: 'forgejo', faehig: f,
+    status: { zustand, dienst: { zustand: 'aktiv', seit: 1 }, beimDienst } });
+  const unsichtbar = { zustand: 'unbekannt', seit: null, sichtbar: false };
+  assert.equal(R.ansicht(r('aktiv', unsichtbar)).nichtSichtbar, true);
+  assert.deepEqual(R.zustand(r('aktiv', unsichtbar)), { art: 'ok', wort: 'aktiv' });
+  assert.equal(R.ansicht(r('job', unsichtbar)).nichtSichtbar, false);                    // Job zugeordnet: die Jobkarte
+  assert.equal(R.ansicht(r('unbekannt', { zustand: 'unbekannt', seit: null })).nichtSichtbar, false);
+  assert.equal(R.ansicht(r('aktiv', unsichtbar, { ...faehig, jobs: false })).nichtSichtbar, false); // Grundüberwachung
+  assert.equal(R.ansicht(r('aktiv', null)).nichtSichtbar, false);
+});

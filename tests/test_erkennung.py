@@ -783,10 +783,95 @@ class EntscheidungenTest(Basis):
         self.assertIn("13.0", erkennung.als_text({"runner": [{**fund, "version": "13.0 / Runner 9.1"}]}))
 
 
+class KennungTest(Basis):
+    """#145: Name und UUID beim Dienst aus der .runner-Datei der Unit, ``WorkingDirectory=~`` und der Server
+    aus runner.json für Info › Runner."""
+
+    def test_kennung_aus_runner_datei(self):
+        unit = self.vm.forgejo()
+        f = self.erkenne(aktiv={unit: True}, antworten=FORGEJO_ANTWORT, journal=FORGEJO_JOURNAL)["runner-vm-02"]
+        self.assertEqual(f["kennung"], {"name": "runner-vm-02", "uuid": "00000000-0000-0000-0000-000000000000"})
+        self.assertNotIn("token", json.dumps(f["kennung"]))
+
+    def test_kennung_nur_aus_der_eigenen_unit(self):
+        """Eine .runner, die nur ein Prozess der Unit nennt (#109), liefert keine Kennung; GitHub hat keine."""
+        unit = self.vm.github()
+        self.assertIsNone(self.erkenne(aktiv={unit: True})["runner-vm-01"]["kennung"])
+        unit = self.vm.forgejo()
+        self.vm.datei(f"/etc/systemd/system/{unit}", "[Service]\nExecStart=/usr/local/bin/forgejo-runner daemon\n")
+        f = self.erkenne(aktiv={unit: True}, netz=False)
+        fund = next(x for x in f.values() if x["unit"] == unit)
+        self.assertIsNone(fund["kennung"])
+        self.assertTrue(any("nicht übernommen" in m for m in fund["merkmale"]))
+
+    def test_arbeitsordner_tilde_ist_das_heim_des_benutzers(self):
+        """``WorkingDirectory=~`` mit ``User=``: .runner im Heimatordner aus /etc/passwd (wie systemd)."""
+        self.vm.unit("forgejo-runner.service", "[Service]\nExecStart=/usr/local/bin/forgejo-runner daemon\n"
+                                               "User=runner\nWorkingDirectory=~\n")
+        self.vm.datei("/etc/passwd", "root:x:0:0:root:/root:/bin/bash\nrunner:x:1001:1001::/home/runner:/bin/bash\n")
+        self.vm.datei("/home/runner/.runner", json.dumps({"uuid": "00000000-0000-4000-8000-000000000008", "name": "runner-vm-08",
+                                                          "token": GEHEIM_FORGEJO, "address": "https://git.example.org"}))
+        f = self.erkenne(aktiv={"forgejo-runner.service": True}, netz=False)["runner-vm-08"]
+        self.assertEqual((f["unit"], f["server"]), ("forgejo-runner.service", "https://git.example.org"))
+        self.assertEqual(f["kennung"]["uuid"], "00000000-0000-4000-8000-000000000008")
+        # ohne passenden Benutzer kein Ordner (kein Raten)
+        self.assertIsNone(erkennung.heimatordner(erkennung.Quelle(self.vm.w), "fehlt"))
+        self.assertEqual(erkennung.heimatordner(erkennung.Quelle(self.vm.w), None), "/root")
+        self.assertEqual(erkennung.heimatordner(erkennung.Quelle(self.vm.w), "1001"), "/home/runner")
+        # Platzhalter oder ungültiger Name (Template-Unit „User=%i“) ist unbekannt, nicht root (Review PR #149)
+        self.assertIsNone(erkennung.heimatordner(erkennung.Quelle(self.vm.w), "%i"))
+        unit = erkennung.Unit(name="x.service", datei="/etc/systemd/system/x.service")
+        erkennung.deute_unit("[Service]\nUser=%i\nWorkingDirectory=~\n", unit)
+        self.assertEqual((unit.benutzer, unit.heim), ("%i", True))
+
+    def test_andere_unit_aus_runner_json_ohne_kennung(self):
+        unit = self.vm.forgejo()
+        self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"version": 1, "runner": {
+            "runner-vm-02": {"unit": "anderer-runner.service"}}}))
+        self.assertIsNone(self.erkenne(aktiv={unit: True}, netz=False)["runner-vm-02"]["kennung"])
+
+    def test_server_aus_runner_json_wird_geprueft(self):
+        """Fund ohne Registrierung (Unit allein), Server in runner.json: Info › Runner zeigt ihn, der Grad
+        beruht auf seiner Antwort (Probe ohne Zugangsdaten)."""
+        self.vm.unit("forgejo-runner.service", "[Service]\nExecStart=/usr/local/bin/forgejo-runner daemon\n")
+        self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"version": 1, "runner": {
+            "forgejo-runner": {"server": "https://git.example.org", "org": "beispiel-org"}}}))
+        f = self.erkenne(aktiv={"forgejo-runner.service": True}, antworten=FORGEJO_ANTWORT)["forgejo-runner"]
+        self.assertEqual((f["server"], f["grad"], f["grund"]), ("https://git.example.org", "sicher", None))
+        self.assertEqual(f["version"], "13.0")
+        self.assertIn("Server aus runner.json bestätigt: /api/forgejo/v1/version antwortet: 13.0", f["merkmale"])
+        self.assertEqual(self.q.abfragen, ["https://git.example.org/api/forgejo/v1/version"])
+        # nicht erreichbar: Server trotzdem angezeigt, Grad bleibt, Grund ehrlich
+        f = self.erkenne(aktiv={"forgejo-runner.service": True})["forgejo-runner"]
+        self.assertEqual((f["server"], f["grad"], f["grund"]), ("https://git.example.org", "wahrscheinlich", "Server nicht erreichbar"))
+        # ohne Unit keine Probe (E-17), ignoriert ebenso
+        self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"version": 1, "runner": {
+            "forgejo-runner": {"server": "https://git.example.org", "stand": "ignoriert"}}}))
+        self.erkenne(aktiv={"forgejo-runner.service": True}, antworten=FORGEJO_ANTWORT)
+        self.assertEqual(self.q.abfragen, [])
+
+    def test_server_aus_runner_json_entscheidet_forgejo_gegen_gitea(self):
+        self.vm.unit("act_runner.service", "[Service]\nExecStart=/usr/local/bin/act_runner daemon\n")
+        self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"version": 1, "runner": {
+            "act_runner": {"server": "https://git.example.org"}}}))
+        f = self.erkenne(aktiv={"act_runner.service": True}, antworten=FORGEJO_ANTWORT)["act_runner"]
+        self.assertEqual((f["dienst"], f["einstufung"], f["grad"]), ("forgejo", "voll", "sicher"))
+
+    def test_pruefe_ergebnis_prueft_kennung(self):
+        basis = ErgebnisPruefungTest.FUND
+        for kennung, erwartet in (({"name": "runner-vm-02", "uuid": "00000000-0000-4000-8000-00000000000A"},
+                                   {"name": "runner-vm-02", "uuid": "00000000-0000-4000-8000-00000000000a"}),
+                                  ({"name": "\x1b[31m", "uuid": "keine-uuid"}, None), ("text", None),
+                                  ({"uuid": "00000000-0000-4000-8000-000000000002", "token": "x"},
+                                   {"name": None, "uuid": "00000000-0000-4000-8000-000000000002"})):
+            roh = json.dumps({"zeit": 1.0, "runner": [{**basis, "kennung": kennung}]}).encode()
+            self.assertEqual(erkennung.pruefe_ergebnis(roh)["runner"][0]["kennung"], erwartet, kennung)
+
+
 class ErgebnisPruefungTest(unittest.TestCase):
     FUND = {"id": "runner-vm-01", "name": "runner-vm-01", "dienst": "github", "server": None, "version": None,
             "grad": "sicher", "merkmale": [], "einstufung": "voll", "stand": "offen", "unit": None, "log": None,
-            "faehig": {}, "aktiv": None, "grund": None}
+            "faehig": {}, "aktiv": None, "grund": None, "kennung": None}
 
     def test_gueltig(self):
         roh = json.dumps({"zeit": 1.0, "geprueft": [], "runner": [{**self.FUND, "fremd": "weg"}]}).encode()

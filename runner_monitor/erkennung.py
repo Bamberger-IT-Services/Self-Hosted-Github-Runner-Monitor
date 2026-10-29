@@ -82,6 +82,8 @@ ORG = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,63}")
 HOST = re.compile(r"(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,62}[A-Za-z0-9])?)*")
 URL_PFAD = re.compile(r"(?:/[A-Za-z0-9._~%_-]{1,80}){0,8}/?")
 VERSION = re.compile(r"v?(\d{1,5}(?:\.\d{1,6}){0,3})(?:[+-][A-Za-z0-9.+-]{0,60})?")
+UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+BENUTZER = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]{0,31}\$?|\d{1,10}")
 
 # Bekannte Runner: Unit-Name bzw. Programmname → Dienst.
 BEKANNT_UNIT = (
@@ -128,6 +130,13 @@ def pruefe_unit(name: object) -> str | None:
 def pruefe_name(name: object) -> str | None:
     if isinstance(name, str) and NAME.fullmatch(name.strip()):
         return name.strip()
+    return None
+
+
+def pruefe_uuid(wert: object) -> str | None:
+    """UUID eines Forgejo-/Gitea-Runners (aus ``.runner``), klein geschrieben, sonst None."""
+    if isinstance(wert, str) and UUID.fullmatch(wert.strip()):
+        return wert.strip().lower()
     return None
 
 
@@ -380,6 +389,8 @@ class Unit:
     beschreibung: str = ""
     container: bool = False
     aktiviert: bool = False
+    benutzer: str | None = None   # User= (für WorkingDirectory=~)
+    heim: bool = False            # WorkingDirectory=~: Heimatordner von User= (#145)
 
 
 def deute_unit(text: str, unit: Unit) -> None:
@@ -404,7 +415,26 @@ def deute_unit(text: str, unit: Unit) -> None:
                 unit.argv = zerlege_befehl(wert.lstrip("@-:+!"))
                 unit.container = unit.container or bool(CONTAINER.search(" ".join(unit.argv)))
         elif abschnitt == "Service" and schluessel == "WorkingDirectory":
-            unit.arbeitsverz = pruefe_pfad(wert.lstrip("-")) if wert and wert != "~" else None
+            wert = wert.lstrip("-")
+            unit.heim = wert == "~"
+            unit.arbeitsverz = pruefe_pfad(wert) if wert and not unit.heim else None
+        elif abschnitt == "Service" and schluessel == "User":
+            # roh merken: „User=“ (leer) = root; ein ungültiger Wert oder Platzhalter (%i) ist unbekannt, nicht root
+            unit.benutzer = wert or None
+
+
+def heimatordner(q: Quelle, benutzer: str | None) -> str | None:
+    """Heimatordner eines Benutzers aus ``/etc/passwd`` (nur gelesen, root-eigen) – für ``WorkingDirectory=~``.
+    Ohne ``User=`` läuft die Unit als root (``/root``); ein ungültiger Name (z. B. ``%i``) ergibt None."""
+    if benutzer is not None and not BENUTZER.fullmatch(benutzer):
+        return None
+    benutzer = benutzer or "root"
+    daten = q.lies("/etc/passwd", 1024 * 1024)
+    for zeile in (daten or b"").decode("utf-8", "replace").splitlines()[:20000]:
+        teile = zeile.split(":")
+        if len(teile) >= 7 and benutzer in (teile[0], teile[2]):
+            return pruefe_pfad(teile[5])
+    return "/root" if benutzer in ("root", "0") else None
 
 
 def zerlege_befehl(text: str) -> list[str]:
@@ -433,6 +463,8 @@ def lies_units(q: Quelle) -> dict[str, Unit]:
                         extra = q.lies(f"{drop}/{konf}", MAX_UNIT, folgen=True)
                         if extra is not None:
                             deute_unit(extra.decode("utf-8", "replace"), unit)
+            if unit.heim:
+                unit.arbeitsverz = heimatordner(q, unit.benutzer)
             units[name] = unit
     for wants in q.eintraege("/etc/systemd/system", grenze=5000):
         if wants.endswith(".wants"):
@@ -489,13 +521,14 @@ class Registrierung:
     name: str | None = None
     server: str | None = None
     hinweis: str | None = None   # „forgejo“, wenn die Datei es selbst nennt
+    uuid: str | None = None      # act_runner/Forgejo Runner: UUID beim Dienst (kein Geheimnis, #145)
     anzahl: int = 1
     nur_prozess: bool = False    # stammt nur aus einem Prozess der Unit-Gruppe, nicht aus der Unit selbst (#109)
 
 
 def deute_runner_datei(pfad: str, daten: bytes) -> Registrierung:
     """``.runner`` von GitHub (``agentName``, ``gitHubUrl``) oder act_runner/Forgejo (``name``,
-    ``address``). ``token`` und alle anderen Felder werden nicht übernommen."""
+    ``address``, ``uuid``). ``token`` und alle anderen Felder werden nicht übernommen."""
     try:
         inhalt = json.loads(daten.decode("utf-8-sig"))
     except (UnicodeDecodeError, ValueError):
@@ -507,7 +540,8 @@ def deute_runner_datei(pfad: str, daten: bytes) -> Registrierung:
     if "address" in inhalt and ("uuid" in inhalt or "token" in inhalt or "name" in inhalt):
         warnung = inhalt.get("WARNING")
         hinweis = "forgejo" if isinstance(warnung, str) and "forgejo" in warnung.lower() else None
-        return Registrierung(pfad, "act", pruefe_name(inhalt.get("name")), pruefe_url(inhalt.get("address")), hinweis)
+        return Registrierung(pfad, "act", pruefe_name(inhalt.get("name")), pruefe_url(inhalt.get("address")), hinweis,
+                             uuid=pruefe_uuid(inhalt.get("uuid")))
     return Registrierung(pfad, "kaputt")
 
 
@@ -909,6 +943,7 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
         merkmale.append(text + (" in einem Container" if p.container else ""))
 
     name = server = None
+    kennung = None          # Name und UUID beim Dienst aus der ersten act-Registrierung (#145)
     runner_verz = None
     fremd: list[str] = []   # Dienste aus Registrierungen, die nur ein Prozess der Unit nennt
     for reg in g.registrierungen:
@@ -928,6 +963,8 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
             runner_verz = runner_verz or str(PurePosixPath(reg.pfad).parent)
             merkmale.append(f"{reg.pfad} mit gitHubUrl" if reg.server else f"{reg.pfad} ohne gültige gitHubUrl")
         elif reg.art == "act":
+            if kennung is None and (reg.name or reg.uuid):
+                kennung = {"name": reg.name, "uuid": reg.uuid}
             vorher = [d for d in dienste if d in ("forgejo", "gitea")]
             dienste.append(reg.hinweis or (vorher[-1] if vorher else "forgejo"))
             aus_registrierung.append(dienste[-1])
@@ -1017,7 +1054,9 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
         "log": f"{runner_verz}/_diag" if dienst == "github" and runner_verz and unit else None,
         "faehig": faehig,
         "aktiv": aktiv,
+        "kennung": kennung if dienst in ("forgejo", "gitea") else None,
         "_grund": grund,
+        "_widerspruch": widerspruch,
     }
 
 
@@ -1033,6 +1072,7 @@ def wende_zuordnung_an(funde: list[dict], zuordnung: dict[str, dict], q: Quelle 
         gesehen.add(fund["id"])
         if eintrag.get("unit") and eintrag["unit"] != fund["unit"]:
             fund["aktiv"] = q.aktiv(eintrag["unit"]) if q else None  # andere Unit → deren Zustand
+            fund["kennung"] = None  # .runner gehört zur erkannten Unit, nicht zur zugeordneten
         for schluessel in ("name", "unit", "log", "stand"):
             if schluessel in eintrag:
                 fund[schluessel] = eintrag[schluessel]
@@ -1051,8 +1091,42 @@ def wende_zuordnung_an(funde: list[dict], zuordnung: dict[str, dict], q: Quelle 
             "id": rid, "name": eintrag.get("name", rid), "dienst": dienst, "server": None, "version": None,
             "grad": "unklar", "merkmale": ["von Hand zugeordnet"], "einstufung": EINSTUFUNG[dienst],
             "stand": eintrag.get("stand", "grund"), "unit": eintrag["unit"], "log": eintrag.get("log"),
-            "faehig": dict(FAEHIG[dienst]), "aktiv": q.aktiv(eintrag["unit"]) if q else None, "_grund": None,
+            "faehig": dict(FAEHIG[dienst]), "aktiv": q.aktiv(eintrag["unit"]) if q else None, "kennung": None, "_grund": None,
         })
+    return funde
+
+
+def pruefe_zuordnung_server(funde: list[dict], zuordnung: dict[str, dict], q: Quelle, speicher: dict) -> list[dict]:
+    """Server aus ``runner.json`` in den Fund übernehmen und dagegen prüfen (#145): Info › Runner zeigt dann
+    den Server, den die Adapter wirklich nutzen (E-18), und der Grad beruht auf dessen Antwort – nicht nur auf
+    einer ``.runner``-Datei, die vielleicht fehlt. Abgefragt wird wie sonst ohne Zugangsdaten und nur für
+    Funde mit Unit (E-17); ein ``dienst`` aus ``runner.json`` bleibt, wie er ist."""
+    for fund in funde:
+        eintrag = zuordnung.get(fund["id"]) or {}
+        server = eintrag.get("server")
+        if not server or not fund.get("unit") or fund["dienst"] not in ("forgejo", "gitea", "gitlab") \
+                or fund.get("stand") == "ignoriert":
+            continue  # GitHub nutzt runner.json › server nicht (Server fest bzw. aus .runner)
+        if server == fund.get("server") and fund["grad"] == "sicher":
+            continue  # schon bestätigt (gleiche Adresse wie in .runner)
+        fund["server"] = server
+        echt, server_version, text = probe(q, fund["dienst"], server, speicher)
+        familie = {echt, fund["dienst"]} <= {"forgejo", "gitea"}
+        if echt and (echt == fund["dienst"] or familie):
+            if echt != fund["dienst"] and "dienst" not in eintrag:
+                fund["dienst"] = echt  # der Server entscheidet zwischen Forgejo und Gitea
+                fund["einstufung"] = EINSTUFUNG[echt]
+                fund["faehig"] = dict(FAEHIG[echt])
+            fund["merkmale"].append(f"Server aus runner.json bestätigt{': ' + text if text else ''}")
+            if not fund.get("_widerspruch"):
+                fund["grad"], fund["_grund"] = "sicher", None
+            version = fund.get("version") or ""
+            if server_version and (not version or version.startswith("Runner ")):
+                fund["version"] = " / ".join(v for v in (server_version, version) if v)
+        else:
+            fund["merkmale"].append(f"Server aus runner.json: {text or 'nicht bestätigt'}")
+            if fund["grad"] != "sicher":
+                fund["_grund"] = text or fund.get("_grund")
     return funde
 
 
@@ -1085,13 +1159,26 @@ def erkenne(wurzel: Path | str = "/", runner_verz: Path | str | None = None, zuo
         if n > 1:
             f["id"] = f"{f['id'][:60]}-{n}"
     funde.sort(key=lambda f: (DIENSTE.index(f["dienst"]), f["name"], f["unit"] is None, f["unit"] or "", f["id"]))
-    funde = wende_zuordnung_an(funde, lies_zuordnung(zuordnung_datei), q)
+    zuordnung = lies_zuordnung(zuordnung_datei)
+    funde = wende_zuordnung_an(funde, zuordnung, q)
+    try:
+        funde = pruefe_zuordnung_server(funde, zuordnung, q, speicher)
+    except Exception:  # noqa: BLE001 – die Prüfung darf die Erkennung nie beenden
+        pass
     return {"zeit": time.time(), "geprueft": GEPRUEFT, "runner": [{k: v for k, v in f.items() if not k.startswith("_")} | {"grund": f.get("_grund")} for f in funde]}
 
 
 MAX_ERGEBNIS = 2 * 1024 * 1024
 FUND_SCHLUESSEL = ("id", "name", "dienst", "server", "version", "grad", "merkmale", "einstufung", "stand",
-                   "unit", "log", "faehig", "aktiv", "grund")
+                   "unit", "log", "faehig", "aktiv", "grund", "kennung")
+
+
+def pruefe_kennung(wert: object) -> dict | None:
+    """``kennung`` eines Funds (Name und UUID beim Dienst aus ``.runner``, #145) – nur geprüfte Werte."""
+    if not isinstance(wert, dict):
+        return None
+    name, uuid = pruefe_name(wert.get("name")), pruefe_uuid(wert.get("uuid"))
+    return {"name": name, "uuid": uuid} if name or uuid else None
 
 
 def pruefe_ergebnis(roh: bytes | None) -> dict | None:
@@ -1114,7 +1201,7 @@ def pruefe_ergebnis(roh: bytes | None) -> dict | None:
             return None
         if not isinstance(f.get("merkmale"), list) or not isinstance(f.get("faehig"), dict):
             return None
-        sauber.append({k: f.get(k) for k in FUND_SCHLUESSEL})
+        sauber.append({**{k: f.get(k) for k in FUND_SCHLUESSEL}, "kennung": pruefe_kennung(f.get("kennung"))})
     return {"zeit": daten["zeit"], "geprueft": GEPRUEFT, "runner": sauber}
 
 
