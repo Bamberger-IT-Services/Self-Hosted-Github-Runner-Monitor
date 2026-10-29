@@ -36,7 +36,7 @@
     umbruch: true, angehalten: false, hoch: false, pruefung: null, wfOffen: false, info: null, kerneN: 0,
     // Mehrere Runner (#94): runner[]/meldungen[] aus dem Server; status/workflows sind dann die Ansicht des
     // gewählten Runners, sonst (Altformat ohne runner) die Bereiche „status“/„workflows“ selbst.
-    runner: null, meldungenSrv: null, gewaehlt: RUNNER.laden(), statusAlt: null, workflowsAlt: null, mehrOffen: false, logFremd: false,
+    runner: null, meldungenSrv: null, wahl: RUNNER.wahl(), statusAlt: null, workflowsAlt: null, mehrOffen: false, logFremd: false,
   };
 
   /* ------------------------------------------------------------ ANSI → Segmente */
@@ -89,26 +89,26 @@
   /* Rechenlogik (Wahl, Reiter, „+N“, Ansicht eines Runners): runner.js. Ohne runner[] (Altformat) bleibt alles
      wie bisher; mit einem Runner gibt es keine Reiter und die Ansicht ist die von 0.4.0. */
   const mehrereRunner = () => Array.isArray(S.runner) && S.runner.length > 1;
-  const gewaehlterRunner = () => (S.runner || []).find((r) => r.id === S.gewaehlt) || null;
+  const gewaehlterRunner = () => (S.runner || []).find((r) => r.id === S.wahl.gewaehlt) || null;
 
   /* status/workflows aus dem gewählten Runner ableiten (oder die Altbereiche übernehmen). */
   function abgleich() {
     if (Array.isArray(S.runner) && S.runner.length) {
-      S.gewaehlt = RUNNER.waehle(S.runner, S.gewaehlt);
+      S.wahl.liste(S.runner);
       const r = gewaehlterRunner(), b = S.statusAlt || {};
       S.status = RUNNER.ansicht(r, { vm: b.vm, monitorVersion: b.monitorVersion, system: b.system });
       S.workflows = r.jobsJeRepository || null;
       // Das Live-Log kommt vom Server nur für den Runner mit Seiten-Log (GitHub, _diag/pages); für andere gibt es hier noch keine Ausgabe
       S.logFremd = !(r.log && r.log.art === 'seiten');
     } else {
-      S.status = S.statusAlt; S.workflows = S.workflowsAlt; S.gewaehlt = null; S.logFremd = false;
+      S.status = S.statusAlt; S.workflows = S.workflowsAlt; S.wahl.gewaehlt = null; S.logFremd = false;
     }
   }
   function renderAlles() { renderReiter(); renderKopf(); renderStatus(); renderWorkflows(); renderLogKopf(); }
 
   function waehleRunner(id) {
-    if (!id || id === S.gewaehlt || !(S.runner || []).some((r) => r.id === id)) { S.mehrOffen = false; renderReiter(); return; }
-    S.gewaehlt = id; S.mehrOffen = false; RUNNER.speichern(id);
+    if (!id || id === S.wahl.gewaehlt || !S.wahl.waehle(id, S.runner)) { S.mehrOffen = false; renderReiter(); return; }
+    S.mehrOffen = false;
     abgleich();
     // Karten sofort neu zeichnen, auch wenn die Sperre gegen Neuzeichnen (Fokus in der Karte) sonst greifen würde
     $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; $('status').dataset.html = '';
@@ -126,11 +126,11 @@
     const lr = $('log-runner'), gw = gewaehlterRunner();
     lr.hidden = !mehrere; lr.textContent = mehrere && gw ? gw.name : '';
     if (!mehrere) { tabs.hidden = true; pop.hidden = true; tabs.dataset.html = ''; pop.dataset.html = ''; S.mehrOffen = false; return; }
-    const { sichtbar, rest, mehr } = RUNNER.reiter(liste, S.gewaehlt);
+    const { sichtbar, rest, mehr } = RUNNER.reiter(liste, S.wahl.gewaehlt);
     if (!mehr) S.mehrOffen = false;
     const wort = zustandsWort(), von = (id) => liste.find((r) => r.id === id);
     const tab = (r) => {
-      const z = RUNNER.zustand(r), an = r.id === S.gewaehlt;
+      const z = RUNNER.zustand(r), an = r.id === S.wahl.gewaehlt;
       return `<button type="button" role="tab" class="rw-t${an ? ' an' : ''}" aria-selected="${an}" tabindex="${an ? 0 : -1}" aria-controls="status workflows" data-aktion="runner-waehlen" data-runner="${esc(r.id)}" title="${esc(`${r.name} · ${dienstText(r)} · ${wort[z.wort]}`)}"><span class="rw-z1"><span class="punkt ${z.art}" aria-hidden="true"></span><span class="rw-name">${esc(r.name)}</span></span><span class="rw-z2"><span class="${z.art}">${wort[z.wort]}</span></span></button>`;
     };
     let html = `<div class="rw-liste" role="tablist" aria-label="${esc(t('Runner wählen'))}">${sichtbar.map((id) => tab(von(id))).join('')}</div>`;
@@ -141,7 +141,7 @@
       html += `<button type="button" class="rw-t rw-mehr${S.mehrOffen ? ' an' : ''}" id="rw-mehr" aria-haspopup="listbox" aria-expanded="${S.mehrOffen}" aria-controls="rw-pop" aria-label="${esc(titel)}" title="${esc(titel)}" data-aktion="runner-mehr"><span class="rw-z1">+${rest.length}</span><span class="rw-z2">${uebrige.map((r) => `<span class="punkt ${RUNNER.zustand(r).art}" aria-hidden="true"></span>`).join('')}</span></button>`;
       popHtml = uebrige.map((r) => {
         const z = RUNNER.zustand(r);
-        return `<button type="button" role="option" class="rw-pz" aria-selected="false" tabindex="-1" data-aktion="runner-waehlen" data-runner="${esc(r.id)}"><span class="punkt ${z.art}" aria-hidden="true"></span><span class="rw-name">${esc(r.name)}</span><span class="label">${esc(dienstText(r))}</span><span class="rw-zt ${z.art}">${wort[z.wort]}</span></button>`;
+        return `<button type="button" role="option" class="rw-pz" aria-selected="${r.id === S.wahl.gewaehlt}" tabindex="-1" data-aktion="runner-waehlen" data-runner="${esc(r.id)}"><span class="punkt ${z.art}" aria-hidden="true"></span><span class="rw-name">${esc(r.name)}</span><span class="label">${esc(dienstText(r))}</span><span class="rw-zt ${z.art}">${wort[z.wort]}</span></button>`;
       }).join('');
     }
     const spalten = mehr ? 'repeat(3, minmax(0, 1fr)) 64px' : `repeat(${sichtbar.length}, minmax(0, 1fr))`;
@@ -151,13 +151,14 @@
     tabs.style.gridTemplateColumns = spalten; tabs.hidden = false;
     pop.hidden = !(mehr && S.mehrOffen);
     if (pop.dataset.html !== popHtml) { pop.innerHTML = popHtml; pop.dataset.html = popHtml; }
-    if (merke) { const z = (pop.hidden ? tabs : document).querySelector(merke) || tabs.querySelector('.rw-t.an'); if (z && z !== document.activeElement) z.focus(); }
+    if (merke) { const z = (pop.hidden ? null : pop.querySelector(merke)) || tabs.querySelector(merke) || tabs.querySelector('.rw-t.an'); if (z && z !== document.activeElement) z.focus(); }
   }
 
   /* Bedienung der Reiter per Tastatur (Tab-Muster): Pfeile links/rechts, Pos1/Ende; die Wahl folgt dem Fokus. */
   $('rw-tabs').addEventListener('keydown', (e) => {
     const knoepfe = [...$('rw-tabs').querySelectorAll('.rw-t')], i = knoepfe.indexOf(document.activeElement);
     if (i < 0) return;
+    if (e.key === 'Escape' && S.mehrOffen) { e.preventDefault(); e.stopPropagation(); schliesseMehr(true); return; }
     const ziel = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: knoepfe.length - 1 }[e.key];
     if (e.key === 'ArrowDown' && knoepfe[i].id === 'rw-mehr') { e.preventDefault(); oeffneMehr(true); return; }
     if (ziel === undefined) return;
@@ -183,8 +184,10 @@
     e.preventDefault(); pz[(ziel + pz.length) % pz.length].focus();
   });
   document.addEventListener('click', (e) => { if (S.mehrOffen && !e.target.closest('#rw-pop, #rw-mehr')) schliesseMehr(false); }, true);
-  // Verlässt der Fokus die Liste per Tab, schließt sie
-  $('rw-pop').addEventListener('focusout', (e) => { if (S.mehrOffen && e.relatedTarget && !e.relatedTarget.closest('#rw-pop, #rw-mehr')) schliesseMehr(false); });
+  // Verlässt der Fokus Liste und „+N“ per Tab, schließt die Liste
+  for (const el of [$('rw-pop'), $('rw-tabs')]) {
+    el.addEventListener('focusout', (e) => { if (S.mehrOffen && e.relatedTarget && !e.relatedTarget.closest('#rw-pop, #rw-mehr')) schliesseMehr(false); });
+  }
 
   /* ------------------------------------------------------------ Empfang */
   function setzeVerbindung(v) {
@@ -237,7 +240,8 @@
     if (us && us.zustand === 'laeuft') M.push({ id: 'update', cls: 'laeuft', ic: IC.update(), link: t('Details'), titel: t('Update auf {v} läuft', { v: us.version || '' }), text: t('{schritt} ({nr}/5) · Runner arbeitet weiter', { schritt: (UPDATE_SCHRITTE[(us.schritt || 1) - 1] || UPDATE_SCHRITTE[0])[0], nr: us.schritt || 1 }) });
     if (us && us.zustand === 'fehler' && jetzt - ms(us.zeit) < 86400000) M.push({ id: 'update', cls: 'fehler', ic: IC.x(18), link: t('Details'), titel: t('Update fehlgeschlagen'), text: t('Version {v} wurde wiederhergestellt und läuft', { v: u.installiert }) });
     const srv = Array.isArray(S.meldungenSrv) && Array.isArray(S.runner) && S.runner.length;
-    if (srv) M.push(...serverMeldungen());
+    const sm = srv ? serverMeldungen() : [];
+    if (srv) M.push(...sm.filter((e) => !e.nach));  // Token-Ablauf kommt wie in 0.4.0 nach „Platte knapp“
     else {
     if (st && st.dienst.zustand === 'gestoppt') M.push({ id: 'gestoppt', cls: 'fehler', ic: IC.x(18), titel: t('Runner-Dienst gestoppt'), text: (st.dienst.grund === 'oom-kill' ? t('Speicher voll – ein Job hat den Arbeitsspeicher gesprengt.') + ' ' : stoppGrund(st) ? `${stoppGrund(st)}. ` : '') + t('Jobs bleiben in der Warteschlange') + (w && w.abfrage === 'ok' ? ' ' + t('({n} warten)', { n: w.repos.reduce((a, r) => a + r.wartet, 0) }) : '') });
     if (st && st.dienst.zustand === 'fehlt') M.push({ id: 'runner', cls: 'warn', ic: IC.warn(18), titel: t('Kein Runner eingerichtet'), text: t('auf dieser VM wurde kein GitHub-Runner gefunden') });
@@ -249,6 +253,7 @@
     for (const p of S.platten || []) {
       if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', cls: 'warn', ic: IC.warn(18), titel: t('Platte knapp: {n} GB frei', { n: zahl(p.frei / GB, 1) }), text: t('unter {n} GB räumt der Runner vor jedem Job auf', { n: zahl(p.schwelleFrei / GB, 0) }) });
     }
+    M.push(...sm.filter((e) => e.nach));
     if (!srv && w && w.tokenAblauf) {
       const tage = Math.ceil((ms(w.tokenAblauf) - jetzt) / 86400000);
       if (tage <= 14 && tage > 0) M.push({ id: 'token', cls: 'warn', ic: IC.schluessel(18), titel: t('GitHub-Token läuft in {n} {tage} ab', { n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }), text: t('am {d} – danach bleiben die Workflows leer', { d: datum(w.tokenAblauf) }) });
@@ -287,15 +292,17 @@
         if (d.tokenAblauf) {
           const tage = Math.ceil((ms(d.tokenAblauf) - jetzt) / 86400000);
           if (tage > 14 || tage <= 0) continue;
-          e = { cls: 'warn', ic: IC.schluessel(18), titel: t('GitHub-Token läuft in {n} {tage} ab', { n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }), text: t('am {d} – danach bleiben die Workflows leer', { d: datum(d.tokenAblauf) }) };
+          e = { nach: true, cls: 'warn', ic: IC.schluessel(18), titel: t('GitHub-Token läuft in {n} {tage} ab', { n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }), text: t('am {d} – danach bleiben die Workflows leer', { d: datum(d.tokenAblauf) }) };
         } else if (d.abfrage === 'kein-token') e = { cls: 'neutral', ic: IC.schluessel(18), titel: t('Kein GitHub-Token'), text: t('Workflows und GitHub-Status sind aus') };
         else e = { cls: 'fehler', ic: IC.schluessel(18), titel: d.abfrage === 'token-ungueltig' ? t('GitHub-Token ungültig oder abgelaufen') : t('GitHub-Token ohne Zugriff'), text: t('Workflows werden nicht mehr abgefragt') };
       }
       if (!e) continue;
       e.titel = vor + e.titel; e.id = ANLEITUNG[m.id];
-      if (mehrere && RUNNER.fremd(m, S.gewaehlt)) { e.link = t('Anzeigen'); e.runner = m.runner; }
+      if (mehrere && RUNNER.fremd(m, S.wahl.gewaehlt)) { e.link = t('Anzeigen'); e.runner = m.runner; }
       M.push(e);
     }
+    // Ein Runner: Reihenfolge wie in 0.4.0 (Dienst, Offline, Abfrage, Token); mehrere: Schwere wie vom Server
+    if (!mehrere) { const rang = ['gestoppt', 'runner', 'offline', 'github', 'token']; M.sort((a, b) => rang.indexOf(a.id) - rang.indexOf(b.id)); }
     return M;
   }
 
@@ -351,7 +358,9 @@
     const pillD = st.dienst.zustand === 'aktiv' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Dienst aktiv')}</span>` : st.dienst.zustand === 'fehlt' ? `<span class="pill neutral">${IC.unklar()}${t('Kein Dienst')}</span>` : `<span class="pill fehler">${IC.x(13, 1.7)}${t('Dienst gestoppt')}</span>`;
     const g = st.github.zustand;
     const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei {dienst}', { dienst: dn })}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei {dienst}', { dienst: dn })}</span>` : `<span class="pill neutral">${IC.unklar()}${t('{dienst}: unbekannt', { dienst: dn })}</span>`;
-    const kopf = {
+    // Runner ohne Dienst, der kein GitHub-Runner ist: neutral, ohne GitHub-Text und ohne Einrichtungsbefehl (Rest: #95)
+    const keinDienst = art === 'fehlt' && (grund || !istGitHub(st));
+    const kopf = keinDienst ? ['neutral', IC.unklar(28), t('Kein Dienst')] : {
       aktiv: ['ok', IC.ok(28, 1.3), t('Dienst aktiv')],
       job: ['laeuft', IC.play(28, 1.3), t('Job läuft')], bereit: ['ok', IC.ok(28, 1.3), t('Bereit')], fehlt: ['warn', IC.warn(28, 1.3), t('Kein Runner')],
       gestoppt: ['fehler', IC.stop(28), t('Dienst gestoppt')], offline: ['warn', IC.warn(28, 1.3), t('Offline bei {dienst}', { dienst: dn })],
@@ -389,13 +398,14 @@
         gestoppt: grund ? t('Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.') : t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.')
           + (st.dienst.grund === 'oom-kill' ? ' ' + t('Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.') : ''),
         offline: t('Der Dienst läuft, aber {dienst} sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.', { dienst: dn }),
-        fehlt: t('Auf dieser VM ist kein GitHub-Runner eingerichtet. Das Einrichtungsskript kann ihn mit einrichten.'),
+        fehlt: keinDienst ? t('Für diesen Runner wurde kein Dienst gefunden.') : t('Auf dieser VM ist kein GitHub-Runner eingerichtet. Das Einrichtungsskript kann ihn mit einrichten.'),
       }[art];
       const wartend = w && w.abfrage === 'ok' ? w.repos.reduce((a, r) => a + r.wartet, 0) : null;
       const dienstSeit = st.dienst.seit ? (art === 'gestoppt' ? t('gestoppt seit {z} ({vor})', { z: zeit(st.dienst.seit), vor: vor((jetzt - ms(st.dienst.seit)) / 1000) }) : t('aktiv seit {d}', { d: seit((jetzt - ms(st.dienst.seit)) / 1000) })) : (art === 'gestoppt' ? t('gestoppt') : art === 'fehlt' ? t('nicht vorhanden') : t('aktiv'));
       const kv = grund ? [[t('Dienst'), dienstSeit], ...(art === 'gestoppt' && stoppGrund(st) ? [[t('Grund'), esc(stoppGrund(st))]] : [])]
         : art === 'gestoppt' ? [[t('Dienst'), dienstSeit], ...(stoppGrund(st) ? [[t('Grund'), esc(stoppGrund(st))]] : []), [t('Wartende Jobs'), wartend == null ? t('unbekannt') : t('{n} in der Warteschlange', { n: wartend })], [t('Letzter Job'), letzter]]
         : art === 'offline' ? [[t('Dienst'), dienstSeit], [t('Bei {dienst}', { dienst: dn }), st.github.seit ? t('offline seit {z} ({vor})', { z: zeit(st.github.seit), vor: vor((jetzt - ms(st.github.seit)) / 1000) }) : t('offline')], [t('Letzter Job'), letzter]]
+        : keinDienst ? []
         : art === 'fehlt' ? [['Runner', t('nicht gefunden in /opt/actions-runner')], [t('Einrichten'), `${SKRIPT} runner`]]
         : [[t('Dienst'), dienstSeit], [t('Letzter Job'), letzter], [t('Runner-Version'), esc(st.version || '–')]];
       mitte = `<p class="zustand-text">${text}</p><dl class="kv">${kv.map(([k, v]) => `<div class="kv-z"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
@@ -822,6 +832,16 @@
       + '</div>';
   }
 
+  /* Ohne runner[] (Altformat) ist der Runner ein GitHub-Runner. */
+  const istGitHub = (st) => !st.anbieter || st.anbieter === 'github';
+  const runnerVersion = (st) => (st.version ? `${istGitHub(st) ? 'actions-runner' : esc(RUNNER.dienstName(st.anbieter) || '')} ${esc(st.version)}`.trim() : '–');
+  /* Alle Runner für die Fehler-Mail: Name, Dienst, Version (mail.js nennt sie „Runner:“). */
+  function runnerAngaben() {
+    if (Array.isArray(S.runner) && S.runner.length) return S.runner.map((r) => ({ name: r.name, dienst: RUNNER.dienstName(r.dienst) || t('unbekannt'), version: r.version || '' }));
+    const st = S.status || {};
+    return st.runner ? [{ name: st.runner, dienst: 'GitHub', version: st.version || '' }] : [];
+  }
+
   function infoTeile() {
     const st = S.status || {}, w = S.workflows || {}, u = S.update || {}, us = u.status || {};
     const jetzt = Date.now();
@@ -830,8 +850,8 @@
     const dz = st.dienst && st.dienst.zustand;
     const mailAngaben = {
       version: u.installiert || st.monitorVersion || '', system: st.system || '', browser: navigator.userAgent,
-      runner: st.runner ? [{ name: st.runner, dienst: 'GitHub', version: st.version || '' }] : [],
-      gewaehlt: st.runner && dz && dz !== 'fehlt' ? { name: st.runner, zustand: dz === 'gestoppt' ? t('Gestoppt') : st.github && st.github.zustand === 'offline' ? t('Offline') : st.job ? t('Job') : t('Bereit') } : null,
+      runner: runnerAngaben(),
+      gewaehlt: Array.isArray(S.runner) && S.runner.length ? (gewaehlterRunner() ? { name: gewaehlterRunner().name, zustand: zustandsWort()[RUNNER.zustand(gewaehlterRunner()).wort] } : null) : st.runner && dz && dz !== 'fehlt' ? { name: st.runner, zustand: dz === 'gestoppt' ? t('Gestoppt') : st.github && st.github.zustand === 'offline' ? t('Offline') : st.job ? t('Job') : t('Bereit') } : null,
     };
     const kv = (liste) => `<dl class="kv">${liste.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`).join('')}</dl>`;
 
@@ -840,7 +860,7 @@
       [t('Installiert'), esc(u.installiert || '–')],
       [t('Neueste'), u.neueste && u.neueste.version ? (neu ? t('{v} · erschienen am {d}', { v: esc(u.neueste.version), d: u.neueste.veroeffentlicht ? datum(u.neueste.veroeffentlicht) : '–' }) : t('{v} – auf dem neuesten Stand', { v: esc(u.neueste.version) })) : (u.neueste && u.neueste.fehler ? t('nicht abrufbar') : t('noch nicht geprüft')), neu ? 'laeuft' : 'ok'],
       [t('Geprüft'), u.neueste && u.neueste.geprueft ? t('{tag} {z} bei GitHub · alle 6 Std.', { tag: tm(u.neueste.geprueft) === tm(jetzt) ? t('heute') : tm(u.neueste.geprueft), z: hm(u.neueste.geprueft) }) : '–'],
-      ['Runner', `${st.version ? 'actions-runner ' + esc(st.version) : '–'} · ${t('aktualisiert sich selbst')}`],
+      ['Runner', `${runnerVersion(st)}${istGitHub(st) ? ' · ' + t('aktualisiert sich selbst') : ''}`],
     ]);
     upd += pruefKnopf(u, us, neu);
     if (neu) upd += aenderungenHtml(u);
@@ -911,7 +931,7 @@
       issue: `<p class="info-text">${t('Fehler und Wünsche gehen per E-Mail an')} <a class="verweis" href="mailto:${MAIL.ADRESSE}">${MAIL.ADRESSE}</a>${t('. Der Knopf öffnet das E-Mail-Programm mit Betreff und einer Vorlage, in der die technischen Angaben schon stehen:')}</p>${kv([
         ['Version', `Runner-Monitor ${esc(u.installiert || st.monitorVersion || '–')}`],
         ['System', esc(st.system || '–')],
-        ['Runner', st.version ? `actions-runner ${esc(st.version)}` : '–'],
+        ['Runner', runnerVersion(st)],
         ['Browser', t('wird automatisch ergänzt')],
       ])}<div class="knopf-reihe"><a class="knopf" href="${esc(MAIL.fehler(mailAngaben, t))}">${IC.brief()}${t('Fehler melden')}</a><a class="knopf" href="${esc(MAIL.idee(mailAngaben, t))}">${t('Idee vorschlagen')}</a></div><p class="info-notiz">${t('Vor dem Absenden prüfen: Keine Tokens oder Passwörter mitschicken. Log-Ausschnitte nur gekürzt einfügen.')}</p>`,
     };
@@ -958,7 +978,7 @@
     const b = e.target.closest('[data-aktion]'); if (!b) return;
     const a = b.dataset.aktion;
     if (a === 'runner-waehlen') { waehleRunner(b.dataset.runner); const z = $('rw-tabs').querySelector(b.closest('#rw-pop') ? '.rw-t.an' : '[data-runner="' + CSS.escape(b.dataset.runner) + '"]'); if (z && b.closest('#rw-pop, #rw-tabs')) z.focus(); }
-    else if (a === 'runner-mehr') { if (S.mehrOffen) schliesseMehr(false); else oeffneMehr(false); }
+    else if (a === 'runner-mehr') { if (S.mehrOffen) schliesseMehr(false); else oeffneMehr(e.detail === 0); }  // detail 0: Tastatur (Enter, Leertaste) → Fokus in die Liste
     else if (a === 'info') oeffneInfo(b.dataset.anleitung);
     else if (a === 'info-zu') schliesseInfo();
     else if (a === 'anleitung') { S.info = S.info === b.dataset.anleitung ? 'alle' : b.dataset.anleitung; renderInfo(); }

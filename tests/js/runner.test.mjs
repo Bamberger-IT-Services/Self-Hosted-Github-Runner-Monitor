@@ -137,3 +137,31 @@ test('Dateiname passt zur Auslieferung (nur a-z, 0-9, Bindestrich) und steht vor
   assert.ok(html.indexOf('/static/runner.js') > 0);
   assert.ok(html.indexOf('/static/runner.js') < html.indexOf('/static/dashboard.js'));
 });
+
+test('gemerkte Wahl überlebt die Reihenfolge status vor runner und einen kurz fehlenden Runner', () => {
+  const s = speicher({ 'runner-monitor.runner': 'runner-vm-03' });
+  const w = R.wahl(s);
+  assert.equal(w.wunsch, 'runner-vm-03');
+  assert.equal(w.liste(null), null);                    // status kommt zuerst, runner[] noch nicht da
+  assert.equal(w.liste([]), null);
+  assert.equal(w.wunsch, 'runner-vm-03');               // der Wunsch bleibt
+  assert.equal(w.liste(liste(3)), 'runner-vm-03');      // jetzt gilt die gemerkte Wahl
+  assert.equal(w.liste(liste(2)), 'runner-vm-01');      // Runner kurz weg: vorläufig der erste
+  assert.equal(s.d['runner-monitor.runner'], 'runner-vm-03');   // die Speicherung bleibt unberührt
+  assert.equal(w.liste(liste(3)), 'runner-vm-03');      // und greift wieder
+});
+
+test('Benutzerwahl ändert den Wunsch und speichert; unbekannte ID nicht', () => {
+  const s = speicher();
+  const w = R.wahl(s);
+  assert.equal(w.waehle('runner-vm-09', liste(3)), false);
+  assert.equal(s.d['runner-monitor.runner'], undefined);
+  assert.equal(w.waehle('runner-vm-02', liste(3)), true);
+  assert.equal(w.gewaehlt, 'runner-vm-02');
+  assert.equal(s.d['runner-monitor.runner'], 'runner-vm-02');
+  assert.equal(w.liste(liste(3)), 'runner-vm-02');
+});
+
+test('Runner ohne Dienst: neutral, kein Alarm', () => {
+  assert.deepEqual(R.zustand({ status: { zustand: 'fehlt' } }), { art: 'neutral', wort: 'fehlt' });
+});

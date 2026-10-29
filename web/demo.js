@@ -99,7 +99,7 @@ window.RM_DEMO = (() => {
     return {
       id, name: id, dienst, server: 'https://git.example.org', org: 'beispiel-org', unit, stand: 'angebunden', einstufung: 'voll',
       version: dienst === 'gitea' ? 'act_runner 0.2.11' : 'GitLab Runner 17.5', labels, faehig: FAEHIG_VOLL,
-      status: { zustand: offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst: offline ? { zustand: 'offline', seit: t - 240 } : { zustand: 'online', seit: null } },
+      status: { zustand: offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst: offline ? { zustand: 'offline', seit: START + 86400 } : { zustand: 'online', seit: null } },
       job: null, letzteJobs: [{ repo: 'datenimport', workflow: 'Import', name: 'nachts', ergebnis: 'erfolg', dauer: 128, ende: t - 720 }],
       jobsJeRepository: { ...w, abfrage: 'ok', abgefragt: t - (takt % 30), naechste: t + 30 - (takt % 30), tokenAblauf: t + 160 * 86400, repos: REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })) },
       log: { art: 'journal', unit },

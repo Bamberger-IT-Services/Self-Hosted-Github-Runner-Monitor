@@ -26,6 +26,19 @@ const RUNNER = (() => {
 
   const ids = (liste) => (Array.isArray(liste) ? liste : []).map((r) => r && r.id).filter((i) => typeof i === 'string' && i);
 
+  /* Gemerkte Wahl samt gültiger Wahl. Der Wunsch ändert sich nur durch die Wahl des Benutzers; die gültige
+     Wahl folgt der Liste (fehlt der Runner, etwa vor dem ersten runner-Ereignis oder kurz beim Neustart des
+     Sammlers, gilt vorläufig der erste – der Wunsch bleibt und greift wieder, sobald es den Runner gibt). */
+  function wahl(speicher = speicherStandard()) {
+    const w = { wunsch: laden(speicher), gewaehlt: null };
+    w.liste = (liste) => { w.gewaehlt = waehle(liste, w.wunsch); return w.gewaehlt; };
+    w.waehle = (id, liste) => {
+      if (!ids(liste).includes(id)) return false;
+      w.wunsch = id; w.gewaehlt = id; speichern(id, speicher); return true;
+    };
+    return w;
+  }
+
   /* Gültige Wahl: der Wunsch, wenn es den Runner gibt, sonst der erste. Ohne Runner null. */
   function waehle(liste, wunsch) {
     const alle = ids(liste);
@@ -49,7 +62,7 @@ const RUNNER = (() => {
     return {
       job: { art: 'laeuft', wort: 'job' }, bereit: { art: 'ok', wort: 'bereit' },
       gestoppt: { art: 'fehler', wort: 'gestoppt' }, offline: { art: 'warn', wort: 'offline' },
-      aktiv: { art: 'ok', wort: 'aktiv' }, fehlt: { art: 'warn', wort: 'fehlt' },
+      aktiv: { art: 'ok', wort: 'aktiv' }, fehlt: { art: 'neutral', wort: 'fehlt' },   // ohne Dienst: neutral, kein Alarm
     }[z] || { art: 'neutral', wort: 'unbekannt' };
   }
 
@@ -75,7 +88,7 @@ const RUNNER = (() => {
   /* Meldung aus meldungen[] → betrifft sie einen anderen als den gewählten Runner? */
   const fremd = (meldung, gewaehlt) => !!(meldung && meldung.runner && meldung.runner !== gewaehlt);
 
-  return { SCHLUESSEL, MAX_REITER, laden, speichern, waehle, reiter, zustand, dienstName, ansicht, fremd };
+  return { SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = RUNNER;

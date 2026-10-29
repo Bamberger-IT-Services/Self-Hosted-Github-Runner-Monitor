@@ -374,6 +374,7 @@ const I18N = (() => {
     "Runner wählen": "Select runner",
     "Weitere Runner": "More runners",
     "Anzeigen": "Show",
+    "Für diesen Runner wurde kein Dienst gefunden.": "No service was found for this runner.",
     "Unbekannt": "Unknown",
     "Der Dienst dieses Runners wurde nicht gefunden": "The service of this runner was not found",
     "keine Anbindung": "not connected",
