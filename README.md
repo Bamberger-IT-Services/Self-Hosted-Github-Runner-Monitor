@@ -1,6 +1,6 @@
 # Runner-Monitor
 
-**Stand: 29.10.2026 · Version 0.8.0** (Design v0.8.0, noch nicht auf einer echten Runner-VM abgenommen)
+**Stand: 29.10.2026 · Version 0.8.1** (Design v0.8.0, noch nicht auf einer echten Runner-VM abgenommen)
 
 Live-Dashboard für einen **selbst gehosteten GitHub-Actions-Runner** auf einer Linux-VM.
 Ein Blick zeigt, ob der Runner bereit ist, welcher Job gerade läuft, wie ausgelastet die VM
@@ -32,8 +32,8 @@ schon laufen – oder das Skript richtet ihn mit ein.
 
 ```bash
 # 1. Neueste Version holen und entpacken (Release-Seite: Assets › runner-monitor-X.Y.Z.tar.gz)
-curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/latest/download/runner-monitor-0.8.0.tar.gz
-tar xzf runner-monitor-0.8.0.tar.gz && cd runner-monitor-0.8.0
+curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/latest/download/runner-monitor-0.8.1.tar.gz
+tar xzf runner-monitor-0.8.1.tar.gz && cd runner-monitor-0.8.1
 
 # 2. Einrichtungsskript: Dienste, Firewall (Port 8090 nur aus dem LAN), Runner-Suche
 sudo ./einrichten.sh
@@ -82,7 +82,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 
 | Version | Datum | Handbuch | Release-Notiz |
 |---|---|---|---|
-| 0.8 | 29.10.2026 (0.8.0) | [v0.8.0/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.8.0/docs/handbuch) | [v0.8.0](docs/releases/v0.8.0.md) |
+| 0.8 | 29.10.2026 (0.8.1) | [v0.8.1/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.8.1/docs/handbuch) | [v0.8.1](docs/releases/v0.8.1.md), [v0.8.0](docs/releases/v0.8.0.md) |
 | 0.7 | 25.10.2026 (0.7.0) | [v0.7.0/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.7.0/docs/handbuch) | [v0.7.0](docs/releases/v0.7.0.md) |
 | 0.6 | 25.10.2026 (0.6.1) | [v0.6.1/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.6.1/docs/handbuch) | [v0.6.1](docs/releases/v0.6.1.md), [v0.6.0](docs/releases/v0.6.0.md) |
 | 0.5 | 23.10.2026 (0.5.0) | [v0.5.0/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.5.0/docs/handbuch) | [v0.5.0](docs/releases/v0.5.0.md) |
