@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "29.10.2026 03:23",
+  stand: "29.10.2026 03:41",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -261,6 +261,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "29.10.2026 03:41", text: "Review PR #125 (#120) eingearbeitet, rebased auf develop mit #121/#118: E-25 → E-26 umnummeriert; Fehlermeldung nach entferntem altem Token sagt „bereits entfernt – bitte erneut ausführen“; „Server nicht gefunden“ aus neuem Adapter-Feld ursache (kein-dienst | weiterleitung, Forgejo/Gitea/GitLab) statt Textvergleich, Test gegen lokale Fake-Server bindet die Felder; Runner weder erkannt noch in runner.json: klarer Hinweis und Rückfrage statt stillem Rückfall auf „nur Token“; Hinweis auf wartenden Auftrag runner-zuordnung; Doku zu altem Token ohne Server und zu GitLab im Sammler (#115) angepasst." },
     { datum: "29.10.2026 03:23", text: "#120 umgesetzt (PR offen): einrichten.sh zugang <runner> fragt für Forgejo, Gitea und GitLab Server (https; http nur nach Rückfrage → http_erlaubt), Organisation (nicht GitLab) und Token ab; Prüfen und Schreiben in runner_monitor/anbieter/anbindung.py mit den Regeln der Erkennung (runner.json atomar, nur root, kein Symlink, andere Felder bleiben; Token über stdin nach zugang/<id>.token). Neue Adresse = neues Token Pflicht, Reihenfolge altes Token löschen → runner.json → neues Token, Sammler ruht dabei; Stand „Grundüberwachung“ auf Rückfrage aufheben; danach Verbindungsprüfung über den Adapter (ok/Token ungültig/keine Rechte/nicht erreichbar/Server nicht gefunden, Frist 40 s). E-26 (bitte bestätigen), Sicherheitsbericht S-ZUGANG-01, Doku EINRICHTUNG/FUNKTIONSWEISE, tests/test_anbindung.py; Bash-Ablauf zusätzlich in einem Pseudo-Terminal durchgespielt." },
     { datum: "29.10.2026 03:21", text: "Nachprüfung PR #121 (#115) eingearbeitet, rebased auf develop mit #118 (#96): Ergebnis einer Runde zum alten Server wird nach einem Serverwechsel verworfen (auch die Meldung „hängt“), der Runner sofort neu eingeplant; der Monitor zeigt ein Ergebnis mit fremdem Ziel als „ausstehend“; keine Übernahme alter Einträge ohne ziel; Text „Die erste Abfrage beim Dienst läuft.“ ohne Zeitangabe; „Verbindung prüfen“ der Einrichtung wartet bei „ausstehend“ statt „Prüfung fehlgeschlagen“." },
     { datum: "29.10.2026 02:58", text: "Review PR #121 (#115) eingearbeitet, nach Rebase auf develop (#117, #122): letzter guter Stand nur, wenn es einen gab (letzterErfolg) und zum selben Ziel (Server, Organisation, Name; neues Token ohne Altstand) – auch ohne laufenden Job, auch nach Neustart; neu angebunden „ausstehend“ statt „Kein Token“, Karte „Wird abgefragt …“ (E-25); _anbieter_erfolg/_speicher nur für angebundene IDs; GitLab-Frist mit langsamem Server getestet (Frist zur Laufzeit, nicht beim Import); eigene Meldung „Pausiert bei {dienst}“ statt „Offline“. Befunde 3 und 8 als Folge-Issue (Koordinator)." },

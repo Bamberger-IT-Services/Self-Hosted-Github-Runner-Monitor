@@ -85,6 +85,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Adresse eines Runners mit Token, verlangt es ein neues Token; das bisherige geht nie an die neue
   Adresse. Ein Stand „Grundüberwachung“ aus der Einrichtung lässt sich dabei aufheben. Von Hand geht
   es weiterhin (#120, E-26).
+  Hinweis: Ein Token, das bisher ohne Server in `zugang/` lag, wird beim ersten Lauf mit Server neu
+  abgefragt und das alte verworfen. Eine im Browser noch nicht übernommene Auswahl „Grundüberwachung“ kann
+  den aufgehobenen Stand wieder setzen.
 
 ### Behoben
 - Reiter und Karte zeigen für einen Runner ohne systemd-Dienst beide „Kein Dienst“ (der Reiter zeigte

@@ -62,9 +62,12 @@ LOG_KOPF = re.compile(r"^(?:\S+Z\s+)?(?:Runner\s+)?(?P<wer>[^\s(]{1,128})\s*\(ve
 
 
 class ForgejoFehler(Exception):
-    def __init__(self, art: str, text: str = "") -> None:
+    def __init__(self, art: str, text: str = "", ursache: str | None = None) -> None:
         super().__init__(text or art)
         self.art = art  # nicht-erreichbar | token-ungueltig | keine-rechte | fehlt | kontingent | fehler
+        # Warum die Adresse nicht passt (für „Server nicht gefunden“ in einrichten.sh zugang, #120):
+        # kein-dienst (antwortet nicht wie Forgejo/Gitea) | weiterleitung (3xx) | None
+        self.ursache = ursache
 
 
 @dataclass
@@ -145,7 +148,7 @@ class Klient:
         try:
             return Antwort(json.loads(roh.decode("utf-8"), parse_constant=_verwerfe_konstante), kopf)
         except (UnicodeDecodeError, ValueError, RecursionError):
-            raise ForgejoFehler("fehler", f"Keine gültige JSON-Antwort auf {pfad}") from None
+            raise ForgejoFehler("fehler", f"Keine gültige JSON-Antwort auf {pfad}", ursache="kein-dienst") from None
 
     @staticmethod
     def _pruefe_code(code: int, pfad: str) -> None:
@@ -158,7 +161,7 @@ class Klient:
         if code == 429:
             raise ForgejoFehler("kontingent", "Zu viele Anfragen (429)")
         if 300 <= code < 400:
-            raise ForgejoFehler("fehler", f"Weiterleitung ({code}) – Adresse in runner.json prüfen")
+            raise ForgejoFehler("fehler", f"Weiterleitung ({code}) – Adresse in runner.json prüfen", ursache="weiterleitung")
         if code >= 500:  # Dienst startet neu, Proxy ohne Ziel: vorübergehend
             raise ForgejoFehler("nicht-erreichbar", f"Server antwortet mit {code}")
         raise ForgejoFehler("fehler", f"Server antwortet mit {code}")
@@ -431,7 +434,7 @@ def abfrage(klient: Klient, org: str, runner_name: str, speicher: dict, letzter_
         except ForgejoFehler as fehler:
             if fehler.art != "fehlt":
                 raise
-            raise ForgejoFehler("fehler", "Server antwortet nicht wie Forgejo oder Gitea (/api/v1/version fehlt)") from None
+            raise ForgejoFehler("fehler", "Server antwortet nicht wie Forgejo oder Gitea (/api/v1/version fehlt)", ursache="kein-dienst") from None
         roh = version.get("version") if isinstance(version, dict) else None
         ergebnis["art"] = art_aus_version(roh)
         ergebnis["serverVersion"] = erkennung.pruefe_version(roh.split("+")[0]) if isinstance(roh, str) else None
@@ -476,6 +479,8 @@ def abfrage(klient: Klient, org: str, runner_name: str, speicher: dict, letzter_
     except ForgejoFehler as fehler:
         ergebnis["abfrage"] = "keine-rechte" if fehler.art == "fehlt" else fehler.art
         ergebnis["fehler"] = str(fehler)
+        if fehler.ursache:
+            ergebnis["ursache"] = fehler.ursache
     except (TypeError, ValueError, AttributeError, OverflowError, KeyError, IndexError, RecursionError):
         # Fremde Antwort in unerwarteter Form: Runde als Fehler, nie abstürzen oder Halbes zeigen –
         # der Sammler behält den letzten guten Stand

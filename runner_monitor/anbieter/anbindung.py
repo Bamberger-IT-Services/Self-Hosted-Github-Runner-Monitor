@@ -157,6 +157,7 @@ def info(rid: str, erkennung_datei: Path | None, zuordnung_datei: Path, zugang_v
     return {
         "dienst": dienst,
         "gefunden": int(bool(fund)),
+        "eingetragen": int(rid in erkennung.lies_zuordnung(zuordnung_datei)),
         "braucht_org": int(dienst in DIENSTE_MIT_SERVER and klasse_fuer(dienst).BRAUCHT_ORG),
         "server": eintrag.get("server", ""),
         "org": eintrag.get("org", ""),
@@ -213,17 +214,19 @@ def setze(rid: str, zuordnung_datei: Path, zugang_verz: Path, server: str, *, or
     neu = {**roh, "version": roh.get("version", 1), "runner": {**runner, rid: eintrag}}
 
     # Reihenfolge (E-22): altes Token weg → runner.json → neues Token. Dazwischen gilt höchstens „kein Token“.
+    nachsatz = ""  # nach dem Entfernen: der Runner hat kein Token mehr, also nicht „nichts geändert“
     if neue_adresse and token_da:
         try:
             zugangsdaten.entferne(zugang_verz, rid)
         except OSError as fehler:
             raise AnbindungFehler(f"Bisheriges Token nicht entfernt ({type(fehler).__name__}) – nichts geändert.") from None
         zeilen.append(("ok", f"bisheriges Token entfernt (gehörte zu {_text(server_aus_zuordnung(alt.get('server')) or 'keiner Adresse')})"))
+        nachsatz = " Das bisherige Token wurde bereits entfernt – bitte erneut ausführen."
     try:
         einrichtung.schreibe_zuordnung(Path(zuordnung_datei), neu)
     except (einrichtung.EingabeFehler, OSError) as fehler:
         grund = type(fehler).__name__ if isinstance(fehler, OSError) else str(fehler)
-        raise AnbindungFehler(f"{zuordnung_datei} nicht geschrieben ({_text(grund)}).") from None
+        raise AnbindungFehler(f"{zuordnung_datei} nicht geschrieben ({_text(grund)}).{nachsatz}") from None
     teile = [f"Server {adresse}"] + ([f"Organisation {org}"] if org is not None else []) + (["http_erlaubt"] if ist_http else [])
     zeilen.append(("ok", f"gespeichert in {zuordnung_datei}: {_text(', '.join(teile))}"))
     if token is not None:
@@ -231,7 +234,7 @@ def setze(rid: str, zuordnung_datei: Path, zugang_verz: Path, server: str, *, or
             zugangsdaten.schreibe(zugang_verz, rid, token, ueberschreiben=True)
         except (zugangsdaten.TokenFehler, OSError) as fehler:
             grund = getattr(fehler, "strerror", None) or type(fehler).__name__
-            raise AnbindungFehler(f"Token nicht gespeichert ({_text(grund)}) – Rechte prüfen: sudo ls -ld {zugang_verz}") from None
+            raise AnbindungFehler(f"Token nicht gespeichert ({_text(grund)}) – Rechte prüfen: sudo ls -ld {zugang_verz}.{nachsatz}") from None
         zeilen.append(("ok", f"Token gespeichert in {token_datei} (nur root)"))
     elif token_da:
         zeilen.append(("ok", f"Token unverändert ({token_datei}, gleiche Adresse)"))
@@ -243,11 +246,7 @@ def setze(rid: str, zuordnung_datei: Path, zugang_verz: Path, server: str, *, or
 # ---------------------------------------------------------------- Verbindung prüfen
 
 
-def _nicht_gefunden(dienst: str, fehler: str) -> bool:
-    """Antwortet unter der Adresse etwas anderes als dieser Dienst (falsche Adresse, Weiterleitung)?"""
-    merkmale = ("/api/v1/version fehlt", "Keine gültige JSON-Antwort", "Weiterleitung") if dienst != "gitlab" \
-        else ("nicht mit JSON", "leitet weiter")
-    return any(m in fehler for m in merkmale)
+URSACHEN = ("kein-dienst", "weiterleitung")  # Feld ``ursache`` der Adapter (ForgejoFehler, GitLabFehler)
 
 
 def bewerte(dienst: str, erg: dict, org: str = "") -> tuple[int, list[tuple[str, str]]]:
@@ -285,8 +284,10 @@ def bewerte(dienst: str, erg: dict, org: str = "") -> tuple[int, list[tuple[str,
         return 1, [("fehler", text), *detail]
     if art == "kontingent":
         return 1, [("fehler", "API-Kontingent erschöpft – bitte später erneut prüfen."), *detail]
-    if _nicht_gefunden(dienst, fehler):
-        return 1, [("fehler", f"Server nicht gefunden: unter dieser Adresse antwortet kein {name} (Adresse prüfen, ohne Weiterleitung)."), *detail]
+    if erg.get("ursache") == "weiterleitung":
+        return 1, [("fehler", f"Server nicht gefunden: die Adresse leitet weiter – bitte die endgültige Adresse von {name} angeben."), *detail]
+    if erg.get("ursache") == "kein-dienst":
+        return 1, [("fehler", f"Server nicht gefunden: unter dieser Adresse antwortet kein {name} (Adresse prüfen)."), *detail]
     if art == "nicht-erreichbar":
         return 1, [("fehler", "Server nicht erreichbar."), *detail]
     return 1, [("fehler", "Prüfung fehlgeschlagen."), *detail]
@@ -328,7 +329,7 @@ def pruefe_verbindung(rid: str, erkennung_datei: Path | None, zuordnung_datei: P
     # Stand aus runner.json – erkennung.json kann bis zur nächsten Erkennung noch den alten zeigen
     stand = eintrag.get("stand") or "offen"
     if not klasse_fuer(dienst).ANBINDUNG:
-        zeilen.append(("hin", f"{ANZEIGE[dienst]}: Der Monitor fragt den Dienst noch nicht regelmäßig ab (#115) – bis dahin Grundüberwachung."))
+        zeilen.append(("hin", f"{ANZEIGE[dienst]}: Der Monitor fragt den Dienst noch nicht regelmäßig ab – bis dahin Grundüberwachung."))
     elif not fund:
         zeilen.append(("hin", "Runner noch nicht in der Erkennung – der Sammler sucht nach dem Neustart neu."))
     elif not angebunden(k, stand):

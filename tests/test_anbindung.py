@@ -116,7 +116,9 @@ class InfoTest(Basis):
 
     def test_unbekannt_und_ohne_dateien(self):
         i = anbindung.info("nirgends", None, self.zuordnung, self.zugang)
-        self.assertEqual((i["dienst"], i["gefunden"]), ("unbekannt", 0))
+        self.assertEqual((i["dienst"], i["gefunden"], i["eingetragen"]), ("unbekannt", 0, 0))
+        self.schreibe_runner({"nirgends": {"name": "x"}})
+        self.assertEqual(anbindung.info("nirgends", None, self.zuordnung, self.zugang)["eingetragen"], 1)
         with self.assertRaises(anbindung.AnbindungFehler):
             anbindung.info("../x", None, self.zuordnung, self.zugang)
 
@@ -214,8 +216,10 @@ class SetzeTest(Basis):
         self.schreibe_runner({"runner-vm-02": {"server": "https://srv.example.org", "org": "o"}})
         zugangsdaten.schreibe(self.zugang, "runner-vm-02", TOKEN_ALT)
         with mock.patch("runner_monitor.einrichtung.schreibe_zuordnung", side_effect=OSError(28, "voll")):
-            with self.assertRaises(anbindung.AnbindungFehler):
+            with self.assertRaises(anbindung.AnbindungFehler) as f:
                 self.setze("https://anders.example.org", org="o", token=TOKEN_NEU)
+        self.assertIn("bereits entfernt – bitte erneut ausführen", str(f.exception))
+        self.assertNotIn("nichts geändert", str(f.exception))
         self.assertEqual(self.lies_runner()["runner"]["runner-vm-02"]["server"], "https://srv.example.org")
         self.assertEqual(self.token(), "")  # altes Token weg, neues nicht an die alte Adresse
         zugangsdaten.schreibe(self.zugang, "runner-vm-02", TOKEN_ALT)
@@ -223,6 +227,7 @@ class SetzeTest(Basis):
             with self.assertRaises(anbindung.AnbindungFehler) as f:
                 self.setze("https://anders.example.org", org="o", token=TOKEN_NEU)
         self.assertNotIn(TOKEN_NEU, str(f.exception))
+        self.assertIn("bereits entfernt – bitte erneut ausführen", str(f.exception))
         self.assertEqual(self.lies_runner()["runner"]["runner-vm-02"]["server"], "https://anders.example.org")
         self.assertEqual(self.token(), "")
 
@@ -314,10 +319,6 @@ class BewertungTest(unittest.TestCase):
             ("forgejo", "keine-rechte", "Organisation oder Benutzer „x“ nicht gefunden"): "Keine Rechte",
             ("gitlab", "keine-rechte", "Token ohne Bereich read_api"): "read_api",
             ("forgejo", "nicht-erreichbar", "Server nicht erreichbar (Name or service not known)"): "Server nicht erreichbar",
-            ("forgejo", "fehler", "Server antwortet nicht wie Forgejo oder Gitea (/api/v1/version fehlt)"): "Server nicht gefunden",
-            ("forgejo", "fehler", "Keine gültige JSON-Antwort auf /version"): "Server nicht gefunden",
-            ("gitlab", "nicht-erreichbar", "GitLab antwortet nicht mit JSON (falsche Adresse oder Proxy?)"): "Server nicht gefunden",
-            ("gitlab", "nicht-erreichbar", "GitLab leitet weiter (301) – Adresse des Servers prüfen"): "Server nicht gefunden",
             ("forgejo", "kein-token", ""): "Kein Token",
             ("forgejo", "kontingent", ""): "Kontingent",
             ("forgejo", "fehler", "unerwartete Antwort des Servers"): "Prüfung fehlgeschlagen",
@@ -326,6 +327,14 @@ class BewertungTest(unittest.TestCase):
             rc, zeilen = anbindung.bewerte(dienst, {"abfrage": art, "fehler": fehler}, "" if dienst == "gitlab" else "x")
             self.assertEqual((rc, zeilen[0][0]), (1, "fehler"), art)
             self.assertIn(erwartet, " ".join(t for _, t in zeilen), (dienst, art, fehler))
+        # „Server nicht gefunden“ nur aus dem Feld ursache, nie aus dem Fehlertext
+        for dienst, art in (("forgejo", "fehler"), ("gitlab", "nicht-erreichbar")):
+            for ursache, erwartet in (("kein-dienst", "antwortet kein"), ("weiterleitung", "leitet weiter")):
+                _, zeilen = anbindung.bewerte(dienst, {"abfrage": art, "fehler": "egal", "ursache": ursache})
+                self.assertIn("Server nicht gefunden", zeilen[0][1])
+                self.assertIn(erwartet, zeilen[0][1])
+        _, zeilen = anbindung.bewerte("forgejo", {"abfrage": "fehler", "fehler": "Server antwortet nicht wie Forgejo (/api/v1/version fehlt)"})
+        self.assertNotIn("Server nicht gefunden", zeilen[0][1])
 
     def test_text_entschaerft(self):
         _, zeilen = anbindung.bewerte("forgejo", {"abfrage": "fehler", "fehler": "a|b\x1b[2Jc"}, "x")
@@ -407,12 +416,47 @@ class VerbindungTest(Basis):
             rc, zeilen = anbindung.pruefe_verbindung("runner-vm-02", self.erkennung, self.zuordnung, self.zugang)
         self.assertEqual(rc, 0)
         self.assertIn("Grundüberwachung", zeilen[-1][1])
-        # GitLab: Adapter da, Sammler fragt noch nicht ab (#115) – ehrlich sagen
+        # GitLab: seit #115 vom Sammler abgefragt – angebunden, kein Hinweis auf Grundüberwachung
         self.schreibe_erkennung(fund("gl", dienst="gitlab", unit="gitlab-runner.service"))
         self.schreibe_runner({"gl": {"server": "https://gitlab.example.org"}})
         with mock.patch.object(anbindung, "adapter", return_value=attrappe):
             _, zeilen = anbindung.pruefe_verbindung("gl", self.erkennung, self.zuordnung, self.zugang)
-        self.assertIn("#115", zeilen[-1][1])
+        self.assertNotIn("Grundüberwachung", " ".join(t for _, t in zeilen))
+        # ein Dienst, den der Sammler nicht abfragt, bekommt den ehrlichen Hinweis
+        with mock.patch.object(anbindung, "klasse_fuer", return_value=mock.Mock(ANBINDUNG=False)), \
+                mock.patch.object(anbindung, "adapter", return_value=attrappe):
+            _, zeilen = anbindung.pruefe_verbindung("gl", self.erkennung, self.zuordnung, self.zugang)
+        self.assertIn("Grundüberwachung", zeilen[-1][1])
+
+    def pruefe_gegen(self, dienst: str, antworten: dict) -> list:
+        """Echter Adapter gegen einen lokalen Server (http_erlaubt) – Zeilen der Verbindungsprüfung."""
+        server, _ = starte(antworten)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        self.schreibe_erkennung(fund(dienst=dienst, unit=f"{dienst}-runner.service"))
+        self.schreibe_runner({"runner-vm-02": {"server": f"http://127.0.0.1:{server.server_port}", "org": "beispiel-org",
+                                               "http_erlaubt": True}})
+        zugangsdaten.schreibe(self.zugang, "runner-vm-02", TOKEN_NEU)
+        rc, zeilen = anbindung.pruefe_verbindung("runner-vm-02", self.erkennung, self.zuordnung, self.zugang, frist=10)
+        self.assertEqual(rc, 1)
+        return zeilen
+
+    def test_adapter_liefern_ursache(self):
+        """Bindet die Felder der Adapter: falsche Adresse und Weiterleitung → „Server nicht gefunden“."""
+        weiter = (302, {"Location": "http://192.0.2.1/"}, b"")
+        html = (200, {"Content-Type": "text/html"}, b"<html>kein Dienst</html>")
+        faelle = {
+            ("forgejo", "antwortet kein"): {},  # /api/v1/version → 404
+            ("forgejo", "leitet weiter"): {"/api/v1/version": weiter},
+            ("gitea", "antwortet kein"): {"/api/v1/version": html},
+            ("gitlab", "antwortet kein"): {"/api/v4/personal_access_tokens/self": html},
+            ("gitlab", "leitet weiter"): {"/api/v4/personal_access_tokens/self": weiter},
+        }
+        for (dienst, erwartet), antworten in faelle.items():
+            with self.subTest(dienst=dienst, erwartet=erwartet):
+                zeilen = self.pruefe_gegen(dienst, antworten)
+                self.assertIn("Server nicht gefunden", zeilen[0][1])
+                self.assertIn(erwartet, zeilen[0][1])
 
 
 class SkriptTest(unittest.TestCase):

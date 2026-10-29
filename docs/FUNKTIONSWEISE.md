@@ -206,9 +206,18 @@ Erkennung und Sammler lesen:
   Server, Organisation und Token aus der Konfiguration. Sie ist nur lesend: nur GET, keine Weiterleitung,
   Fristen des Adapters, dazu insgesamt 40 s in einem eigenen Faden und 60 s `timeout` im Skript.
   Ausgabe: „Server erreichbar · Forgejo 13.0“, „Token gültig, Organisation … gefunden“,
-  „Token ungültig“, „Keine Rechte“, „Server nicht erreichbar“ oder „Server nicht gefunden“ (unter der
-  Adresse antwortet kein Forgejo/Gitea/GitLab). Dazu kommt ein Hinweis, falls der Monitor den Runner
-  trotzdem nicht abfragt (Stand `grund`/`ignoriert`, keine Unit, GitLab erst mit #115).
+  „Token ungültig“, „Keine Rechte“, „Server nicht erreichbar“ oder „Server nicht gefunden“. Letzteres
+  kommt nur aus dem Feld `ursache` der Adapter, nie aus einem Fehlertext: `kein-dienst` (unter der
+  Adresse antwortet kein Forgejo/Gitea/GitLab, z. B. `/api/v1/version` fehlt oder keine JSON-Antwort)
+  bzw. `weiterleitung` (3xx). Dazu kommt ein Hinweis, falls der Monitor den Runner trotzdem nicht
+  abfragt (Stand `grund`/`ignoriert`, keine Unit).
+- **Grenzen:** Wartet im Browser noch ein nicht abgeholter Auftrag `runner-zuordnung` mit
+  `stand: "grund"` für diesen Runner, übernimmt der Sammler ihn nach dem Neustart und setzt den eben
+  aufgehobenen Stand wieder; das Skript weist darauf hin. Ein Token, das vor #120 ohne Server abgelegt
+  wurde (alter Weg „erst Token, dann runner.json“), zählt als Token ohne Adresse: Beim ersten Lauf mit
+  Server verlangt das Skript ein neues Token und verwirft das alte (E-26). Ist ein Runner weder erkannt
+  noch in `runner.json` eingetragen, ist sein Dienst unbekannt; das Skript sagt das und legt nur nach
+  Rückfrage allein ein Token ab.
 
 **Sicherheit (S-ERK-01):** Bei Funden mit Unit-Datei kommen Name, Server und Dienst nur aus Registrierungen, die die Unit vorgibt
 (`--config` im ExecStart, Programmordner, WorkingDirectory); was nur ein Prozess in der cgroup nennt
@@ -341,7 +350,8 @@ Ergebnis je Runner in `/run/runner-monitor/anbieter.json` (0644, ohne Token):
 
 `abfrage`: `ok`, `kein-token`, `token-ungueltig` (401), `keine-rechte` (403, Organisation nicht
 gefunden), `nicht-erreichbar` (Verbindung, Frist, 5xx), `kontingent` (429), `fehler` (Weiterleitung,
-keine JSON-Antwort, zu groß, kein Forgejo/Gitea, Server oder Organisation fehlt). Bei einem Fehler
+keine JSON-Antwort, zu groß, kein Forgejo/Gitea, Server oder Organisation fehlt). Passt die Adresse nicht,
+steht zusätzlich `ursache`: `kein-dienst` (kein Forgejo/Gitea, keine JSON-Antwort) bzw. `weiterleitung` (#120). Bei einem Fehler
 bleibt der letzte gute Stand (Repositories, Runner, Job, letzte Jobs) stehen; `stand` ist nur bei
 `ok`, `nicht-erreichbar` und `kontingent` „angebunden“. Die Meldungen (`token`, `abfrage`) entstehen
 wie beim GitHub-Runner. Ist der Runner beim Dienst „beschäftigt“, der Job aber keinem Repository der
@@ -419,7 +429,8 @@ Ergebnis (öffentlich, ohne Token) im selben Format wie `github.json`, dazu `let
 `keine-rechte` (403, 404 oder Token ohne `read_api`), `kontingent` (429; `RateLimit-*` werden gezeigt,
 wenn der Server sie sendet), `kein-token`, `fehler` (Server fehlt, keine Adresse, nicht `https://` ohne
 Erlaubnis, oder „unerwartete Antwort“: Felder in falscher Form, `NaN`/`Infinity`, ungültige Daten – die Runde zeigt dann
-nichts Halbes). Fremde Antworten werden Feld für Feld geprüft (Typ, Wertebereich, Länge); Nummer und Name des
+nichts Halbes). Passt die Adresse nicht, steht zusätzlich `ursache`: `kein-dienst` (keine JSON-Antwort) bzw.
+`weiterleitung` (#120). Fremde Antworten werden Feld für Feld geprüft (Typ, Wertebereich, Länge); Nummer und Name des
 Runners bleiben die aus der Liste, auch wenn die Einzelantwort etwas anderes behauptet.
 
 **Was GitLab nicht hergibt (steht so in der Oberfläche als „nicht verfügbar“):**

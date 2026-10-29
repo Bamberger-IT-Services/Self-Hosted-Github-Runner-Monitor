@@ -373,6 +373,11 @@ zugang_server() {
   if [ "$stand" = grund ]; then
     hinweis "In der Einrichtung steht dieser Runner auf „Grundüberwachung“ – so fragt der Monitor $name nicht ab."
     if frage_ja "Stand aufheben, damit der Runner angebunden wird?"; then stand_arg=(--stand-aufheben); fi
+    # Ein noch nicht abgeholter Auftrag der Einrichtung im Browser setzt „grund“ sonst gleich wieder
+    if [ "${#stand_arg[@]}" -gt 0 ] && [ -e "$DATEN/auftraege/runner-zuordnung" ]; then
+      hinweis "Im Browser wartet noch eine gespeicherte Auswahl („Weiter“ in Schritt Runner) – sie kann „Grundüberwachung“ wieder setzen."
+      hin "Danach diesen Befehl erneut ausführen oder im Browser den Runner nicht auf „Grundüberwachung“ lassen."
+    fi
   elif [ "$stand" = ignoriert ]; then
     hinweis "Der Runner ist in der Einrichtung „ignoriert“ – angebunden wird er erst, wenn Sie das dort zurücknehmen."
   fi
@@ -432,6 +437,13 @@ zugang() {
   case "$dienst" in
     forgejo|gitea|gitlab) zugang_server "$id" "$info"; return 0 ;;
   esac
+  # Weder erkannt noch in runner.json: Dienst unbekannt – nicht still auf „nur Token“ zurückfallen
+  if [ "$id" != "$gid" ] && [ "$(wert_aus "$info" gefunden)" != 1 ] && [ "$(wert_aus "$info" eingetragen)" != 1 ]; then
+    hinweis "Runner $id ist (noch) nicht in der Erkennung – sein Dienst ist unbekannt."
+    hin "Bei Forgejo, Gitea und GitLab fragt dieser Befehl auch Server und Organisation ab, sobald der Runner erkannt ist:"
+    hin "  Liste: sudo $0 zugang   ·   neu suchen: im Browser „Neu erkennen“ oder sudo systemctl restart runner-monitor-sammler"
+    frage "Trotzdem nur ein Token für $id ablegen?" || exit 1
+  fi
   if [ "$id" = "$gid" ]; then
     echo "GitHub: Fine-grained Token mit Read-only für Actions und Metadata (optional: Self-hosted runners)."
   else

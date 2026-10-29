@@ -178,8 +178,6 @@ Was der Monitor von GitLab zeigt: Runner online/offline, aktueller Job (Projekt,
 letzte Jobs, laufende Jobs je Projekt. **Nicht verfügbar:** Schritte eines Jobs und wartende Jobs (die
 GitLab-API liefert beides nicht). Ein bei GitLab pausierter Runner gilt als offline. **Instanz-Runner** (von der
 Instanz-Verwaltung angelegt) kann der Monitor nicht abfragen (dafür braucht GitLab Administratorrechte).
-Bis der Sammler GitLab regelmäßig abfragt (#115), sagt die Verbindungsprüfung im Skript, ob Server und
-Token passen; im Dashboard bleibt bis dahin die Grundüberwachung.
 
 ### Forgejo- oder Gitea-Runner anbinden (#93)
 
@@ -229,11 +227,20 @@ läuft dann unverschlüsselt durchs Netz; `HTTP_PROXY` wird dabei bewusst nicht 
 
 **Neue Adresse, neues Token (E-22):** Hatte der Runner schon ein Token und ändert sich die Adresse,
 verlangt das Skript ein neues Token und löscht das bisherige. Es geht nie an die neue Adresse. Ohne neues
-Token bleibt alles, wie es war.
+Token bleibt alles, wie es war. Das gilt auch für ein Token, das Sie vor #120 ohne Server abgelegt haben
+(erst Token, dann `runner.json`): Beim ersten Lauf mit Server fragt das Skript das Token neu ab und
+verwirft das alte.
 
 **Grundüberwachung:** Haben Sie den Runner in der Einrichtung im Browser auf „Grundüberwachung“ gelassen,
 fragt das Skript, ob es diesen Stand aufheben soll (Enter = ja); sonst fragt der Monitor den Dienst
-nicht ab. Ein „ignorierter“ Runner bleibt ignoriert.
+nicht ab. Ein „ignorierter“ Runner bleibt ignoriert. Wartet im Browser noch eine gespeicherte Auswahl, die
+der Monitor noch nicht übernommen hat (Schritt „Runner“ › „Weiter“), kann sie „Grundüberwachung“ wieder
+setzen; das Skript weist darauf hin. Dann den Befehl danach noch einmal ausführen.
+
+**Runner noch nicht erkannt:** Kennt der Monitor den Runner noch nicht (weder in der Erkennung noch in
+`runner.json`), sagt das Skript das und fragt, ob es trotzdem nur ein Token ablegen soll. Besser erst neu
+suchen lassen (im Browser „Neu erkennen“ oder `sudo systemctl restart runner-monitor-sammler`) und den
+Befehl dann erneut ausführen.
 
 **3. Verbindung:** Nach dem Speichern prüft das Skript die Verbindung, nur lesend. Die Antwort ist eine
 von: „Server erreichbar · Forgejo 13.0“ und „Token gültig, Organisation … gefunden“, „Token ungültig
