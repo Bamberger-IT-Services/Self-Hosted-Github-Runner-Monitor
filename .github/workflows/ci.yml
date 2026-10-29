@@ -3,6 +3,8 @@
 # sonst .github/workflows (dieser Ordner); dafür braucht Forgejo einen Actions-Runner (Issue #108).
 # Öffentliches Repository: läuft immer auf GitHubs Rechnern (ubuntu-latest), nie auf dem eigenen
 # Runner – sonst könnte Code aus fremden Pull Requests auf der Runner-VM laufen.
+# Auf Forgejo ist „ubuntu-latest“ ein Container-Image des Forgejo-Runners (act): Schritte laufen dort
+# als root, bash mit pipefail, ohne shellcheck. Die Schritte müssen in beiden Umgebungen gehen (#133).
 name: CI
 
 on:
@@ -36,9 +38,18 @@ jobs:
       - name: Tests
         run: python -W error::ResourceWarning -m unittest discover -s tests -t . -v
       - name: Shell-Skripte (Syntax, shellcheck)
+        env:
+          LC_ALL: C.UTF-8   # ohne UTF-8-Locale bricht shellcheck an „…“ in einrichten.sh ab (commitBuffer)
         run: |
           for f in einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh werkzeuge/zap-baseline.sh; do bash -n "$f"; done
-          command -v shellcheck >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
+          # GitHub-Rechner haben shellcheck; das Image des Forgejo-Runners nicht, dort laufen die Schritte als root (#133).
+          # Quelle ist in beiden Fällen das signierte Ubuntu-Paketarchiv.
+          if ! command -v shellcheck >/dev/null; then
+            als_root=sudo; [ "$(id -u)" = 0 ] && als_root=
+            $als_root apt-get update -qq
+            $als_root apt-get install -y -qq --no-install-recommends shellcheck
+          fi
+          shellcheck --version
           shellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh werkzeuge/zap-baseline.sh
       - uses: actions/setup-node@v7
         with:
@@ -51,7 +62,12 @@ jobs:
         run: |
           ! grep -nE '<script>|<script [^>]*>[^<]|style="' web/*.html
       - name: Paket baut
-        run: werkzeuge/paket.sh && tar -tzf dist/runner-monitor-*.tar.gz | head
+        # Kein „| head“: der Forgejo-Runner (act) startet bash mit pipefail, tar bricht dann mit SIGPIPE (141) ab (#133).
+        run: |
+          werkzeuge/paket.sh
+          (cd dist && sha256sum -c runner-monitor-*.tar.gz.sha256)
+          tar -tzf dist/runner-monitor-*.tar.gz > dist/inhalt.txt
+          sed -n '1,10p' dist/inhalt.txt
 
   geheimnisse:
     runs-on: ubuntu-latest

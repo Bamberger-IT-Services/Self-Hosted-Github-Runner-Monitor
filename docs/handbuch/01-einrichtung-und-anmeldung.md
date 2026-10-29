@@ -1,6 +1,6 @@
 # 1 Einrichtung und Anmeldung
 
-**Stand: 29.10.2026 · Version 0.8.0**
+**Stand: 29.10.2026 · Version 0.8.1**
 
 ## Erster Aufruf
 

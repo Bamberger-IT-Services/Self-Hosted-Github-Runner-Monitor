@@ -1,0 +1,2 @@
+# Fehlalarm: erfundenes Test-Token in einem alten Commit (seit 0.8.1 ohne glpat-Präfix)
+777e347888e59fc8bd4a83447c8c717e84d8373b:tests/test_sammler_anbieter.py:gitlab-pat:292

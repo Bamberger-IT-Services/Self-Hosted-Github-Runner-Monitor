@@ -242,7 +242,9 @@ class FolgerTest(unittest.TestCase):
         while time.monotonic() - beginn < 1.5:
             p.schreibe(stueck)
             n += 100
-            self.assertLessEqual(len(f._neu), journal.STAPEL)  # noqa: SLF001
+            # Gelesen ohne Sperre aus einem fremden Faden: der Lesefaden kann gerade zwischen extend() und dem
+            # Kürzen in _zeile() stehen – dann liegt die eine neue Zeile kurz über STAPEL (#133, sporadisch 201).
+            self.assertLessEqual(len(f._neu), journal.STAPEL + 1)  # noqa: SLF001
         dauer = time.monotonic() - beginn
         p.ende()
         self.assertTrue(warte(lambda: not f._neu and f._luecke == 0, 5))  # noqa: SLF001

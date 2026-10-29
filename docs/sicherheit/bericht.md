@@ -1,6 +1,6 @@
 # Sicherheitsbericht
 
-**Stand: 29.10.2026 · Version 0.8.0** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
+**Stand: 29.10.2026 · Version 0.8.1** · gegliedert nach OWASP ASVS 4.0 (Anweisung 04)
 
 Einsatzrahmen: ein Monitor im **lokalen Netz** einer Runner-VM, ein Zugang, nur lesend.
 Erreichbar über HTTP auf Port 8090, die Firewall-Regel des Einrichtungsskripts lässt nur das
