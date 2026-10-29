@@ -404,8 +404,8 @@ class Zustand:
 
         Der GitHub-Runner aus ``MONITOR_RUNNER_VERZ`` bekommt den GitHub-Adapter und dieselben Werte
         wie der Bereich ``status`` (unverändert). Forgejo- und Gitea-Runner mit Server und Organisation
-        in ``runner.json`` bekommen ihren Adapter und das Ergebnis des Sammlers (``anbieter.json``, #93);
-        alle anderen laufen in der Grundüberwachung (Dienst und Journal), GitLab bis #115.
+        in ``runner.json`` und GitLab-Runner mit Server (#115) bekommen ihren Adapter und das Ergebnis des
+        Sammlers (``anbieter.json``, #93); alle anderen laufen in der Grundüberwachung (Dienst und Journal).
         Ignorierte Funde fehlen. Server und Log-Pfad kommen nie aus dem Fund (E-18): GitHub fest,
         sonst nur aus ``runner.json``."""
         jetzt = time.time() if jetzt is None else jetzt
@@ -443,7 +443,11 @@ class Zustand:
             k = anbieter.konfig_aus(f, self._zuordnung.get(f["id"]), self.k.zugang_verz)  # Server, Log nur aus runner.json
             if anbieter.angebunden(k, f.get("stand")):
                 a = anbieter.adapter(k)
-                erg = weitere.get(f["id"]) if isinstance(weitere.get(f["id"]), dict) else {}
+                # noch keine Runde (Sammler eben gestartet, Runner neu angebunden): „ausstehend“ statt „Kein Token“ (E-25)
+                erg = weitere.get(f["id"]) if isinstance(weitere.get(f["id"]), dict) else {"abfrage": "ausstehend"}
+                ziel = erg.get("ziel")
+                if isinstance(ziel, dict) and (ziel.get("server"), ziel.get("org") or "") != (k.server, k.org or ""):
+                    erg = {"abfrage": "ausstehend"}  # Ergebnis eines früheren Servers (runner.json geändert, Review #121)
                 # „angebunden“ wie beim GitHub-Runner nur mit gültigem Token (Review #111)
                 stand = "angebunden" if erg.get("abfrage") in STAND_ANGEBUNDEN else "offen"
                 dienst_st = self._dienst_grund(a, jetzt) if a.faehig()["status"] else None
@@ -471,7 +475,10 @@ class Zustand:
             if r["faehig"]["status"] and dienst.get("zustand") == "fehlt":
                 m.append({"id": "fehlt", "stufe": "warn", **basis, "daten": {}})
             if online.get("zustand") == "offline" and dienst.get("zustand") == "aktiv":
-                m.append({"id": "offline", "stufe": "fehler", **basis, "daten": {"seit": online.get("seit")}})
+                if online.get("pausiert"):  # GitLab: bewusst pausiert, kein Ausfall (Review #121)
+                    m.append({"id": "pausiert", "stufe": "warn", **basis, "daten": {"job": bool(r.get("job"))}})
+                else:
+                    m.append({"id": "offline", "stufe": "fehler", **basis, "daten": {"seit": online.get("seit")}})
             j = r.get("jobsJeRepository") or {}
             abfrage = j.get("abfrage")
             if abfrage in ("nicht-erreichbar", "kontingent", "fehler"):
@@ -564,7 +571,7 @@ class Zustand:
                     j = gh["job"]
                     self.job_zuordnung[j.get("name", "")] = {"repo": j.get("repo", ""), "workflow": j.get("workflow", "")}
             self._setze("workflows", self._workflows(gh))
-        pfad = self.k.lauf_verz / "anbieter.json"  # Forgejo/Gitea (#93), ohne Geheimnisse
+        pfad = self.k.lauf_verz / "anbieter.json"  # Forgejo/Gitea (#93), GitLab (#115), ohne Geheimnisse
         if self._geaendert(pfad):
             daten = lies_json(pfad, {}) or {}
             weitere = daten.get("runner") if isinstance(daten, dict) else None

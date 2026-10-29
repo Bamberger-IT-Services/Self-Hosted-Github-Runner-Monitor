@@ -523,6 +523,8 @@ class ReviewTest(ServerBasis):
             self.assertFalse(e["ok"])
             self.assertIn(teil, e["ergebnisse"][0]["text"])
         self.assertFalse(einrichtung.verbindung_anbieter({"abfrage": "ok", "abgefragt": 1.0}, seit=5.0)["fertig"])
+        # neu angebunden (#115, E-25): noch keine Runde – „läuft“, nicht „fehlgeschlagen“
+        self.assertEqual(einrichtung.verbindung_anbieter({"abfrage": "ausstehend", "abgefragt": None}), {"fertig": False, "ok": False, "ergebnisse": []})
 
     def test_abgelaufener_code_verweist_auf_die_vm(self):
         self.code()

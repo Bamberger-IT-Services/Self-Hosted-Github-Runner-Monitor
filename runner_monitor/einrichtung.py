@@ -481,6 +481,8 @@ def verbindung_anbieter(erg: dict | None, seit: float | None = None) -> dict:
     if seit is not None and (abgefragt is None or abgefragt < seit):
         return {"fertig": False, "ok": False, "ergebnisse": []}
     art = erg.get("abfrage")
+    if art == "ausstehend":  # neu angebunden, die erste Runde des Sammlers läuft noch (E-25, #115)
+        return {"fertig": False, "ok": False, "ergebnisse": []}
     org = str(erg.get("org") or "")
     if art == "ok":
         dienst = {"forgejo": "Forgejo", "gitea": "Gitea"}.get(erg.get("art"), "Server")

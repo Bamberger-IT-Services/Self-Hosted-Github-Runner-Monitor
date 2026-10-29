@@ -580,12 +580,9 @@ class KonfigurationTest(unittest.TestCase):
 
     def test_gitlab_braucht_keine_organisation(self):
         """Für #115: ``angebunden`` verlangt die Organisation nur, wenn der Adapter sie braucht."""
-        class Ohne(anbieter.Anbieter):
-            dienst = "gitlab"
-            ANBINDUNG = True
         k = anbieter.konfig_aus(fund("runner-vm-06", "gitlab", unit="gitlab-runner.service"), {"server": "https://git.example.org"}, Path("/z"))
-        with mock.patch.object(anbieter, "klasse_fuer", return_value=Ohne):
-            self.assertTrue(anbieter.angebunden(k, "offen"))
+        self.assertTrue(anbieter.angebunden(k, "offen"))  # seit #115 angebunden, ohne Organisation
+        self.assertFalse(anbieter.angebunden(anbieter.konfig_aus(fund("runner-vm-06", "gitlab", unit="gitlab-runner.service"), {}, Path("/z")), "offen"))
         k = anbieter.konfig_aus(fund("runner-vm-02", "forgejo", unit="forgejo-runner.service"), {"server": "https://git.example.org"}, Path("/z"))
         self.assertFalse(anbieter.angebunden(k, "offen"))  # Forgejo ohne org
 
@@ -594,8 +591,8 @@ class KonfigurationTest(unittest.TestCase):
         k = anbieter.konfig_aus(f, {"server": "https://git.example.org", "org": "beispiel-org"}, Path("/z"))
         self.assertFalse(anbieter.angebunden(k, "offen"))
 
-    def test_github_und_gitlab_nicht_ueber_diesen_weg(self):
-        for dienst in ("github", "gitlab", "unbekannt"):
+    def test_github_und_unbekannt_nicht_ueber_diesen_weg(self):
+        for dienst in ("github", "unbekannt"):  # GitLab seit #115 über diesen Weg
             k = anbieter.konfig_aus(fund("x", dienst, unit="x.service"), {"server": "https://git.example.org", "org": "o"}, Path("/z"))
             self.assertFalse(anbieter.angebunden(k, "offen"), dienst)
 
@@ -673,13 +670,12 @@ class SammlerZustandTest(unittest.TestCase):
         self.assertEqual(len(erg["repos"]), 2)
 
     def test_takt_im_sammler(self):
-        with mock.patch.object(self.s, "anbieter_abfragen") as aufruf, mock.patch.object(self.s, "github"), \
+        with mock.patch.object(self.s, "_anbieter_planen") as aufruf, mock.patch.object(self.s, "github"), \
              mock.patch.object(self.s, "release", return_value={}), mock.patch.object(self.s, "erkennung"), \
              mock.patch.object(sammler, "docker_container", return_value={}), mock.patch.object(self.s, "auto_update"):
             for zeitpunkt in (1000.0, 1010.0, 1031.0):
                 self.s.ein_takt(zeitpunkt)
-                self.s._anbieter_faden.join(5)
-        self.assertEqual(aufruf.call_count, 2)
+        self.assertEqual(aufruf.call_count, 2)  # fällig alle 30 s
 
     def test_haengender_server_haelt_ein_takt_nicht_auf(self):
         """Tröpfelnder Server (ein Byte je Sekunde): ein_takt bleibt unter 1 s, die Abfrage läuft im Faden."""
@@ -693,8 +689,9 @@ class SammlerZustandTest(unittest.TestCase):
                 beginn = time.monotonic()
                 self.s.ein_takt(1000.0)
                 self.assertLess(time.monotonic() - beginn, 1.0)
-                self.assertTrue(self.s._anbieter_faden.is_alive())
-                self.s._anbieter_faden.join(10)
+                faden = self.s._anbieter_laeufe["runner-vm-02"][0]  # je Runner ein eigener Faden (#115)
+                self.assertTrue(faden.is_alive())
+                faden.join(10)
             erg = json.loads((self.k.lauf_verz / "anbieter.json").read_text())["runner"]["runner-vm-02"]
             self.assertEqual(erg["abfrage"], "nicht-erreichbar")
         finally:

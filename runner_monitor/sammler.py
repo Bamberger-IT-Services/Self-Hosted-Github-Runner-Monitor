@@ -1,5 +1,5 @@
-"""Sammler (läuft als root): Docker-Status, GitHub-Abfrage, Abfrage weiterer Dienste (Forgejo/Gitea, #93),
-Update-Prüfung, Runner-Erkennung, Aufträge.
+"""Sammler (läuft als root): Docker-Status, GitHub-Abfrage, Abfrage weiterer Dienste (Forgejo/Gitea #93,
+GitLab #115 – je Runner ein eigener Faden mit Frist), Update-Prüfung, Runner-Erkennung, Aufträge.
 
 Warum root? Wer Docker abfragen darf, ist praktisch root, und das GitHub-Token soll nur
 root lesen können. Deshalb macht der Weboberflächen-Dienst beides nicht selbst, sondern
@@ -40,8 +40,12 @@ from .konfig import Konfig, lade
 LOG = logging.getLogger("runner_monitor.sammler")
 TAKT_DOCKER = 2
 TAKT_GITHUB = 30
-TAKT_ANBIETER = 30        # weitere Dienste (Forgejo, Gitea): wie GitHub alle 30 s
+TAKT_ANBIETER = 30        # weitere Dienste (Forgejo, Gitea, GitLab): wie GitHub alle 30 s
 MAX_ANBINDUNGEN = 20      # höchstens so viele Runner fragt der Sammler beim Dienst ab (wie runner[] im Monitor)
+MAX_GLEICHZEITIG = 4      # so viele Runner-Abfragen laufen höchstens zugleich (je Runner ein Faden, #115)
+RUNDENFRIST = 35.0        # harte Grenze einer Runde je Runner (Adapter selbst: 25 s); danach „nicht erreichbar“
+# Was bei einem Fehler aus dem letzten guten Stand stehen bleibt (Runner enthält Labels und Version)
+GUTER_STAND = ("repos", "runner", "job", "letzteJobs", "art", "serverVersion", "tokenAblauf", "wartetUnbekannt")
 TAKT_RELEASE = 6 * 3600
 TAKT_ERKENNUNG = 6 * 3600  # Runner auf der VM erkennen: beim Start und alle 6 Stunden (#91)
 MAX_STDERR = 2000         # so viel Fehlerausgabe der Erkennung kommt ins Journal
@@ -132,9 +136,16 @@ class Sammler:
         self._gh_speicher_token: tuple[str, str] = ("", "")
         self._token_migriert = False  # Übernahme des alten GitHub-Tokens nach zugang/ (#92), einmal je Start
         self.naechste_anbieter = 0.0
+        # Weitere Dienste (#115): je Runner höchstens ein Faden, höchstens MAX_GLEICHZEITIG zugleich. Alles
+        # unter _anbieter_sperre; Netz und Token nie unter der Sperre.
+        self._anbieter_sperre = threading.Lock()
         self._anbieter_speicher: dict[str, tuple[tuple, dict]] = {}  # je Runner: (Schlüssel, Speicher der Abfrage)
         self._anbieter_erfolg: dict[str, float] = {}
-        self._anbieter_faden: threading.Thread | None = None  # Abfrage weiterer Dienste läuft neben ein_takt
+        self._anbieter_ergebnis: dict[str, dict] | None = None  # je Runner das letzte Ergebnis (None: noch nicht geladen)
+        self._anbieter_ids: set[str] = set()                     # gerade angebundene Runner
+        self._anbieter_wartend: dict[str, anbieter.Anbieter] = {}  # fällig, noch nicht gestartet (Reihenfolge = Ankunft)
+        self._anbieter_laeufe: dict[str, tuple[threading.Thread, float, anbieter.Anbieter]] = {}  # je Runner: (Faden, Start monoton, Adapter)
+        self._anbieter_haengend: set[str] = set()                # Runde über RUNDENFRIST, Ergebnis schon „nicht erreichbar“
 
     def github_adapter(self) -> gh_adapter.GitHub:
         """Adapter des GitHub-Runners aus ``MONITOR_RUNNER_VERZ`` – Server, Organisation und Token aus
@@ -303,43 +314,228 @@ class Sammler:
                 liste.append(anbieter.adapter(k))
         return liste
 
-    def anbieter_abfragen(self) -> None:
-        """Je angebundenem Runner eine Abfrage → ``/run/runner-monitor/anbieter.json`` (0644, ohne Token).
+    # ------------------------------------------------------------ weitere Dienste (#93, #115)
 
-        Bei Fehlern bleibt wie bei GitHub der letzte gute Stand (Repositories, Runner, Job) stehen."""
-        alt = (self._lies(self.k.lauf_verz / "anbieter.json") or {}).get("runner") or {}
-        neu: dict[str, dict] = {}
-        for a in self.anbindungen():
-            token = a.token()
-            schluessel = (a.k.server, a.k.org, a.k.name, token)
-            gemerkt = self._anbieter_speicher.get(a.k.id)
-            speicher = gemerkt[1] if gemerkt and gemerkt[0] == schluessel else {}  # neues Token/Ziel: neu anfangen
-            self._anbieter_speicher[a.k.id] = (schluessel, speicher)
-            try:
-                ergebnis = a.abfrage(speicher, self._anbieter_erfolg.get(a.k.id), token=token)
-            except Exception:  # noqa: BLE001 – ein Dienst darf die anderen nie aufhalten
-                LOG.exception("Abfrage von %s fehlgeschlagen", a.k.id)
-                continue
-            if ergebnis["abfrage"] == "ok":
-                self._anbieter_erfolg[a.k.id] = ergebnis["abgefragt"]
+    def anbieter_takt(self, jetzt: float) -> None:
+        """Aus ``ein_takt``, blockiert nie: alle ``TAKT_ANBIETER`` Sekunden werden die angebundenen Runner
+        fällig, je Takt starten fällige Runner in eigenen Fäden (höchstens ``MAX_GLEICHZEITIG`` zugleich).
+
+        Ein hängender oder tröpfelnder Server hält so weder GitHub, Docker, Erkennung und Updates noch die
+        anderen Runner auf. Je Runner läuft höchstens **eine** Runde (keine Fadenlecks): Läuft sie noch,
+        wenn er wieder fällig wird, wird er übersprungen; nach ``RUNDENFRIST`` gilt sie als hängend – ihr
+        Ergebnis ist dann „nicht erreichbar“, sie zählt nicht mehr gegen die Grenze, und eine neue Runde
+        für diesen Runner beginnt erst, wenn sie zu Ende ist."""
+        if jetzt >= self.naechste_anbieter:
+            self.naechste_anbieter = jetzt + TAKT_ANBIETER
+            self._anbieter_planen()
+        self._anbieter_pruefen()
+        self._anbieter_starten()
+
+    def anbieter_abfragen(self, frist: float | None = None) -> None:
+        """Alle angebundenen Runner einmal abfragen und warten, bis alle Runden fertig sind oder als hängend
+        gelten (höchstens ``frist`` Sekunden) – für Tests und Werkzeuge; der Sammler nutzt ``anbieter_takt``."""
+        ende = time.monotonic() + (RUNDENFRIST * 3 if frist is None else frist)
+        self._anbieter_planen()
+        while time.monotonic() < ende:
+            self._anbieter_pruefen()
+            self._anbieter_starten()
+            with self._anbieter_sperre:
+                laeufe = [lauf[0] for rid, lauf in self._anbieter_laeufe.items() if rid not in self._anbieter_haengend]
+                offen = bool(self._anbieter_wartend)
+            if not laeufe and not offen:
+                return
+            if laeufe:
+                laeufe[0].join(0.05)
             else:
-                vorher = alt.get(a.k.id) if isinstance(alt.get(a.k.id), dict) else {}
-                if vorher.get("repos") and ergebnis["abfrage"] != "kein-token":
-                    for feld in ("repos", "runner", "job", "letzteJobs", "art", "serverVersion"):
-                        ergebnis[feld] = vorher.get(feld)
-                    ergebnis["letzterErfolg"] = vorher.get("letzterErfolg")
-            neu[a.k.id] = ergebnis
-        for rid in set(self._anbieter_speicher) - set(neu):
-            self._anbieter_speicher.pop(rid, None)
-            self._anbieter_erfolg.pop(rid, None)
-        if neu or alt:
-            schreibe_oeffentlich(self.k.lauf_verz / "anbieter.json", {"zeit": time.time(), "runner": neu})
+                time.sleep(0.05)
 
-    def _anbieter_sicher(self) -> None:
+    @staticmethod
+    def _ziel(a: anbieter.Anbieter) -> dict:
+        """Wohin die Abfrage geht (steht im Ergebnis, ohne Token): ein Stand gilt nur für dasselbe Ziel."""
+        return {"server": a.k.server, "org": a.k.org, "name": a.k.name}
+
+    @staticmethod
+    def _guter_stand(vorher: dict, ziel: dict) -> dict:
+        """Der letzte gute Stand eines Runners – nur, wenn es einen gab (``letzterErfolg``) und er zum
+        selben Ziel gehört (Server, Organisation, Name; Review #121). Sonst ``{}``."""
+        erfolg = vorher.get("letzterErfolg")
+        gab_es = isinstance(erfolg, (int, float)) and not isinstance(erfolg, bool) and erfolg > 0
+        return vorher if gab_es and vorher.get("ziel") == ziel else {}
+
+    def _ausstehend(self, a: anbieter.Anbieter) -> dict:
+        """Platzhalter für einen neu angebundenen Runner bis zu seiner ersten Runde (E-25): keine Meldung
+        „Kein Token“, die Karte zeigt „wird abgefragt“."""
+        return {"org": a.k.org, "abfrage": "ausstehend", "abgefragt": None, "letzterErfolg": None, "tokenAblauf": None,
+                "kontingent": {}, "repos": [], "runner": {"zustand": "unbekannt"}, "job": None, "letzteJobs": [],
+                "fehler": "", "ziel": self._ziel(a)}
+
+    def _anbieter_planen(self) -> None:
+        """Angebundene Runner neu lesen und als fällig vormerken; nicht mehr angebundene verwerfen, neue
+        (oder mit neuem Ziel) bekommen bis zur ersten Runde den Platzhalter „ausstehend“."""
+        liste = self.anbindungen()
+        ids = {a.k.id for a in liste}
+        with self._anbieter_sperre:
+            geaendert = False
+            if self._anbieter_ergebnis is None:  # nach dem Start: letzter guter Stand aus der Datei
+                datei = self._lies(self.k.lauf_verz / "anbieter.json")
+                alt = datei.get("runner") if isinstance(datei, dict) else None
+                alt = alt if isinstance(alt, dict) else {}
+                self._anbieter_ergebnis = {rid: e for rid, e in alt.items() if rid in ids and isinstance(e, dict)}
+                geaendert = len(self._anbieter_ergebnis) != len(alt)
+                for rid, e in self._anbieter_ergebnis.items():
+                    erfolg = e.get("letzterErfolg")
+                    if isinstance(erfolg, (int, float)) and not isinstance(erfolg, bool) and erfolg > 0:
+                        self._anbieter_erfolg[rid] = erfolg
+            self._anbieter_ids = ids
+            for rid in set(self._anbieter_ergebnis) - ids:
+                del self._anbieter_ergebnis[rid]
+                geaendert = True
+            for rid in set(self._anbieter_speicher) - ids:
+                del self._anbieter_speicher[rid]
+            for rid in set(self._anbieter_erfolg) - ids:
+                del self._anbieter_erfolg[rid]
+            for rid in set(self._anbieter_wartend) - ids:
+                del self._anbieter_wartend[rid]
+            for a in liste:
+                e = self._anbieter_ergebnis.get(a.k.id)
+                if e is None or ("ziel" in e and e["ziel"] != self._ziel(a)):
+                    self._anbieter_ergebnis[a.k.id] = self._ausstehend(a)
+                    geaendert = True
+                if a.k.id not in self._anbieter_laeufe:  # läuft noch: diese Runde auslassen
+                    self._anbieter_wartend[a.k.id] = a   # wartet schon: Platz bleibt, Konfiguration wird frisch
+        if geaendert:
+            self._anbieter_schreiben()
+
+    def _ziel_veraltet(self, rid: str, ziel: dict) -> bool:
+        """(Unter der Sperre) Gilt für den Runner inzwischen ein anderes Ziel? Dann gehört eine laufende Runde
+        zum alten Server und ihr Ergebnis wird verworfen (Review #121, N1)."""
+        aktuell = (self._anbieter_ergebnis or {}).get(rid)
+        return bool(aktuell) and aktuell.get("ziel") not in (None, ziel)
+
+    def _anbieter_starten(self) -> None:
+        with self._anbieter_sperre:
+            aktiv = sum(1 for rid in self._anbieter_laeufe if rid not in self._anbieter_haengend)
+            while self._anbieter_wartend and aktiv < MAX_GLEICHZEITIG:
+                rid = next(iter(self._anbieter_wartend))
+                a = self._anbieter_wartend.pop(rid)
+                if rid in self._anbieter_laeufe:
+                    continue
+                faden = threading.Thread(target=self._anbieter_runde, args=(a,), name=f"anbieter-{rid}"[:60], daemon=True)
+                self._anbieter_laeufe[rid] = (faden, time.monotonic(), a)
+                try:
+                    faden.start()
+                except RuntimeError:  # kein Faden mehr möglich (Systemgrenze): im nächsten Takt erneut
+                    del self._anbieter_laeufe[rid]
+                    self._anbieter_wartend[rid] = a
+                    LOG.warning("Abfrage von %s nicht gestartet (kein Faden frei)", rid)
+                    return
+                aktiv += 1
+
+    def _anbieter_pruefen(self) -> None:
+        """Runden über ``RUNDENFRIST``: einmal „nicht erreichbar“ melden (mit dem letzten guten Stand)."""
+        jetzt = time.monotonic()
+        neu = False
+        with self._anbieter_sperre:
+            for rid, (_, start, a) in self._anbieter_laeufe.items():
+                if rid in self._anbieter_haengend or jetzt - start < RUNDENFRIST:
+                    continue
+                self._anbieter_haengend.add(rid)
+                if rid in self._anbieter_ids and self._anbieter_ergebnis is not None \
+                        and not self._ziel_veraltet(rid, self._ziel(a)):
+                    self._anbieter_ergebnis[rid] = self._fehler_ergebnis(
+                        a, f"Keine Antwort innerhalb der Frist ({RUNDENFRIST:.0f} s)")
+                    neu = True
+                LOG.warning("Abfrage von %s hängt seit %.0f s – nächste Runde erst, wenn sie endet", rid, jetzt - start)
+        if neu:
+            self._anbieter_schreiben()
+
+    def _fehler_ergebnis(self, a: anbieter.Anbieter, text: str) -> dict:
+        """„nicht erreichbar“ ohne Antwort des Adapters (unter der Sperre); der letzte gute Stand bleibt."""
+        ziel = self._ziel(a)
+        vorher = (self._anbieter_ergebnis or {}).get(a.k.id) or {}
+        ergebnis = {"org": a.k.org, "abfrage": "nicht-erreichbar", "abgefragt": time.time(), "letzterErfolg": None,
+                    "tokenAblauf": None, "kontingent": {}, "repos": [], "runner": {"zustand": "unbekannt"}, "job": None,
+                    "letzteJobs": [], "fehler": text, "ziel": ziel}
+        if "wartetUnbekannt" in vorher:
+            ergebnis["wartetUnbekannt"] = vorher["wartetUnbekannt"]
+        self._uebernimm_guten_stand(ergebnis, self._guter_stand(vorher, ziel))
+        return ergebnis
+
+    @staticmethod
+    def _uebernimm_guten_stand(ergebnis: dict, gut: dict) -> None:
+        """Fehlerrunde: den letzten guten Stand zeigen (Repositories, Runner mit Labels und Version, Job,
+        letzte Jobs …); ``letzterErfolg`` kommt immer aus ihm (ohne guten Stand: ``None``)."""
+        ergebnis["letzterErfolg"] = gut.get("letzterErfolg")
+        for feld in GUTER_STAND:
+            if feld in gut:
+                ergebnis[feld] = gut[feld]
+
+    def _anbieter_runde(self, a: anbieter.Anbieter) -> None:
+        """Eine Runde für einen Runner (eigener Faden). Fehler bleiben bei diesem Runner."""
+        ergebnis = None
         try:
-            self.anbieter_abfragen()
-        except Exception:  # noqa: BLE001 – Forgejo/Gitea dürfen den Sammler nie aufhalten
-            LOG.exception("Fehler bei der Abfrage weiterer Dienste")
+            ergebnis = self._anbieter_abfrage(a)
+        except Exception:  # noqa: BLE001 – ein Dienst darf die anderen nie aufhalten
+            LOG.exception("Abfrage von %s fehlgeschlagen", a.k.id)
+        finally:
+            with self._anbieter_sperre:
+                lauf = self._anbieter_laeufe.get(a.k.id)
+                if lauf and lauf[0] is threading.current_thread():
+                    del self._anbieter_laeufe[a.k.id]
+                self._anbieter_haengend.discard(a.k.id)
+                # Auch eine verspätete Runde liefert den neueren Stand – außer der Runner ist nicht mehr angebunden
+                # oder hat inzwischen ein anderes Ziel (dann gleich neu planen, statt 30 s „ausstehend“).
+                behalten = ergebnis is not None and a.k.id in self._anbieter_ids and self._anbieter_ergebnis is not None
+                if behalten and self._ziel_veraltet(a.k.id, ergebnis.get("ziel")):
+                    behalten = False
+                    self.naechste_anbieter = 0.0
+                if behalten:
+                    self._anbieter_ergebnis[a.k.id] = ergebnis
+            if behalten:
+                self._anbieter_schreiben()
+
+    def _anbieter_abfrage(self, a: anbieter.Anbieter) -> dict | None:
+        """Abfrage beim Dienst mit dem Token des Runners. Bei Fehlern bleibt wie bei GitHub der letzte gute
+        Stand (Repositories, Runner, Job) stehen. Den Speicher eines Runners nutzt nur sein Faden."""
+        token = a.token()
+        schluessel = (a.k.server, a.k.org, a.k.name, token)
+        ziel = self._ziel(a)
+        with self._anbieter_sperre:
+            if a.k.id not in self._anbieter_ids:
+                return None  # inzwischen nicht mehr angebunden: nichts anlegen (Review #121)
+            gemerkt = self._anbieter_speicher.get(a.k.id)
+            neu = gemerkt is not None and gemerkt[0] != schluessel  # neues Token oder Ziel: neu anfangen
+            if neu:
+                self._anbieter_erfolg.pop(a.k.id, None)
+            speicher = gemerkt[1] if gemerkt and not neu else {}
+            self._anbieter_speicher[a.k.id] = (schluessel, speicher)
+            letzter_erfolg = self._anbieter_erfolg.get(a.k.id)
+            vorher = {} if neu else (self._anbieter_ergebnis or {}).get(a.k.id) or {}
+        ergebnis = a.abfrage(speicher, letzter_erfolg, token=token)
+        if not isinstance(ergebnis, dict):
+            return None
+        ergebnis["ziel"] = ziel
+        with self._anbieter_sperre:
+            if a.k.id not in self._anbieter_ids:
+                return None
+            if self._ziel_veraltet(a.k.id, ziel):  # Server/Organisation gewechselt: verwerfen, gleich neu planen
+                self.naechste_anbieter = 0.0
+                return None
+            if ergebnis.get("abfrage") == "ok":
+                self._anbieter_erfolg[a.k.id] = ergebnis["abgefragt"]
+            elif ergebnis.get("abfrage") != "kein-token":
+                self._uebernimm_guten_stand(ergebnis, self._guter_stand(vorher, ziel))
+        return ergebnis
+
+    def _anbieter_schreiben(self) -> None:
+        """``/run/runner-monitor/anbieter.json`` (0644, ohne Token) aus dem Stand aller angebundenen Runner."""
+        with self._anbieter_sperre:
+            daten = {"zeit": time.time(), "runner": {rid: e for rid, e in (self._anbieter_ergebnis or {}).items()
+                                                     if rid in self._anbieter_ids}}
+            try:
+                schreibe_oeffentlich(self.k.lauf_verz / "anbieter.json", daten)
+            except OSError as fehler:
+                LOG.warning("anbieter.json nicht geschrieben: %s", fehler)
 
     def release(self) -> dict:
         klient = github.Klient(self.token())
@@ -499,12 +695,12 @@ class Sammler:
         if jetzt >= self.naechste_github:
             self.naechste_github = jetzt + TAKT_GITHUB
             self.github()
-        if jetzt >= self.naechste_anbieter and not (self._anbieter_faden and self._anbieter_faden.is_alive()):
-            # Eigener Faden: ein hängender oder tröpfelnder Forgejo-/Gitea-Server hält GitHub, Docker,
-            # Erkennung und Updates nie auf. Läuft die vorige Runde noch, wartet die nächste.
-            self.naechste_anbieter = jetzt + TAKT_ANBIETER
-            self._anbieter_faden = threading.Thread(target=self._anbieter_sicher, name="anbieter-abfrage", daemon=True)
-            self._anbieter_faden.start()
+        try:
+            # Je Runner ein eigener Faden (#115): ein hängender oder tröpfelnder Server hält weder GitHub,
+            # Docker, Erkennung und Updates noch die anderen Runner auf.
+            self.anbieter_takt(jetzt)
+        except Exception:  # noqa: BLE001 – weitere Dienste dürfen den Sammler nie aufhalten
+            LOG.exception("Fehler bei der Abfrage weiterer Dienste")
         if jetzt >= self.naechste_release:
             self.naechste_release = jetzt + TAKT_RELEASE
             daten = self.release()

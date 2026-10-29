@@ -222,18 +222,18 @@ REST-Klient (auch für Releases und die Prüfung in der Einrichtung) und reicht 
 | GitHub | `GitHub` | ✓ | ✓ | ✓ | ✓ | – |
 | Forgejo | `Forgejo` (#93), ausgeliefert als Grundüberwachung bis #96/#115 (E-23); von Hand angebunden: | ✓ | ✓ (ausgeliefert: –) | ✓ ab Forgejo 17 (ausgeliefert: –) | ✓ (Journal) | – |
 | Gitea | `Gitea` (#93, nur nach OpenAPI), ausgeliefert als Grundüberwachung (E-23) | ✓ | ✓ (ausgeliefert: –) | ✓ (ausgeliefert: –) | ✓ (Journal) | – |
-| GitLab | `GitLab` (#99), bis zur Anbindung (#94) ausgeliefert als Grundüberwachung | ✓ | ✓ (ausgeliefert: –) | – | ✓ | – |
+| GitLab | `GitLab` (#99, im Sammler seit #115), ausgeliefert als Grundüberwachung bis #96 (E-20); von Hand angebunden: | ✓ | ✓ (ausgeliefert: –) | – | ✓ | – |
 | unbekannt | Grundüberwachung | ✓ | – | – | ✓ | – |
 
 Ohne Unit gibt es weder `status` noch `logs` (außer beim GitHub-Runner aus `MONITOR_RUNNER_VERZ`,
 dessen Status wie bisher „fehlt“ zeigt und dessen Live-Log aus `_diag/pages` kommt). Weitere
 GitHub-Runner neben dem aus `MONITOR_RUNNER_VERZ` laufen bis #94 in der Grundüberwachung.
-**Angebunden** ist ein Forgejo- oder Gitea-Runner, wenn er eine Unit hat, `runner.json` Server (mit
-`https://`, `http://` nur mit `http_erlaubt`) und Organisation nennt und sein Stand nicht
-`grund`/`ignoriert` ist (`anbieter.angebunden`; GitLab kann denselben Weg mit #115 nutzen, er braucht
-keine Organisation – `BRAUCHT_ORG`). Sonst gilt die Grundüberwachung. Ausgeliefert ist die Einstufung
-bis #96/#115 `teil` (E-23); ein von Hand angebundener Runner meldet in `runner[]` die Fähigkeiten
-seines Adapters. Liefert der Server keine Schritte (Forgejo vor 17), meldet der Eintrag
+**Angebunden** ist ein Forgejo-, Gitea- oder GitLab-Runner, wenn er eine Unit hat, `runner.json` Server
+(mit `https://`, `http://` nur mit `http_erlaubt`) und – nur Forgejo/Gitea – Organisation nennt und sein
+Stand nicht `grund`/`ignoriert` ist (`anbieter.angebunden`, `ANBINDUNG`, `BRAUCHT_ORG`; GitLab seit
+#115). Sonst gilt die Grundüberwachung. Ausgeliefert ist die Einstufung bis zur Anbindung in der
+Einrichtung (#96) `teil` (E-20, E-23); ein von Hand angebundener Runner meldet in `runner[]` die
+Fähigkeiten seines Adapters. Liefert der Server keine Schritte (Forgejo vor 17), meldet der Eintrag
 `faehig.schritte: false` – die Oberfläche zeigt dann „Schritte nicht verfügbar“ (Design ›
 „Teilweise“). **Ehrlich statt „Bereit“:** Ist der Runner beim Dienst beschäftigt, der Job aber in
 keinem Repository der Organisation zu finden, ist der Zustand `job` mit `job.zuordenbar: false`
@@ -273,8 +273,8 @@ Schreibrecht. Ohne Recht auf die Runner-Liste bleibt „beim Dienst“ unbekannt
 Jobs keinem Runner zuordnen (die UUID fehlt) – Jobs je Repository gibt es trotzdem. Die Bereiche
 stammen aus der Beschreibung; mit einem eingeschränkten Token sind sie noch nicht geprüft.
 
-**Eine Runde** (Sammler, alle 30 s in einem **eigenen Faden** – ein hängender Server hält GitHub, Docker
-und Updates nie auf; eine Runde je Runner höchstens 25 s, je Anfrage eine harte Frist von 10 s in einem
+**Eine Runde** (Sammler, alle 30 s, **je Runner ein eigener Faden** – siehe „Abfrage im Sammler“ unten;
+eine Runde je Runner höchstens 25 s, je Anfrage eine harte Frist von 10 s in einem
 Daemon-Faden, die auch DNS und tröpfelnde Antworten abdeckt; Antworten werden stückweise gelesen, `NaN`
 und `Infinity` abgelehnt, eine Antwort in unerwarteter Form wird „unerwartete Antwort“ mit dem letzten
 guten Stand): Version → Organisation oder
@@ -307,8 +307,43 @@ bleibt der letzte gute Stand (Repositories, Runner, Job, letzte Jobs) stehen; `s
 `ok`, `nicht-erreichbar` und `kontingent` „angebunden“. Die Meldungen (`token`, `abfrage`) entstehen
 wie beim GitHub-Runner. Ist der Runner beim Dienst „beschäftigt“, der Job aber keinem Repository der
 Organisation zuzuordnen (z. B. ein globaler Runner arbeitet für eine andere Organisation), zeigt der
-Eintrag `job` mit `zuordenbar: false` (siehe oben). Offen für #115: eigene Fäden je Server (heute
-nacheinander in einem Faden), GitLab im Sammler.
+Eintrag `job` mit `zuordenbar: false` (siehe oben).
+
+**Abfrage im Sammler (#115).** Alle 30 s werden die angebundenen Runner (Forgejo, Gitea, GitLab;
+höchstens 20) fällig. Je Runner läuft die Runde in einem **eigenen Faden** (`anbieter-<id>`), höchstens
+**4 zugleich** (`MAX_GLEICHZEITIG`); weitere warten der Reihe nach und kommen im nächsten Takt (2 s)
+dran. `ein_takt` startet nur und wartet nie – ein hängender oder tröpfelnder Server hält weder
+GitHub, Docker, Erkennung und Updates noch die **anderen Runner** auf (Test: ein Server, der ein Byte je
+Sekunde sendet, verzögert den zweiten Runner nicht). Die Adapter begrenzen eine Runde selbst auf 25 s;
+als Sicherheitsnetz gilt je Runner `RUNDENFRIST` = 35 s: Läuft eine Runde länger, wird sie
+„nicht erreichbar“ („Keine Antwort innerhalb der Frist“, letzter guter Stand bleibt), einmal ins Journal
+geschrieben und zählt nicht mehr gegen die Grenze von 4. **Keine Fadenlecks:** Je Runner gibt es
+höchstens einen Faden – ist der Runner wieder fällig, während seine Runde noch läuft, wird er
+übersprungen; eine neue Runde beginnt erst, wenn die alte zu Ende ist (eine späte Antwort zählt dann
+noch). Zurückgelassene Anfrage-Fäden der Klienten enden spätestens mit ihrer Frist (nur ein hängendes DNS
+kann länger brauchen, begrenzt durch die Wartezeit des Resolvers). Das Ergebnis jedes Runners landet
+sofort in `anbieter.json`; Runner, die nicht mehr angebunden sind, verschwinden daraus, und nach einem
+Neustart des Sammlers bleibt der letzte Stand aus der Datei der „letzte gute Stand“.
+
+**Letzter guter Stand und „ausstehend“ (E-25):** Jedes Ergebnis nennt sein `ziel` (`server`, `org`,
+`name`, nie das Token). Bei einem Fehler bleiben Repositories, Runner (mit Labels und Version), Job,
+letzte Jobs, Art, Server-Version und Token-Ablauf aus der letzten guten Runde stehen und `letzterErfolg`
+kommt aus ihr – aber nur, wenn es eine gab (`letzterErfolg`, auch ohne laufenden Job) und sie zum
+selben Ziel gehört; nach einem Wechsel von Server, Organisation oder Token beginnt der Runner ohne
+Altstand. Einträge ohne `ziel` (älterer Stand) gelten nie als guter Stand. Wechselt der Server, während
+eine Runde zum alten Server läuft, wird deren Ergebnis verworfen (auch die Meldung „hängt“) und der
+Runner sofort neu eingeplant; der Monitor zeigt ein Ergebnis, dessen `ziel` nicht zur aktuellen
+`runner.json` passt, als „ausstehend“. Ein neu angebundener Runner (oder einer mit neuem Ziel) steht bis zu seiner ersten Runde auf
+`abfrage: "ausstehend"` (Platzhalter in `anbieter.json`; der Monitor nimmt ihn auch ohne Eintrag an):
+keine Meldung, die Karte „Jobs je Repository“ zeigt „Wird abgefragt …“, der Zustand ist `unbekannt`.
+
+**Fehler als Meldung mit Runner:** Aus `jobsJeRepository.abfrage` jedes Runners entstehen in
+`meldungen[]` `token` (`token-ungueltig`, `keine-rechte`: Stufe Fehler; `kein-token`: neutral; Ablauf in
+14 Tagen: Warnung) und `abfrage` (`nicht-erreichbar`, `kontingent`, `fehler`: Warnung), jeweils mit
+`runner` und `dienst`. Das Dashboard nennt dann den Dienst („GitLab nicht erreichbar“,
+„Forgejo-Token ungültig oder abgelaufen“), bei mehreren Runnern davor den Runner. Ein bei GitLab
+pausierter Runner meldet `pausiert` (Warnung, `daten.job`: läuft noch ein Job) statt `offline`
+(„Pausiert bei GitLab · nimmt keine neuen Jobs an“). `ausstehend` erzeugt keine Meldung.
 
 **Woher ein Adapter seine Werte nimmt (E-18):** Server, Organisation, Log-Pfad und Token-Datei nur
 aus der Konfiguration – GitHub: Server fest `https://github.com`, Organisation aus
@@ -329,7 +364,7 @@ muss `https://` sein. `http://` nur, wenn `runner.json` für diesen Runner ausdr
 `"http_erlaubt": true` setzt (E-21); dann geht die Anfrage auch nie über einen Proxy aus der Umgebung
 (`HTTP_PROXY`), bei `https://` bleibt ein Proxy-Tunnel möglich. Der Klient folgt **keiner Weiterleitung**, sendet das
 Token nur in der Kopfzeile `PRIVATE-TOKEN` an `<Server>/api/v4/…`, liest höchstens 4 MB je Antwort
-und fragt nur mit `GET`. Jede Anfrage hat eine **harte Gesamtfrist** von 15 s (eigener Daemon-Faden, stückweises Lesen mit Frist). Alle 30 s eine Runde:
+und fragt nur mit `GET`. Jede Anfrage hat eine **harte Gesamtfrist** von 15 s (eigener Daemon-Faden, stückweises Lesen mit Frist), die ganze Runde höchstens 25 s (#115). Alle 30 s eine Runde:
 
 | Anfrage | Zweck | wenn sie fehlschlägt |
 |---|---|---|
@@ -371,12 +406,15 @@ ab GitLab 15.5. (4) Der Runner wird über den Namen gefunden, nicht über die Ru
 Nummer in `config.toml` nicht steht und das Runner-Token nie gelesen wird. Diese Punkte sind mit einem
 echten GitLab-Server zu bestätigen, bevor GitLab als „vollständig unterstützt“ eingestuft wird
 (`erkennung.EINSTUFUNG["gitlab"]` bleibt bis dahin und bis zur Anbindung im Sammler/in der Einrichtung
-(#94, #96) auf „teil“, `erkennung.FAEHIG["gitlab"]` auf Grundüberwachung – E-20).
+(#96) auf „teil“, `erkennung.FAEHIG["gitlab"]` auf Grundüberwachung – E-20).
 
-**Anbindung im Sammler:** Der Sammler fragt bis #94 nur den GitHub-Runner ab. Der Adapter ist
-vollständig (`GitLab.abfrage`, `beim_dienst`, `jobs_je_repository`, `api_job`, `letzte_jobs`,
-`konfig_fuer`) und getestet, wird aber erst mit der Mehr-Runner-Verarbeitung (#94) und der
-Server-Eingabe der Einrichtung (#96) aufgerufen.
+**Anbindung im Sammler (#115):** Ein GitLab-Runner mit Unit und `server` in `runner.json` (keine
+Organisation nötig) wird wie Forgejo/Gitea in seinem eigenen Faden abgefragt (siehe „Abfrage im
+Sammler“); `runner[]` bekommt Job (ohne Schritte), letzte Jobs und Labels aus der Abfrage. Ehrlich wie
+bei Forgejo: ist der Runner bei GitLab nicht zu finden oder schlug die Abfrage fehl, ist der Zustand
+`unbekannt` statt „bereit“; ein pausierter Runner mit laufendem Job zeigt `job`. Ein `status` eines Jobs,
+der kein Text ist (Liste, Objekt), kostet nur diesen Job, nicht die Runde. Die Server-Eingabe der
+Einrichtung folgt mit #96; erst dann hebt `erkennung.FAEHIG["gitlab"]` an (E-20).
 
 ### Momentaufnahme `GET /api/zustand` (E-19, additiv)
 
@@ -737,7 +775,7 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `/etc/runner-monitor/github-token` | root, 0600 | bisheriger Ort des GitHub-Tokens, Rückfall bis #94/#96 (Update-Hilfsdienst und ältere Versionen lesen nur ihn) |
 | `/etc/runner-monitor/runner.json` | root:runner-monitor, 0640 | Zuordnung und Ignorieren erkannter Runner, Server und Organisation für Forgejo/Gitea (siehe „Runner erkennen“) |
 | `/var/lib/runner-monitor/` | runner-monitor, 0750 | `zugang.json` (scrypt-Hash), `sitzungen.json`, `sperren.json`, `einstellungen.json` (Organisation, Auto-Update), `einrichtungscode.json`, `systempruefung.json`, `update-status.json`, `verlauf.json` (Verlauf der letzten 10 Min., alle 10 s gesichert), `auftraege/` |
-| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner), `anbieter.json` (Forgejo/Gitea, #93) – Ergebnisse des Sammlers, ohne Token |
+| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner), `anbieter.json` (Forgejo/Gitea #93, GitLab #115) – Ergebnisse des Sammlers, ohne Token |
 | `/etc/systemd/system/runner-monitor*.{service,path}` | root | Dienste ([deploy/systemd](../deploy/systemd/)) |
 
 ## Was der Monitor nicht kann
