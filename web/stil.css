@@ -134,7 +134,29 @@ body.dashboard { overflow: hidden; }
 }
 .raster.veraltet { opacity: .5; filter: grayscale(.9); }
 .spalte { display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
-.spalte.a { grid-column: 1; grid-row: 1 / 3; }
+.spalte.a { grid-column: 1; grid-row: 1 / 3;  position: relative; }
+
+/* Mehrere Runner (Design 0.8.0, Variante C): Reiter über „Runner-Status“, stoßen an die Karte (margin-bottom hebt die Lücke auf) */
+.rw-liste { display: contents; }
+.rw-tabs { display: grid; gap: 2px; margin-bottom: -12px; }
+.rw-tabs[hidden], .rw-pop[hidden] { display: none; }
+.rw-t { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 2px; height: 48px; padding: 0 12px; border: 0; border-radius: 4px 4px 0 0; background: transparent; color: var(--ink); text-align: left; min-width: 0; cursor: pointer; font: inherit; box-shadow: inset 0 -1px 0 var(--border); }
+.rw-t:hover { background: color-mix(in srgb, var(--surface-alt) 55%, transparent); }
+.rw-t.an, .rw-mehr.an { background: var(--surface-alt); box-shadow: none; }
+.rw-t:focus-visible, .rw-pz:focus-visible { outline-offset: -2px; }
+.rw-z1 { display: flex; align-items: center; gap: 6px; max-width: 100%; font-size: 13px; line-height: 16px; font-weight: 600; white-space: nowrap; }
+.rw-z2 { display: flex; align-items: center; gap: 6px; max-width: 100%; overflow: hidden; font-size: 11.5px; line-height: 16px; font-weight: 550; white-space: nowrap; }
+.rw-name { overflow: hidden; text-overflow: ellipsis; }
+.rw-mehr { align-items: center; }
+.rw-mehr .rw-z2 { gap: 3px; }
+.rw-pop { position: absolute; top: 52px; right: 0; z-index: 8; width: 320px; padding: 4px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 8px 28px rgba(19,33,43,.16); display: flex; flex-direction: column; animation: einblenden .18s ease-out; }
+.rw-pz { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 10px; border: 0; border-radius: 3px; background: transparent; color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer; }
+.rw-pz:hover, .rw-pz.an { background: var(--surface-alt); }
+.rw-pz .label { font-weight: 400; }
+.rw-pz .rw-zt { margin-left: auto; font-weight: 550; }
+.rw-c .status { border-top-left-radius: 0; border-top-right-radius: 0; }
+.log-runner { font-family: var(--mono); font-size: 12px; color: var(--ink-muted); }
+.log-runner[hidden], .ereignisse[hidden], .term[hidden] { display: none; }
 .spalte.c { grid-column: 3; grid-row: 1; }
 .karte { background: var(--surface-alt); border-radius: var(--r-md); padding: 14px 16px; display: flex; flex-direction: column; min-height: 0; min-width: 0; position: relative; }
 .karte-kopf { display: flex; align-items: center; gap: 8px; min-height: 22px; margin-bottom: 10px; }

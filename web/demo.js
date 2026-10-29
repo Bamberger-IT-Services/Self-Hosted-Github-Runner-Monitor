@@ -81,8 +81,10 @@ window.RM_DEMO = (() => {
   };
 
   /* Seit #92 (E-19, additiv): zusätzlich runner[] und meldungen[] wie GET /api/zustand bzw. die
-     Ereignisse „runner“ und „meldungen“. Die Oberfläche nutzt sie ab #94; bis dahin ignoriert sie sie.
-     ?runner=2|3: dazu ein Forgejo-Runner und ein unbekannter Runner in Grundüberwachung. */
+     Ereignisse „runner“ und „meldungen“; die Oberfläche nutzt sie seit #94 (Reiter, Meldungen mit Runner).
+     ?runner=N (1 bis 5, Design 0.8.0): 2 = + Forgejo-Runner (Grundüberwachung), 3 = + unbekannter Runner
+     (Grundüberwachung, gestoppt bei ?zustand=gestoppt), 4 = + Gitea-Runner (bereit), 5 = + GitLab-Runner
+     (offline beim Server). Die Runner ab 4 zeigen vorweg, wie ein Dienst mit Jobs aussieht (Anbindung folgt mit #93/#99). */
   let runnerAnzahl = 1;
   const FAEHIG_VOLL = { status: true, jobs: true, schritte: true, logs: true, updates: false };
   const FAEHIG_GRUND = { status: true, jobs: false, schritte: false, logs: true, updates: false };
@@ -91,6 +93,18 @@ window.RM_DEMO = (() => {
     status: { zustand: dienstZustand === 'aktiv' ? 'aktiv' : 'gestoppt', dienst: { zustand: dienstZustand, seit: START + 7200, grund: null }, beimDienst: null },
     job: null, letzteJobs: null, jobsJeRepository: null, log: { art: 'journal', unit },
   });
+  // Runner mit Jobs und Schritten, aber ohne laufenden Job (Zustand bereit oder offline beim Server)
+  const vollRunner = (id, dienst, unit, labels, offline) => {
+    const t = jetzt(), w = workflows();
+    return {
+      id, name: id, dienst, server: 'https://git.example.org', org: 'beispiel-org', unit, stand: 'angebunden', einstufung: 'voll',
+      version: dienst === 'gitea' ? 'act_runner 0.2.11' : 'GitLab Runner 17.5', labels, faehig: FAEHIG_VOLL,
+      status: { zustand: offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst: offline ? { zustand: 'offline', seit: t - 240 } : { zustand: 'online', seit: null } },
+      job: null, letzteJobs: [{ repo: 'datenimport', workflow: 'Import', name: 'nachts', ergebnis: 'erfolg', dauer: 128, ende: t - 720 }],
+      jobsJeRepository: { ...w, abfrage: 'ok', abgefragt: t - (takt % 30), naechste: t + 30 - (takt % 30), tokenAblauf: t + 160 * 86400, repos: REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })) },
+      log: { art: 'journal', unit },
+    };
+  };
   const runnerListe = () => {
     const st = status(), w = workflows();
     const zust = st.dienst.zustand === 'gestoppt' ? 'gestoppt' : st.job ? 'job' : st.github.zustand === 'offline' ? 'offline' : 'bereit';
@@ -103,6 +117,8 @@ window.RM_DEMO = (() => {
     }];
     if (runnerAnzahl >= 2) liste.push(grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'teil', 'grund', 'aktiv'));
     if (runnerAnzahl >= 3) liste.push(grundRunner('buildagent', 'buildagent', 'unbekannt', 'buildagent.service', 'unbekannt', 'grund', zustand === 'gestoppt' ? 'gestoppt' : 'aktiv'));
+    if (runnerAnzahl >= 4) liste.push(vollRunner('runner-vm-03', 'gitea', 'gitea-runner.service', ['linux', 'arm64'], false));
+    if (runnerAnzahl >= 5) liste.push(vollRunner('runner-vm-04', 'gitlab', 'gitlab-runner.service', ['docker', 'shell'], true));
     return liste;
   };
   const meldungenListe = (liste) => {
@@ -176,12 +192,12 @@ window.RM_DEMO = (() => {
     }
     schrittNr++; zeilenImSchritt = 0;
     api.empfange('log', { zeilen: [{ art: 'schritt', zeit: jetzt(), ...schritt(schrittNr) }] });
-    api.empfange('status', status());
+    api.empfange('status', status()); runnerSenden();
   }
   function neuerJob() {
     job = { start: jetzt() - 95 }; schrittNr = 3; zeilenImSchritt = 0;
     api.empfange('log', { neu: true, ereignisse: [{ art: 'start', zeit: jetzt() - 95, repo: JOB.repo, workflow: JOB.workflow, name: JOB.name }], zeilen: [{ art: 'schritt', zeit: jetzt() - 60, ...schritt(3) }] });
-    api.empfange('status', status());
+    api.empfange('status', status()); runnerSenden();
   }
 
   function alles(erst) {
@@ -224,7 +240,7 @@ window.RM_DEMO = (() => {
     const p = new URLSearchParams(location.search);
     zustand = p.get('zustand') || zustand; grund = p.get('grund') || ''; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
-    const rn = parseInt(p.get('runner'), 10); if (rn >= 1 && rn <= 3) runnerAnzahl = rn;
+    const rn = parseInt(p.get('runner'), 10); if (rn >= 1 && rn <= 5) runnerAnzahl = rn;
     schritteLokal = p.get('schritte') === 'lokal';
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();

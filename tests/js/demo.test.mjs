@@ -64,3 +64,19 @@ test('drei Runner: Grundüberwachung ohne Jobs, Meldung mit Runner-ID', () => {
   assert.ok(meldungen.some(m => m.id === 'gestoppt' && m.runner === 'buildagent'));
   assert.equal(meldungen[0].stufe, 'fehler');
 });
+
+test('fünf Runner (Design 0.8.0): vier Dienste, Zustände je Runner, Meldung von einem anderen Runner', () => {
+  const { empfangen } = starteDemo('?demo&leiste=0&runner=5');
+  const liste = letzte(empfangen, 'runner');
+  assert.deepEqual(liste.map(r => r.id), ['runner-vm-01', 'runner-vm-02', 'buildagent', 'runner-vm-03', 'runner-vm-04']);
+  assert.deepEqual(liste.map(r => r.status.zustand), ['job', 'aktiv', 'aktiv', 'bereit', 'offline']);
+  for (const r of liste) assert.deepEqual(Object.keys(r).sort(), EINTRAG, r.id);
+  assert.equal(liste[4].status.beimDienst.zustand, 'offline');
+  const m = letzte(empfangen, 'meldungen').find(x => x.runner === 'runner-vm-04');
+  assert.equal(m.id, 'offline');
+});
+
+test('ein, drei und fünf Runner über ?runner=N', () => {
+  for (const n of [1, 3, 5]) assert.equal(letzte(starteDemo(`?demo&leiste=0&runner=${n}`).empfangen, 'runner').length, n);
+  assert.equal(letzte(starteDemo('?demo&leiste=0&runner=9').empfangen, 'runner').length, 1);
+});
