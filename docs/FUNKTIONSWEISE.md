@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 29.10.2026 · Version 0.8.1**
+**Stand: 30.10.2026 · Version 0.8.2**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -507,7 +507,7 @@ Momentaufnahme nur als ersten Schwall von `/events`; jetzt auch als ein JSON-Obj
 { "format": 2,
   "status": { … wie bisher … }, "system": { …, "verlauf": {…} }, "prozesse": […], "platten": […],
   "container": […], "workflows": { … wie bisher … }, "update": { … },
-  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.8.1",
+  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.8.2",
           "auslastung": { …Bereich system… }, "verlauf": { "cpu": [], "ram": [], "netz": [], "start": 0 },
           "prozesse": […], "platten": […], "container": […] },
   "runner": [ …Einträge… ],
