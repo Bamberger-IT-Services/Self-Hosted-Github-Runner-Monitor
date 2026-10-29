@@ -114,6 +114,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Rückfall bestehen (#92).
 
 ### Geändert
+- Handbuch, Funktionsweise und Bildschirmfotos auf Design 0.8.0: Kapitel zu mehreren Runnern (Reiter, „+N“,
+  Grundüberwachung), Zeitraum der Auslastung, Sprache, Info › Runner und Verbindungen, Fehler/Idee per E-Mail
+  und `einrichten.sh zugang <runner>`; neue Bilder (`dashboard-mehrere-runner`, `dashboard-grundueberwachung`,
+  `info-runner`, `dashboard-englisch`), alle übrigen neu aufgenommen (`node werkzeuge/bilder.mjs`, nur Demo-Daten);
+  `docs/design/README.md` vollständig auf 0.8.0 abgeglichen (#101).
 - CI: Prüfungen laufen auch bei Pull Requests nach `develop` und bei Push auf `develop`/`main`;
   shellcheck wird bei Bedarf nachinstalliert, davor `bash -n` (#108).
 - Ein Token nimmt die Weboberfläche nur noch in der Einrichtung an (gültiger Einrichtungscode), nicht mehr
