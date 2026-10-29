@@ -512,10 +512,14 @@ def verbindung_anbieter(erg: dict | None, seit: float | None = None, dienst: str
     return {"fertig": True, "ok": False, "ergebnisse": [{"fehler": True, **texte.get(art, meldung("Prüfung fehlgeschlagen."))}]}
 
 
-def ohne_server() -> dict:
-    """„Verbindung prüfen“ für einen Runner mit Adapter, dem Server oder Organisation in runner.json fehlen."""
-    return {"fertig": True, "ok": False, "ergebnisse": [
-        {"warn": True, "text": "Server und Organisation fehlen in /etc/runner-monitor/runner.json – siehe Anleitung zu einrichten.sh zugang."}]}
+def ohne_server(dienst: str | None = None) -> dict:
+    """„Verbindung prüfen“ für einen Runner mit Adapter, dem Server oder Organisation in runner.json fehlen.
+    GitLab braucht keine Organisation (#126) – dort fehlt nur der Server."""
+    if dienst == "gitlab":
+        zeile = {"warn": True, "text": "Server fehlt in /etc/runner-monitor/runner.json – siehe Anleitung zu einrichten.sh zugang."}
+    else:
+        zeile = {"warn": True, "text": "Server und Organisation fehlen in /etc/runner-monitor/runner.json – siehe Anleitung zu einrichten.sh zugang."}
+    return {"fertig": True, "ok": False, "ergebnisse": [zeile]}
 
 
 def ohne_abfrage() -> dict:

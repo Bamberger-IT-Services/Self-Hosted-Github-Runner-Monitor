@@ -550,7 +550,7 @@ class Handler(BaseHTTPRequestHandler):
                              if f["id"] == rid), None)
                 art = (fund or {}).get("anbindung")
                 if art == "ohne-server":
-                    self._json(HTTPStatus.OK, einrichtung.ohne_server())
+                    self._json(HTTPStatus.OK, einrichtung.ohne_server((fund or {}).get("dienst")))
                     return
                 if art != "angebunden":
                     # Diesen Runner fragt der Sammler nicht ab: ehrlich sagen statt grün zeigen.

@@ -517,6 +517,18 @@ class ReviewTest(ServerBasis):
         self.assertIn("Server und Organisation fehlen", d["ergebnisse"][0]["text"])
         self.assertFalse((self.k.auftraege_verz / einrichtung.AUFTRAG_PRUEFEN).exists())
 
+    def test_pruefen_gitlab_ohne_server(self):
+        """#126: GitLab braucht keine Organisation – ohne Server nennt die Prüfung nur den Server."""
+        schreibe_erkennung(self.k, [fund("runner-vm-01"), fund("buildagent", "gitlab", server="https://gitlab.example.org")])
+        self.code()
+        r, d = self.anfrage("GET", "/api/einrichtung/runner")
+        self.assertEqual({f["id"]: f["anbindung"] for f in d["runner"]}["buildagent"], "ohne-server")
+        r, d = self.anfrage("POST", "/api/einrichtung/runner/pruefen", {"id": "buildagent"})
+        self.assertEqual(r.status, 200)
+        self.assertEqual(d["ergebnisse"][0]["text"], "Server fehlt in /etc/runner-monitor/runner.json – siehe Anleitung zu einrichten.sh zugang.")
+        self.assertNotIn("Organisation", d["ergebnisse"][0]["text"])
+        self.assertFalse((self.k.auftraege_verz / einrichtung.AUFTRAG_PRUEFEN).exists())
+
     def test_verbindung_anbieter_fehler(self):
         for art, teil in (("kein-token", "kein Token"), ("nicht-erreichbar", "nicht erreichbar"), ("token-ungueltig", "ungültig")):
             e = einrichtung.verbindung_anbieter({"abfrage": art, "abgefragt": 1.0, "org": "o"})

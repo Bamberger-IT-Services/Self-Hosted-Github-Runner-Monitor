@@ -276,7 +276,10 @@
     }
     return `<div class="feld"><label for="server-${id}">${t('Server')}</label><input id="server-${id}" class="mono" readonly value="${esc(f.server || '')}" placeholder="–"><span class="feld-hinweis">${f.dienst === 'forgejo' || f.dienst === 'gitea'
         ? t('Vorschlag aus der Erkennung. Server, Organisation und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt alle drei ab und prüft sie (Anleitung: {doku}):', { doku: `<a href="${DOKU_ANBINDEN}" rel="noopener" target="_blank">${t('Forgejo- oder Gitea-Runner anbinden ↗')}</a>` })
-        : t('Vorschlag aus der Erkennung. Server und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt beides ab und prüft sie; eine Organisation gibt es bei GitLab nicht (Anleitung: {doku}):', { doku: `<a href="${DOKU_GITLAB}" rel="noopener" target="_blank">${t('GitLab-Runner anbinden ↗')}</a>` })}</span></div>
+        : f.dienst === 'gitlab'
+          ? t('Vorschlag aus der Erkennung. Server und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt beides ab und prüft sie; eine Organisation gibt es bei GitLab nicht (Anleitung: {doku}):', { doku: `<a href="${DOKU_GITLAB}" rel="noopener" target="_blank">${t('GitLab-Runner anbinden ↗')}</a>` })
+          // weiterer GitHub-Runner (nicht der des Monitors): kein GitLab-Text, kein Token-Feld (E-22)
+          : t('Vorschlag aus der Erkennung. Zugangsdaten tragen Sie aus Sicherheitsgründen auf der VM ein; dieser Befehl legt das Token ab:')}</span></div>
       ${codeblock(`${SKRIPT} zugang ${f.id}`)}
       ${knopf}`;
   }
