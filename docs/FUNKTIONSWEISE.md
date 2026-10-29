@@ -370,9 +370,13 @@ einen Satz Bereiche für alle (Auslastung, Prozesse, Platten) und je gewähltem 
   `Gestoppt`, `Offline`, `Dienst aktiv`). Ab 4 Runnern stehen drei Reiter (Index 0, 1 und der gewählte, sonst 2)
   und „+N“ (64 px) mit den Punkten der übrigen; der Klick öffnet eine Liste (320 px) mit Punkt, Name,
   Dienst-Plakette und Zustand. Bedienung per Tastatur: Pfeile links/rechts, Pos1/Ende (die Wahl folgt dem
-  Fokus), Pfeil nach unten öffnet die Liste, Esc schließt sie. Mit einem Runner gibt es keine Reiter.
+  Fokus), Enter, Leertaste oder Pfeil nach unten auf „+N“ öffnen die Liste und setzen den Fokus auf die erste
+  Option (Pfeile, Enter wählt), Esc schließt sie und gibt den Fokus an „+N“ zurück, Tab aus der Liste schließt
+  sie ebenfalls. Mit einem Runner gibt es keine Reiter.
 - **Wahl** je Browser in `localStorage["runner-monitor.runner"]` (Runner-ID). Gibt es den Runner nicht
-  mehr, gilt der erste; ist der Speicher gesperrt, gilt die Wahl nur für die Sitzung.
+  mehr (oder kommt `runner` erst nach `status`), gilt vorläufig der erste, die gemerkte Wahl bleibt
+  gespeichert und greift wieder; ist der Speicher gesperrt, gilt die Wahl nur für die Sitzung. Info und
+  Fehler-Mail nennen alle Runner mit Dienst und Version.
 - **Kopfzeile:** Name des gewählten Runners, bei mehreren Runnern die Dienst-Plakette (`GitHub`, `Forgejo`,
   `Gitea`, `GitLab`, `unbekannt`) als erstes Label; im Live-Log steht der Runner-Name neben dem Titel.
 - **Meldungen** aus `meldungen[]` (`gestoppt`, `fehlt`, `offline`, `abfrage`, `token`) nennen bei mehreren
