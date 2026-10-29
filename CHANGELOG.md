@@ -28,7 +28,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   über die GitLab-REST-API (Token mit Bereich `read_api`, nur lesend, ohne Weiterleitungen). Ehrlich
   „nicht verfügbar“: Schritte und wartende Jobs (die API liefert sie nicht). Anleitung unter
   Einrichtung › „GitLab anbinden“ und im Runbook `gitlab-nicht-erreichbar`; der Sammler ruft den Adapter
-  mit #94/#96 auf (#99).
+  mit #94/#96 auf, bis dahin bleibt GitLab in der Grundüberwachung. Das Token geht nur über `https://`
+  (`http://` nur mit `"http_erlaubt": true` in `runner.json`) (#99, E-20, E-21).
 
 ### Behoben
 - Dashboard lud nicht (Syntaxfehler in `web/dashboard.js` seit dem Review zu #90: ein Zeilenkommentar

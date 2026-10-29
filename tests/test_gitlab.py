@@ -1,13 +1,17 @@
 """GitLab-Adapter (#99): Abfrage gegen einen lokalen Testserver mit aufgezeichneten (neutralisierten)
 Antworten der GitLab-REST-API v4. Namen: gitlab.example.org, beispiel-org, runner-vm-03, 192.0.2.x."""
 
+import calendar
 import json
+import socket
 import tempfile
 import threading
 import time
 import unittest
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from unittest import mock
 
 from runner_monitor import anbieter, erkennung
 from runner_monitor.anbieter import gitlab
@@ -81,6 +85,8 @@ class Testserver:
                 pass
 
         self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd.daemon_threads = True
+        self.httpd.block_on_close = False
         self.url = f"http://127.0.0.1:{self.httpd.server_address[1]}"
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
 
@@ -105,14 +111,14 @@ class Basis(unittest.TestCase):
         self.s.normal()
 
     def frage(self, token: str = TOKEN, speicher: dict | None = None, name: str = "runner-vm-03", server: str | None = None) -> dict:
-        return gitlab.abfrage(gitlab.Klient(server if server is not None else self.s.url, token), name, None, speicher)
+        return gitlab.abfrage(gitlab.Klient(server if server is not None else self.s.url, token, http_erlaubt=True), name, None, speicher)
 
 
 class AbfrageTest(Basis):
     def test_runde_ok(self):
         e = self.frage()
         self.assertEqual(e["abfrage"], "ok")
-        self.assertEqual(e["runner"], {"zustand": "online", "beschaeftigt": True, "labels": ["self-hosted", "linux"], "version": "17.5.1", "id": 42})
+        self.assertEqual(e["runner"], {"zustand": "online", "pausiert": False, "beschaeftigt": True, "labels": ["self-hosted", "linux"], "version": "17.5.1", "id": 42})
         self.assertEqual(e["repos"], [{"name": "web-portal", "privat": False, "laeuft": 1, "wartet": 0}])
         job = e["job"]
         self.assertEqual((job["repo"], job["workflow"], job["name"], job["stage"]), ("web-portal", "Pipeline #900", "unit-tests", "test"))
@@ -123,7 +129,7 @@ class AbfrageTest(Basis):
         self.assertEqual([(j["name"], j["ergebnis"], j["dauer"], j["repo"]) for j in e["letzteJobs"]],
                          [("build", "erfolg", 274, "api-dienst"), ("lint", "fehler", 60, "api-dienst"), ("e2e", "abgebrochen", 30, "Projekt 7")])
         self.assertIsNotNone(e["letzterErfolg"])
-        self.assertAlmostEqual(e["tokenAblauf"], time.mktime(time.strptime("2026-11-30", "%Y-%m-%d")) + 86399, delta=1)
+        self.assertAlmostEqual(e["tokenAblauf"], calendar.timegm((2026, 11, 30, 0, 0, 0)) + 86399, delta=1)
 
     def test_token_nur_im_kopf_nie_in_der_adresse_oder_im_ergebnis(self):
         e = self.frage()
@@ -201,10 +207,10 @@ class AbfrageTest(Basis):
 
     def test_kontingent_aus_den_kopfzeilen(self):
         self.s.antworten["/api/v4/runners"] = (200, RUNNER_LISTE, {"RateLimit-Remaining": "1990", "RateLimit-Limit": "2000", "RateLimit-Reset": "1761700060"})
-        klient = gitlab.Klient(self.s.url, TOKEN)
+        klient = gitlab.Klient(self.s.url, TOKEN, http_erlaubt=True)
         klient.hole("/runners")
         self.assertEqual(klient.kontingent(), {"frei": 1990, "limit": 2000, "reset": 1761700060})
-        self.assertEqual(gitlab.Klient(self.s.url, TOKEN).kontingent(), {})  # Server ohne RateLimit-Kopfzeilen
+        self.assertEqual(gitlab.Klient(self.s.url, TOKEN, http_erlaubt=True).kontingent(), {})  # Server ohne RateLimit-Kopfzeilen
 
 
 class FehlerTest(Basis):
@@ -252,7 +258,7 @@ class FehlerTest(Basis):
         tot = Testserver()
         url = tot.url
         tot.schliessen()
-        e = gitlab.abfrage(gitlab.Klient(url, TOKEN, zeitlimit=2), "runner-vm-03")
+        e = gitlab.abfrage(gitlab.Klient(url, TOKEN, zeitlimit=2, http_erlaubt=True), "runner-vm-03")
         self.assertEqual(e["abfrage"], "nicht-erreichbar")
         self.assertTrue(e["fehler"])
         self.assertNotIn(TOKEN, e["fehler"])
@@ -309,12 +315,13 @@ class AuswertungTest(unittest.TestCase):
 
 class AdapterTest(Basis):
     def konfig(self, d: Path) -> anbieter.RunnerKonfig:
-        return gitlab.konfig_fuer("runner-vm-03", "runner-vm-03", "gitlab-runner.service", self.s.url, d / "zugang")
+        return gitlab.konfig_fuer("runner-vm-03", "runner-vm-03", "gitlab-runner.service", self.s.url, d / "zugang", http_erlaubt=True)
 
     def test_faehigkeiten_ehrlich(self):
         f = anbieter.faehigkeiten_tabelle()["gitlab"]
         self.assertEqual(f, {"status": True, "jobs": True, "schritte": False, "logs": True, "updates": False})
-        self.assertEqual(f, erkennung.FAEHIG["gitlab"])
+        # ausgeliefert wird bis zur Anbindung im Sammler die Grundüberwachung (E-20)
+        self.assertEqual(erkennung.FAEHIG["gitlab"], {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False})
         self.assertIs(anbieter.klasse_fuer("gitlab"), gitlab.GitLab)
 
     def test_eintrag_ohne_schritte_mit_jobs(self):
@@ -361,6 +368,183 @@ class AdapterTest(Basis):
 
     def test_ungueltige_unit_wird_verworfen(self):
         self.assertIsNone(gitlab.konfig_fuer("x", "x", "--help.service", self.s.url, Path("/x")).unit)
+
+
+class RobustheitTest(Basis):
+    """Fremde Antworten in unerwarteter Form: Runde = Fehler „unerwartete Antwort“, nie ein Absturz."""
+
+    def test_ids_und_typen_in_jobs(self):
+        job = {**JOBS_LAUFEND[0], "pipeline": [1, 2], "project": "x", "commit": 5, "name": {"a": 1}, "started_at": 12345}
+        self.s.antworten[LAUFEND] = (200, [job, 7, None, "x"])
+        e = self.frage()
+        self.assertEqual(e["abfrage"], "ok")
+        self.assertEqual((e["job"]["repo"], e["job"]["workflow"], e["job"]["name"], e["job"]["start"]), ("", "", "", None))
+
+    def test_jobs_kein_array(self):
+        self.s.antworten[LAUFEND] = (200, {"message": "x"})
+        self.assertEqual(self.frage()["abfrage"], "ok")  # leere Liste, kein Absturz
+
+    def test_runner_antwort_kein_objekt(self):
+        self.s.antworten["/api/v4/runners/42"] = (200, [1])
+        e = self.frage()
+        self.assertEqual((e["abfrage"], e["runner"]["id"], e["runner"]["labels"]), ("ok", 42, []))
+
+    def test_id_der_einzelantwort_ueberschreibt_nicht(self):
+        self.s.antworten["/api/v4/runners/42"] = (200, {**RUNNER_42, "id": 999, "description": "fremd"})
+        e = self.frage()
+        self.assertEqual(e["runner"]["id"], 42)
+        self.assertEqual([p for p, _ in self.s.anfragen if "/999" in p], [])
+
+    def test_id_keine_zahl(self):
+        for wert in ("42", True, None, -1, 2**70, 4.5):
+            self.s.antworten["/api/v4/runners"] = (200, [{**RUNNER_LISTE[1], "id": wert}])
+            e = self.frage()
+            self.assertEqual(e["runner"]["zustand"], "unbekannt", wert)
+            self.assertEqual(e["abfrage"], "ok", wert)
+
+    def test_tag_list_nur_liste_von_texten(self):
+        for wert, erwartet in (("self-hosted", []), ({"a": 1}, []), ([1, None, "linux", ["x"]], ["linux"]), (None, [])):
+            self.s.antworten["/api/v4/runners/42"] = (200, {**RUNNER_42, "tag_list": wert})
+            self.assertEqual(self.frage()["runner"]["labels"], erwartet, wert)
+
+    def test_duration_nur_endliche_zahl(self):
+        for wert in ("274", None, True, -5, [1], 1e30):
+            self.s.antworten[LETZTE] = (200, [{**JOBS_LETZTE[1], "duration": wert}])
+            self.assertIsNone(self.frage()["letzteJobs"][0]["dauer"], wert)
+
+    def test_nan_und_infinity_werden_abgelehnt(self):
+        for roh in (b'[{"id": 4700, "status": "success", "duration": NaN}]', b'[{"id": 1, "duration": Infinity}]', b'[-Infinity]'):
+            self.s.antworten[LETZTE] = (200, roh)
+            e = self.frage()
+            self.assertEqual(e["abfrage"], "nicht-erreichbar", roh)
+            self.assertIn("JSON", e["fehler"])
+
+    def test_expires_at_ungueltig(self):
+        for wert in ("0001-01-01", "9999-12-31x", "kein-datum", 5, ["x"], "2026-13-45"):
+            self.s.antworten["/api/v4/personal_access_tokens/self"] = (200, {**TOKEN_SELF, "expires_at": wert})
+            e = self.frage()
+            self.assertEqual(e["abfrage"], "ok", wert)
+            self.assertIsNone(e["tokenAblauf"], wert)
+
+    def test_scopes_und_token_antwort_unerwartet(self):
+        for antwort in ([], "x", {"scopes": "read_api"}, {"scopes": [["read_api"]]}):
+            self.s.antworten["/api/v4/personal_access_tokens/self"] = (200, antwort)
+            self.assertIn(self.frage()["abfrage"], ("ok", "keine-rechte"), antwort)
+
+    def test_zeitfelder_unsinn(self):
+        self.s.antworten[LAUFEND] = (200, [{**JOBS_LAUFEND[0], "started_at": "0001-01-01T00:00:00Z"}])
+        self.assertEqual(self.frage()["abfrage"], "ok")
+
+    def test_unerwartete_ausnahme_wird_zum_fehler(self):
+        def kaputt(jobs):
+            raise TypeError("kaputt")
+        with mock.patch.object(gitlab, "zaehle_laufende", kaputt):
+            e = self.frage()
+        self.assertEqual((e["abfrage"], e["fehler"]), ("fehler", "unerwartete Antwort von GitLab"))
+        self.assertEqual((e["job"], e["repos"], e["letzteJobs"]), (None, [], []))
+
+
+class PausiertTest(Basis):
+    def test_pausierter_runner_ist_nicht_bereit(self):
+        self.s.antworten["/api/v4/runners/42"] = (200, {**RUNNER_42, "paused": True, "active": False, "status": "online"})
+        e = self.frage()
+        self.assertEqual((e["runner"]["zustand"], e["runner"]["pausiert"]), ("offline", True))
+        a = gitlab.GitLab(anbieter.RunnerKonfig(id="r", name="runner-vm-03", dienst="gitlab", unit="gitlab-runner.service"))
+        self.assertEqual(a.beim_dienst(e), {"zustand": "offline", "seit": None, "pausiert": True})
+        eintrag = a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=e)
+        self.assertEqual(eintrag["status"]["zustand"], "offline")
+
+    def test_nur_altes_active_feld(self):
+        self.s.antworten["/api/v4/runners/42"] = (200, {**{k: v for k, v in RUNNER_42.items() if k != "paused"}, "active": False})
+        self.assertTrue(self.frage()["runner"]["pausiert"])
+
+    def test_nicht_pausiert(self):
+        self.assertFalse(self.frage()["runner"]["pausiert"])
+
+
+class NetzTest(unittest.TestCase):
+    """Müll-Server, tröpfelnde Antworten, https-Pflicht (E-21)."""
+
+    def setUp(self):
+        self.s = Testserver()
+        self.addCleanup(self.s.schliessen)
+
+    def server(self, bediene) -> int:
+        sock = socket.socket()
+        sock.bind(("127.0.0.1", 0))
+        sock.listen(5)
+        self.addCleanup(sock.close)
+        threading.Thread(target=bediene, args=(sock,), daemon=True).start()
+        return sock.getsockname()[1]
+
+    def test_http_exceptions_sind_nicht_erreichbar(self):
+        antworten = [b"MUELL\r\n\r\n", b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n[1,",
+                     b"HTTP/1.1 200 OK\r\nX: " + b"a" * 70000 + b"\r\n\r\n"]
+
+        def bediene(sock):
+            for a in antworten:
+                try:
+                    c, _ = sock.accept()
+                    c.recv(4096)
+                    c.sendall(a)
+                    c.close()
+                except OSError:
+                    return
+        port = self.server(bediene)
+        for _ in antworten:
+            e = gitlab.abfrage(gitlab.Klient(f"http://127.0.0.1:{port}", TOKEN, zeitlimit=3, http_erlaubt=True), "runner-vm-03")
+            self.assertEqual(e["abfrage"], "nicht-erreichbar")
+            self.assertTrue(e["fehler"])
+
+    def test_troepfelnde_antwort_wird_zur_frist_abgebrochen(self):
+        def troepfle(sock):
+            try:
+                c, _ = sock.accept()
+                c.recv(4096)
+                c.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 1000\r\n\r\n")
+                for _ in range(40):
+                    time.sleep(0.25)
+                    c.sendall(b"[")
+                c.close()
+            except OSError:
+                pass
+        port = self.server(troepfle)
+        start = time.monotonic()
+        e = gitlab.abfrage(gitlab.Klient(f"http://127.0.0.1:{port}", TOKEN, zeitlimit=1, http_erlaubt=True), "runner-vm-03")
+        self.assertEqual(e["abfrage"], "nicht-erreichbar")
+        self.assertLess(time.monotonic() - start, 2.5, "harte Gesamtfrist, nicht je Lesevorgang")
+
+    def test_http_nur_mit_ausdruecklicher_erlaubnis(self):
+        self.s.antworten = {"/api/v4/personal_access_tokens/self": (200, TOKEN_SELF), "/api/v4/runners": (200, [])}
+        e = gitlab.abfrage(gitlab.Klient(self.s.url, TOKEN), "runner-vm-03")
+        self.assertEqual(e["abfrage"], "fehler")
+        self.assertIn("https", e["fehler"])
+        self.assertEqual(self.s.anfragen, [], "das Token darf nie unverschlüsselt gesendet werden")
+        for nicht_true in (1, "true", "ja", None):
+            self.assertEqual(gitlab.Klient(self.s.url, TOKEN, http_erlaubt=nicht_true).server, "")
+        self.assertEqual(gitlab.Klient(self.s.url, TOKEN, http_erlaubt=True).server, self.s.url)
+        self.assertEqual(gitlab.Klient("https://gitlab.example.org", TOKEN).server, "https://gitlab.example.org")
+
+    def test_konfig_http_nur_mit_flag(self):
+        self.assertIsNone(gitlab.konfig_fuer("x", "x", None, "http://192.0.2.13:8080", Path("/z")).server)
+        mit = gitlab.konfig_fuer("x", "x", None, "http://192.0.2.13:8080", Path("/z"), http_erlaubt=True)
+        self.assertEqual((mit.server, mit.http_erlaubt), ("http://192.0.2.13:8080", True))
+        self.assertEqual(gitlab.konfig_fuer("x", "x", None, "https://gitlab.example.org", Path("/z")).server, "https://gitlab.example.org")
+
+    def test_http_geht_nie_ueber_einen_proxy(self):
+        self.s.normal()
+        with mock.patch.dict("os.environ", {"http_proxy": "http://127.0.0.1:9", "HTTP_PROXY": "http://127.0.0.1:9", "no_proxy": "", "NO_PROXY": ""}):
+            e = gitlab.abfrage(gitlab.Klient(self.s.url, TOKEN, http_erlaubt=True), "runner-vm-03")
+        self.assertEqual(e["abfrage"], "ok")
+
+    def test_runner_json_http_erlaubt(self):
+        with tempfile.TemporaryDirectory() as t:
+            datei = Path(t) / "runner.json"
+            datei.write_text(json.dumps({"version": 1, "runner": {"a": {"http_erlaubt": True}, "b": {"http_erlaubt": "true"}, "c": {}}}))
+            datei.chmod(0o640)
+            z = erkennung.lies_zuordnung(datei)
+        self.assertEqual(z.get("a"), {"http_erlaubt": True})
+        self.assertNotIn("http_erlaubt", z.get("b", {}))
 
 
 if __name__ == "__main__":

@@ -14,19 +14,22 @@
    ```
 2. **Nicht erreichbar:** DNS, Proxy, Firewall und Zertifikat prüfen. Antwortet der Server mit einer
    Weiterleitung (301/302, z. B. von `http` auf `https`), die endgültige Adresse eintragen – der Monitor
-   folgt keiner Weiterleitung, damit das Token nie an eine andere Adresse geht.
+   folgt keiner Weiterleitung, damit das Token nie an eine andere Adresse geht. Fehlt nur `https://`: ein
+   Server mit `http://` wird nur abgefragt, wenn in `/etc/runner-monitor/runner.json` bei diesem Runner
+   `"http_erlaubt": true` steht (siehe [Einrichtung](../EINRICHTUNG.md#gitlab-anbinden)).
 3. **401 / Token ungültig:** Token abgelaufen, widerrufen oder falsch kopiert. Neues Token mit dem Bereich
    `read_api` erstellen (siehe [Einrichtung](../EINRICHTUNG.md#gitlab-anbinden)) und eintragen:
    ```bash
    sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner-id>
    ```
 4. **Keine Rechte (403/404):** Das Token hat nicht den Bereich `read_api`, oder sein Konto darf den Runner
-   nicht sehen (Rolle unter Maintainer, falsche Gruppe). Bei GitLab unter Settings › Access tokens den Bereich
+   nicht sehen (Rolle unter Maintainer, bei Gruppen-Runnern ggf. Owner; Instanz-Runner sind per Token nicht abfragbar). Bei GitLab unter Settings › Access tokens den Bereich
    und die Rolle prüfen.
 5. **Runner „unbekannt“, Abfrage ok:** Der Runner wird über seinen Namen gefunden. `name` in
    `/etc/gitlab-runner/config.toml` und die Beschreibung bei GitLab (Settings › CI/CD › Runners) müssen gleich
    sein und dürfen nur einmal vorkommen.
-6. **429 / Kontingent:** Die Abfrage setzt aus und läuft später weiter. Auf eigenen Servern lässt sich die
+6. **Runner „offline“, obwohl der Dienst läuft:** Bei GitLab pausiert (Settings › CI/CD › Runners › „Resume“).
+7. **429 / Kontingent:** Die Abfrage setzt aus und läuft später weiter. Auf eigenen Servern lässt sich die
    Rate-Limit-Einstellung der Instanz prüfen.
 
 ## Prüfen, ob es geklappt hat

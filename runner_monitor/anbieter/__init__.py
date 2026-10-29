@@ -57,6 +57,7 @@ class RunnerKonfig:
     token_datei: Path | None = None        # /etc/runner-monitor/zugang/<id>.token
     token_rueckfall: Path | None = None    # alter Ort (/etc/runner-monitor/github-token) bis #94/#96
     runner_verz: Path | None = None        # GitHub: Verzeichnis des Runners (MONITOR_RUNNER_VERZ)
+    http_erlaubt: bool = False             # nur aus runner.json: Token darf über http:// gehen (E-21)
 
 
 class Anbieter:
@@ -199,7 +200,8 @@ def adapter(konfig: RunnerKonfig) -> Anbieter:
 
 
 def faehigkeiten_tabelle() -> dict[str, dict[str, bool]]:
-    """Fähigkeiten je Dienst in dieser Version – muss zu ``erkennung.FAEHIG`` passen (Test)."""
+    """Was die Adapter können. Ausgeliefert wird ``erkennung.FAEHIG``; sie darf weniger versprechen
+    (ein Adapter ist da, aber noch nicht angebunden, E-20), aber nie mehr (Test)."""
     return {d: dict(klasse_fuer(d).FAEHIG) for d in DIENSTE}
 
 

@@ -127,7 +127,7 @@ Gilt für einen erkannten GitLab-Runner (`gitlab-runner.service`, `config.toml`)
 „Anbinden“) folgt mit #96. Bis dahin legt man die Zugangsdaten auf der VM ab.
 
 1. **Token erstellen:** GitLab › Gruppe (oder Projekt) › Settings › **Access tokens** › „Add new token“ –
-   Rolle **Maintainer**, Bereich **`read_api`** (nur lesen), Ablaufdatum z. B. 90 Tage (der Monitor warnt
+   Rolle **Maintainer** (bei Gruppen-Runnern ggf. **Owner**), Bereich **`read_api`** (nur lesen), Ablaufdatum z. B. 90 Tage (der Monitor warnt
    14 Tage vorher). Ein persönliches Token (Profil › Access tokens) mit `read_api` geht ebenso, wenn das Konto
    Zugriff auf den Runner hat.
 2. **Eintragen** (die ID zeigt `sudo ./einrichten.sh zugang` ohne Angabe):
@@ -135,13 +135,17 @@ Gilt für einen erkannten GitLab-Runner (`gitlab-runner.service`, `config.toml`)
    sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner-id>
    ```
 3. **Server:** die Adresse Ihres GitLab (z. B. `https://gitlab.example.org`) steht in der Konfiguration des
-   Runners, nicht im Fund. Der Monitor folgt keiner Weiterleitung – die Adresse muss die endgültige sein.
+   Runners, nicht im Fund. Der Monitor folgt keiner Weiterleitung – die Adresse muss die endgültige sein. Mit Token
+   nur **`https://`**; ein Server nur mit `http://` (z. B. im LAN) wird erst abgefragt, wenn in
+   `/etc/runner-monitor/runner.json` bei diesem Runner `"http_erlaubt": true` steht – das Token läuft dann unverschlüsselt
+   durchs Netz, und `HTTP_PROXY` wird dabei bewusst nicht benutzt.
 4. **Name:** der Runner wird bei GitLab über seine Beschreibung gefunden. Sie muss mit `name` in
    `/etc/gitlab-runner/config.toml` übereinstimmen und darf bei GitLab nur einmal vorkommen.
 
 Was der Monitor von GitLab zeigt: Runner online/offline, aktueller Job (Projekt, Pipeline, Job, Stage),
 letzte Jobs, laufende Jobs je Projekt. **Nicht verfügbar:** Schritte eines Jobs und wartende Jobs (die
-GitLab-API liefert beides nicht).
+GitLab-API liefert beides nicht). Ein bei GitLab pausierter Runner gilt als offline. **Instanz-Runner** (von der
+Instanz-Verwaltung angelegt) kann der Monitor nicht abfragen (dafür braucht GitLab Administratorrechte).
 
 ## Prüfen
 

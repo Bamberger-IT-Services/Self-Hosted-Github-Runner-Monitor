@@ -60,14 +60,14 @@ STAENDE = ("angebunden", "grund", "ignoriert", "offen")
 GEPRUEFT = ["systemd-Units", "Prozesse", ".runner-Dateien", "Server-API"]
 
 # Was der Monitor in dieser Version je Dienst liefern kann (README › „Nicht verfügbar“ ehrlich zeigen).
-# Forgejo und Gitea sind erkannt, aber noch ohne Adapter (#93): nur Grundüberwachung (Dienst und
-# Journal). GitLab hat seit #99 einen Adapter (Status und Jobs, ohne Schritte: die API hat keine).
-# Kommt ein Adapter dazu, ändert sich nur diese Tabelle.
+# Forgejo, Gitea und GitLab sind erkannt, aber noch nicht angebunden: nur Grundüberwachung (Dienst
+# und Journal). Der GitLab-Adapter (#99) kann mehr (Jobs, ohne Schritte), die Tabelle hebt aber erst an,
+# wenn der Sammler ihn aufruft (E-20). Kommt eine Anbindung dazu, ändert sich nur diese Tabelle.
 FAEHIG = {
     "github": {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False},
     "forgejo": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
     "gitea": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
-    "gitlab": {"status": True, "jobs": True, "schritte": False, "logs": True, "updates": False},
+    "gitlab": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
     "unbekannt": {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
 }
 EINSTUFUNG = {"github": "voll", "forgejo": "teil", "gitea": "teil", "gitlab": "teil", "unbekannt": "unbekannt"}
@@ -819,7 +819,7 @@ def lies_zuordnung(pfad: Path | str | None) -> dict[str, dict]:
 
     ``{"version": 1, "runner": {"<id>": {"stand": "angebunden|grund|ignoriert|offen",
     "dienst": "github|forgejo|gitea|gitlab|unbekannt", "name": "…", "unit": "….service",
-    "log": "/pfad" | null}}}`` – jedes Feld außer der ID ist freiwillig. Ungültige Einträge oder
+    "log": "/pfad" | null, "http_erlaubt": true}}}`` – jedes Feld außer der ID ist freiwillig. Ungültige Einträge oder
     Felder werden verworfen; fehlt die Datei oder ist sie kaputt, gilt „keine Zuordnung“."""
     if not pfad or not str(pfad).startswith("/"):
         return {}
@@ -846,6 +846,8 @@ def lies_zuordnung(pfad: Path | str | None) -> dict[str, dict]:
             sauber["name"] = name
         if (unit := pruefe_unit(eintrag.get("unit"))):
             sauber["unit"] = unit
+        if eintrag.get("http_erlaubt") is True:
+            sauber["http_erlaubt"] = True  # nur für Adapter, die ein Token an einen Server schicken (E-21)
         if "log" in eintrag and (eintrag["log"] is None or pruefe_pfad(eintrag["log"])):
             sauber["log"] = pruefe_pfad(eintrag["log"]) if eintrag["log"] else None
         ergebnis[rid] = sauber

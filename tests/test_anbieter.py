@@ -40,8 +40,14 @@ def registriere_runner(d: Path, name: str = "runner-vm-01") -> None:
 
 class FaehigkeitenTest(unittest.TestCase):
     def test_tabelle_passt_zur_erkennung(self):
-        """Erkennung (Einstufung) und Adapter (was wirklich geliefert wird) dürfen nicht auseinanderlaufen."""
-        self.assertEqual(anbieter.faehigkeiten_tabelle(), erkennung.FAEHIG)
+        """Die ausgelieferte Tabelle (``erkennung.FAEHIG``) verspricht nie mehr, als der Adapter kann; sie
+        darf weniger versprechen, solange der Sammler den Adapter nicht aufruft (E-20). Mit Adapter gleich: GitHub."""
+        adapter = anbieter.faehigkeiten_tabelle()
+        for dienst, f in erkennung.FAEHIG.items():
+            for faehigkeit, wert in f.items():
+                self.assertTrue(adapter[dienst][faehigkeit] or not wert, f"{dienst}.{faehigkeit}")
+        self.assertEqual(adapter["github"], erkennung.FAEHIG["github"])
+        self.assertEqual(erkennung.FAEHIG["gitlab"]["jobs"], False)  # bis zur Anbindung im Sammler (#94)
 
     def test_tabelle_vollstaendig(self):
         tabelle = anbieter.faehigkeiten_tabelle()
