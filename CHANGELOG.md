@@ -70,6 +70,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Rückfall bestehen (#92).
 
 ### Geändert
+- CI: Prüfungen laufen auch bei Pull Requests nach `develop` und bei Push auf `develop`/`main`;
+  shellcheck wird bei Bedarf nachinstalliert, davor `bash -n` (#108).
 - Runner-Erkennung nachgeschärft (#109): Takt und Frist des Sammlers mit `time.monotonic()`; die
   Fehlerausgabe (stderr, höchstens 2000 Zeichen) der Erkennung landet im Journal statt in `/dev/null`;
   `einrichten.sh` ruft sie mit `timeout --foreground 60` auf (Strg+C wirkt sofort); github.com gilt
