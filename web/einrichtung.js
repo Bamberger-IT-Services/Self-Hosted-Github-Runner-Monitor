@@ -11,9 +11,10 @@
   document.title = `${t('Einrichtung')} · Runner-Monitor`;
   const TITEL = [t('Code'), t('Zugang'), t('Runner'), t('Anbinden'), t('Fertig')];
   const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
-  const DOKU = 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/FUNKTIONSWEISE.md';
-  const DOKU_ANBINDEN = 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/EINRICHTUNG.md#forgejo--oder-gitea-runner-anbinden-93';
-  const DOKU_GITLAB = 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/main/docs/EINRICHTUNG.md#gitlab-anbinden';
+  /* Doku-Links auf den Tag der laufenden Version (web/doku.js); die Version kommt von /api/health */
+  const dokuFunktionsweise = () => DOKU.url('FUNKTIONSWEISE.md');
+  const dokuAnbinden = () => DOKU.url('EINRICHTUNG.md', 'forgejo--oder-gitea-runner-anbinden-93');
+  const dokuGitlab = () => DOKU.url('EINRICHTUNG.md', 'gitlab-anbinden');
   const E = {
     codeOk: false, schritt: 1, pruefung: {}, runnerAnzahl: null, nutzer: 'admin', zugang: false, fertig: false,
     // Schritt 3
@@ -169,7 +170,7 @@
       aktion = `<div class="aktion"><span class="schalter-z"><button type="button" role="switch" class="schalter${an ? ' an' : ''}" aria-checked="${an}" aria-label="${t('Übernehmen')}" data-aktion="schalter" data-id="${id}"><span></span></button>${t('Übernehmen')}</span><span class="aktion-text">${an ? t('Zugangsdaten im nächsten Schritt „Anbinden“') : t('Wird nicht überwacht')}</span></div>`;
     } else if (f.einstufung === 'teil') {
       const knopf = (wert, text) => `<button type="button" role="radio" class="${w === wert ? 'an' : ''}" aria-checked="${w === wert}" data-aktion="${wert}" data-id="${id}">${text}</button>`;
-      aktion = `<div class="einr-hinweis warn">${ICO.info}<span class="einr-hinweis-text">${t('Nur Grundüberwachung: Dienst, CPU, RAM, Platte, Log, Neustarts. Jobs und Schritte fehlen.')} <a href="${DOKU}" rel="noopener" target="_blank">${t('Wie ein Anbieter ergänzt wird ↗')}</a></span></div>
+      aktion = `<div class="einr-hinweis warn">${ICO.info}<span class="einr-hinweis-text">${t('Nur Grundüberwachung: Dienst, CPU, RAM, Platte, Log, Neustarts. Jobs und Schritte fehlen.')} <a href="${dokuFunktionsweise()}" rel="noopener" target="_blank">${t('Wie ein Anbieter ergänzt wird ↗')}</a></span></div>
         <div class="aktion"><div class="wahl" role="radiogroup" aria-label="${t('Überwachung von {name}', { name: esc(f.name) })}">${knopf('grund', t('Grundüberwachung'))}${knopf('ignorieren', t('Ignorieren'))}</div></div>`;
     } else if (fo) {
       aktion = formularHtml(f);
@@ -275,9 +276,9 @@
         ${knopf}`;
     }
     return `<div class="feld"><label for="server-${id}">${t('Server')}</label><input id="server-${id}" class="mono" readonly value="${esc(f.server || '')}" placeholder="–"><span class="feld-hinweis">${f.dienst === 'forgejo' || f.dienst === 'gitea'
-        ? t('Vorschlag aus der Erkennung. Server, Organisation und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt alle drei ab und prüft sie (Anleitung: {doku}):', { doku: `<a href="${DOKU_ANBINDEN}" rel="noopener" target="_blank">${t('Forgejo- oder Gitea-Runner anbinden ↗')}</a>` })
+        ? t('Vorschlag aus der Erkennung. Server, Organisation und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt alle drei ab und prüft sie (Anleitung: {doku}):', { doku: `<a href="${dokuAnbinden()}" rel="noopener" target="_blank">${t('Forgejo- oder Gitea-Runner anbinden ↗')}</a>` })
         : f.dienst === 'gitlab'
-          ? t('Vorschlag aus der Erkennung. Server und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt beides ab und prüft sie; eine Organisation gibt es bei GitLab nicht (Anleitung: {doku}):', { doku: `<a href="${DOKU_GITLAB}" rel="noopener" target="_blank">${t('GitLab-Runner anbinden ↗')}</a>` })
+          ? t('Vorschlag aus der Erkennung. Server und Token tragen Sie aus Sicherheitsgründen auf der VM ein – der Befehl fragt beides ab und prüft sie; eine Organisation gibt es bei GitLab nicht (Anleitung: {doku}):', { doku: `<a href="${dokuGitlab()}" rel="noopener" target="_blank">${t('GitLab-Runner anbinden ↗')}</a>` })
           // weiterer GitHub-Runner (nicht der des Monitors): kein GitLab-Text, kein Token-Feld (E-22)
           : t('Vorschlag aus der Erkennung. Zugangsdaten tragen Sie aus Sicherheitsgründen auf der VM ein; dieser Befehl legt das Token ab:')}</span></div>
       ${codeblock(`${SKRIPT} zugang ${f.id}`)}
@@ -673,6 +674,7 @@
   karte.addEventListener('input', eingabe);
   karte.addEventListener('change', eingabe);
 
+  hole('/api/health').then((r) => { DOKU.setzeVersion((r.daten || {}).version); });
   hole('/api/einrichtung/status').then((r) => {
     const d = r.daten || {};
     E.pruefung = d.pruefung || {};

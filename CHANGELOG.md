@@ -4,6 +4,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Geändert
+- Doku-Links in der Einrichtung (Anleitung zu Forgejo/Gitea, GitLab, Anbieter ergänzen) und im
+  Hinweis von `einrichten.sh zugang` zeigen auf den Tag der laufenden Version
+  (`…/blob/v<VERSION>/docs/…`) statt auf `blob/main`; ohne bekannte Release-Version bleibt `main`
+  der Rückfall (#132, E-28). Die Links bleiben auf GitHub, weil die Forgejo-Spiegelung `main`,
+  `develop`, `release/*` und alle Tags dorthin schiebt. Neuer Test `tests/test_doku_links.py`
+  prüft Dateien und Anker gegen die Überschriften in `docs/`.
+
 ## [0.8.1] – 29.10.2026
 
 ### Behoben

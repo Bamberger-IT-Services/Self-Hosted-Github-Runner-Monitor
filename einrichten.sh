@@ -22,6 +22,8 @@ set -euo pipefail
 
 QUELLE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VERSION="$(tr -d '[:space:]' < "$QUELLE/VERSION")"
+# Doku-Links auf den Tag der installierten Version (#132, E-28), damit Anleitung und Version zusammenpassen
+DOKU="https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/blob/v$VERSION/docs"
 BASIS=/opt/runner-monitor
 DATEN=/var/lib/runner-monitor
 ETC=/etc/runner-monitor
@@ -449,7 +451,7 @@ zugang() {
     echo "GitHub: Fine-grained Token mit Read-only für Actions und Metadata (optional: Self-hosted runners)."
   else
     echo "Token mit Leserechten beim Dienst dieses Runners (Forgejo/Gitea: read:repository und read:organization; GitLab: read_api)."
-    hin "Genutzt, sobald $ETC/runner.json für diesen Runner den Server nennt – Forgejo/Gitea zusätzlich die Organisation (docs/EINRICHTUNG.md)."
+    hin "Genutzt, sobald $ETC/runner.json für diesen Runner den Server nennt – Forgejo/Gitea zusätzlich die Organisation (Anleitung: $DOKU/EINRICHTUNG.md)."
   fi
   read -r -s -p "  Token für $id (Eingabe bleibt unsichtbar): " t </dev/tty; echo
   if [ "$id" = "$gid" ]; then
