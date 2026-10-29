@@ -24,7 +24,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from . import VERSION, anbieter, erkennung, journal, runner, system
+from . import VERSION, anbieter, erkennung, journal, quelle, runner, system
 from .anbieter import github as gh_adapter
 from .konfig import Konfig
 
@@ -559,6 +559,7 @@ class Zustand:
             "status": status,
             "auto": bool(einstellungen.get("autoUpdate")),
             "autoStand": lies_json(self.k.lauf_verz / "auto-update.json", {}) or {},  # vorgemerkt/verschoben/gestartet (#77)
+            "quelle": quelle.anzeige(self.k),  # GitHub oder Forgejo (#138), ohne Geheimnisse
         }
 
     def _github_dateien(self) -> None:

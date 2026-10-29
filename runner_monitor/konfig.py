@@ -37,6 +37,11 @@ class Konfig:
     entwicklung: bool = False
     https: bool = False  # hinter einem TLS-Proxy: Cookies mit Secure, HSTS (docs/HTTPS.md)
     update_herkunft: str = ""  # „pflicht“: Update nur mit bestätigter GitHub-Attestierung (ADR-0005)
+    # Woher Updates kommen (#138, ADR-0007): „github“ (Vorgabe) oder „forgejo“ mit Basis-Adresse; http://
+    # nur mit ausdrücklicher Freigabe (wie E-21). Das Repository ist auf beiden MONITOR_RELEASE_REPO.
+    update_quelle: str = "github"
+    update_forgejo: str = ""
+    update_http_erlaubt: bool = False
     weitere: dict = field(default_factory=dict)
 
     @property
@@ -112,6 +117,38 @@ def _ganzzahl(werte: dict[str, str], name: str, vorgabe: int, mini: int, maxi: i
     return zahl
 
 
+JA = ("1", "ja", "true")
+
+
+def update_quelle(werte: dict[str, str]) -> tuple[str, str, bool]:
+    """MONITOR_UPDATE_QUELLE, MONITOR_UPDATE_FORGEJO, MONITOR_UPDATE_HTTP_ERLAUBT prüfen (#138, ADR-0007).
+
+    Die Basis-Adresse muss ``https://host[:port][/pfad]`` sein, ohne Zugangsdaten, Abfrage und Anker;
+    ``http://`` nur mit MONITOR_UPDATE_HTTP_ERLAUBT=1. Ein Fehler hält den Start an (Anweisung 02) –
+    ``einrichten.sh quelle`` prüft vor dem Schreiben mit denselben Regeln."""
+    quelle = (werte.get("MONITOR_UPDATE_QUELLE", "") or "github").strip().lower()
+    if quelle not in ("github", "forgejo"):
+        raise KonfigFehler(f"MONITOR_UPDATE_QUELLE muss github oder forgejo sein, gefunden: {quelle!r}")
+    if quelle == "github":
+        return quelle, "", False  # Forgejo-Werte gelten nur mit MONITOR_UPDATE_QUELLE=forgejo
+    http_erlaubt = werte.get("MONITOR_UPDATE_HTTP_ERLAUBT", "").strip().lower() in JA
+    roh = werte.get("MONITOR_UPDATE_FORGEJO", "").strip()
+    forgejo = ""
+    if roh:
+        from .erkennung import pruefe_url  # spät: nur wenn gesetzt (Standardbibliothek, ohne Paket-Importe)
+        # pruefe_url lässt Zugangsdaten, Abfrage und Anker still weg – hier sind sie ein Fehler
+        forgejo = "" if any(z in roh for z in "@?#") else pruefe_url(roh) or ""
+        if not forgejo:
+            raise KonfigFehler("MONITOR_UPDATE_FORGEJO muss eine Adresse wie https://git.example.org sein "
+                               f"(ohne Zugangsdaten, Abfrage und Anker), gefunden: {roh!r}")
+        if forgejo.startswith("http://") and not http_erlaubt:
+            raise KonfigFehler("MONITOR_UPDATE_FORGEJO mit http:// nur zusammen mit MONITOR_UPDATE_HTTP_ERLAUBT=1 "
+                               "(Updates kämen sonst ungeschützt durchs Netz – lieber https://)")
+    if not forgejo:
+        raise KonfigFehler("MONITOR_UPDATE_QUELLE=forgejo braucht MONITOR_UPDATE_FORGEJO=https://…")
+    return quelle, forgejo, http_erlaubt
+
+
 def lade(datei: Path | None = None, umgebung: dict[str, str] | None = None) -> Konfig:
     werte = lies_env_datei(datei if datei is not None else KONFIG_DATEI)
     umgebung = dict(os.environ if umgebung is None else umgebung)
@@ -130,6 +167,8 @@ def lade(datei: Path | None = None, umgebung: dict[str, str] | None = None) -> K
     adresse = werte.get("MONITOR_ADRESSE", "127.0.0.1" if entwicklung else "0.0.0.0")
     if entwicklung and adresse not in ("127.0.0.1", "::1", "localhost"):
         raise KonfigFehler("MONITOR_ENTWICKLUNG ist nur mit MONITOR_ADRESSE=127.0.0.1 erlaubt")
+
+    quelle, forgejo, http_erlaubt = update_quelle(werte)
 
     def pfad(name: str, vorgabe: Path) -> Path:
         roh = werte.get(name)
@@ -150,5 +189,8 @@ def lade(datei: Path | None = None, umgebung: dict[str, str] | None = None) -> K
         entwicklung=entwicklung,
         https=werte.get("MONITOR_HTTPS", "") in ("1", "ja", "true"),
         update_herkunft=werte.get("MONITOR_UPDATE_HERKUNFT", "").strip().lower(),
+        update_quelle=quelle,
+        update_forgejo=forgejo,
+        update_http_erlaubt=http_erlaubt,
         weitere={k: v for k, v in werte.items() if not k.startswith("MONITOR_")},
     )

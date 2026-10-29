@@ -4,6 +4,21 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Neu
+- Update-Quelle wählbar (#138, ADR-0007): Neben GitHub (bleibt Vorgabe, für bestehende VMs ändert sich
+  nichts) kommen Updates auf Wunsch von einem Forgejo-Server – `sudo einrichten.sh quelle` bzw.
+  `MONITOR_UPDATE_QUELLE=forgejo` und `MONITOR_UPDATE_FORGEJO=https://…` in `konfig.env`. Ohne Token
+  (das Repository muss ohne Anmeldung lesbar sein), ohne Weiterleitungen, `http://` nur mit
+  `MONITOR_UPDATE_HTTP_ERLAUBT=1`. Die Herkunft prüft der Hilfsdienst auch dann per GitHub-Attestierung
+  gegen das GitHub-Repository. Info › Updates zeigt die Zeile „Quelle“, `einrichten.sh status` ebenso.
+  Das Update auf diese Version selbst kommt noch von GitHub (bzw. per Paket); danach `einrichten.sh quelle`.
+
+### Sicherheit
+- Update-Hilfsdienst: Anmeldeseiten (HTML, Weiterleitung auf `/user/login`, 401/403) enden als klarer
+  Fehler „Quelle verlangt Anmeldung“, ein Download muss ein gzip-Archiv sein, und die Datei `VERSION`
+  im Paket muss die Zielversion nennen – ein älteres Paket unter neuerer Nummer wird vor dem Neustart
+  verworfen (S-UPD-02).
+
 ### Behoben
 - CI auf Forgejo (#133): Der Test „Live-Strom endet bei Überlauf“ sendete feste 2100 Nachrichten; auf einem
   langsamen Runner las der Server schnell genug mit, die Schlange lief nie über, und der Test lief in eine
