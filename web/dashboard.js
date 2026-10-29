@@ -801,6 +801,7 @@
     if (p && p.zustand === 'laeuft' && jetzt - p.start > 45000) S.pruefung = { zustand: 'keine-antwort', bis: jetzt + 30000 };
     const q = S.pruefung, zst = q ? q.zustand : 'ruhe', updLaeuft = us.zustand === 'laeuft';
     const fehlerGh = zst === 'fertig' && u.neueste && u.neueste.fehler;
+    const qn = INFO.updateQuelle(u.quelle, t).name;  // GitHub oder Forgejo (#138)
     const ICO = {
       dreh: '<svg class="upd-dreh" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 106.5 6.5"/></svg>',
       ruhe: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 11-1.61-3.89"/><path d="M13.5 2.5v3h-3"/></svg>',
@@ -809,13 +810,13 @@
       x: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>',
     };
     let text = '';
-    if (zst === 'laeuft') text = `<span class="pruef-text mut">${t('Frage GitHub nach neuen Versionen …')}</span>`;
+    if (zst === 'laeuft') text = `<span class="pruef-text mut">${t('Frage {q} nach neuen Versionen …', { q: qn })}</span>`;
     else if (zst === 'frisch') text = `<span class="pruef-text mut">${t('Gerade erst geprüft – Stand siehe oben.')}</span>`;
     else if (zst === 'fertig' && !fehlerGh) text = neu ? `<span class="pruef-text laeuft">${ICO.neu}${t('Version {v} ist verfügbar.', { v: esc(u.neueste.version) })}</span>` : `<span class="pruef-text ok">${ICO.ok}${t('Auf dem neuesten Stand.')}</span>`;
     else if (updLaeuft) text = `<span class="pruef-text mut">${t('Gesperrt, solange das Update läuft.')}</span>`;
     const aus = zst === 'laeuft' || updLaeuft;
-    let html = `<div class="pruef"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''} title="${t('GitHub sofort nach einer neuen Version fragen (sonst alle 6 Std.)')}">${zst === 'laeuft' ? ICO.dreh : ICO.ruhe}${t('Jetzt prüfen')}</button><span aria-live="polite" class="pruef-live">${text}</span></div>`;
-    if (fehlerGh) html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div>${t('GitHub nicht erreichbar:')} <span>${t('{f}. Der nächste automatische Versuch folgt in 6 Std.', { f: esc(u.neueste.fehler) })}</span></div></div>`;
+    let html = `<div class="pruef"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''} title="${t('{q} sofort nach einer neuen Version fragen (sonst alle 6 Std.)', { q: qn })}">${zst === 'laeuft' ? ICO.dreh : ICO.ruhe}${t('Jetzt prüfen')}</button><span aria-live="polite" class="pruef-live">${text}</span></div>`;
+    if (fehlerGh) html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div>${t('{q} nicht erreichbar:', { q: qn })} <span>${t('{f}. Der nächste automatische Versuch folgt in 6 Std.', { f: esc(u.neueste.fehler) })}</span></div></div>`;
     if (zst === 'keine-antwort') html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div class="hinweis-voll">${t('Keine Antwort vom Sammler.')} <span>${t('Auf der VM prüfen:')}</span>${codeBox('journalctl -u runner-monitor-sammler -n 30')}</div></div>`;
     return html;
   }
@@ -876,12 +877,13 @@
   // Was sich gegenüber der installierten Version ändert (#78): je Version „Neu in X“ und
   // „Einmalig nach dem Update“; neueste offen, ältere eingeklappt.
   function aenderungenHtml(u) {
+    const quelle = INFO.updateQuelle(u.quelle, t);
     const liste = (u.neueste.aenderungen && u.neueste.aenderungen.length) ? u.neueste.aenderungen
       : (u.neueste.notizen && u.neueste.notizen.length ? [{ version: u.neueste.version, url: u.neueste.url, neu: u.neueste.notizen, einmalig: '' }] : []);
     if (!liste.length) return '';
     const block = (r) => `${r.einmalig ? `<div class="upd-einmalig"><span class="upd-einmalig-titel">${t('Einmalig nach dem Update:')}</span> ${mitCode(r.einmalig)}</div>` : ''}`
       + (r.neu && r.neu.length ? `<ul>${r.neu.map(n => `<li>${mitCode(n)}</li>`).join('')}</ul>` : '')
-      + `<a href="${esc(r.url || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">${t('Release-Notiz {v} auf GitHub ↗', { v: esc(r.version) })}</a>`;
+      + `<a href="${esc(r.url || quelle.releases || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">${t('Release-Notiz {v} auf {q} ↗', { v: esc(r.version), q: quelle.name })}</a>`;
     const [erste, ...aeltere] = liste;
     const titel = liste.length > 1 ? t('Neu seit {v} · {n} Versionen', { v: esc(u.installiert), n: liste.length }) : t('Neu in {v}', { v: esc(erste.version) });
     return `<div class="upd-neu"><div class="upd-neu-titel">${titel}</div>`
@@ -919,10 +921,12 @@
     const kv = (liste) => `<dl class="kv">${liste.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`).join('')}</dl>`;
 
     // Updates
+    const quelle = INFO.updateQuelle(u.quelle, t);
     let upd = kv([
       [t('Installiert'), esc(u.installiert || '–')],
       [t('Neueste'), u.neueste && u.neueste.version ? (neu ? t('{v} · erschienen am {d}', { v: esc(u.neueste.version), d: u.neueste.veroeffentlicht ? datum(u.neueste.veroeffentlicht) : '–' }) : t('{v} – auf dem neuesten Stand', { v: esc(u.neueste.version) })) : (u.neueste && u.neueste.fehler ? t('nicht abrufbar') : t('noch nicht geprüft')), neu ? 'laeuft' : 'ok'],
-      [t('Geprüft'), u.neueste && u.neueste.geprueft ? t('{tag} {z} bei GitHub · alle 6 Std.', { tag: tm(u.neueste.geprueft) === tm(jetzt) ? t('heute') : tm(u.neueste.geprueft), z: hm(u.neueste.geprueft) }) : '–'],
+      [t('Geprüft'), u.neueste && u.neueste.geprueft ? t('{tag} {z} bei {q} · alle 6 Std.', { tag: tm(u.neueste.geprueft) === tm(jetzt) ? t('heute') : tm(u.neueste.geprueft), z: hm(u.neueste.geprueft), q: quelle.name }) : '–'],
+      [t('Quelle'), esc(quelle.text), quelle.http ? 'warn' : ''],
       ['Runner', `${runnerVersion(st)}${istGitHub(st) ? ' · ' + t('aktualisiert sich selbst') : ''}`],
     ]);
     upd += pruefKnopf(u, us, neu);

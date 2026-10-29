@@ -279,8 +279,21 @@ const INFO = (() => {
     return [token, erreichbar, gestoppt, fehlt, offline, logs, platte, monitor, update];
   }
 
+  /* ------------------------------------------------------------ Update-Quelle */
+
+  /* Info › Updates (#138, ADR-0007): woher Updates kommen – GitHub (Vorgabe, auch ohne Angabe vom Server)
+     oder Forgejo mit Adresse; bei http:// ein Hinweis. „releases“ nur als http(s)-Adresse, sonst null. */
+  function updateQuelle(q, t) {
+    const forgejo = !!q && q.art === 'forgejo';
+    const name = forgejo ? 'Forgejo' : 'GitHub';
+    const adresse = forgejo ? ohneSchema(q.adresse) : '';
+    const http = forgejo && q.http === true;
+    const releases = q && typeof q.releases === 'string' && /^https?:\/\/[^\s"'<>]+$/.test(q.releases) ? q.releases : null;
+    return { name, text: (adresse ? `${name} · ${adresse}` : name) + (http ? ` · ${t('unverschlüsselt (http)')}` : ''), http, releases };
+  }
+
   return { SKRIPT, NAMEN, dienstName, befehlZugang, tokenDatei, serverBasis, ohneSchema, einheit, einstufung, fundeAusRunner, neueFunde,
-    hatZugang, formEintrag, geaendert, formStart, erkennenText, runnerZeilen, verbindungen, naechste, anleitungen };
+    hatZugang, formEintrag, geaendert, formStart, erkennenText, runnerZeilen, verbindungen, naechste, anleitungen, updateQuelle };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = INFO;

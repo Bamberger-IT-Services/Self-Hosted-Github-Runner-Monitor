@@ -818,6 +818,11 @@ class KennungTest(Basis):
         self.assertIsNone(erkennung.heimatordner(erkennung.Quelle(self.vm.w), "fehlt"))
         self.assertEqual(erkennung.heimatordner(erkennung.Quelle(self.vm.w), None), "/root")
         self.assertEqual(erkennung.heimatordner(erkennung.Quelle(self.vm.w), "1001"), "/home/runner")
+        # Platzhalter oder ungültiger Name (Template-Unit „User=%i“) ist unbekannt, nicht root (Review PR #149)
+        self.assertIsNone(erkennung.heimatordner(erkennung.Quelle(self.vm.w), "%i"))
+        unit = erkennung.Unit(name="x.service", datei="/etc/systemd/system/x.service")
+        erkennung.deute_unit("[Service]\nUser=%i\nWorkingDirectory=~\n", unit)
+        self.assertEqual((unit.benutzer, unit.heim), ("%i", True))
 
     def test_andere_unit_aus_runner_json_ohne_kennung(self):
         unit = self.vm.forgejo()

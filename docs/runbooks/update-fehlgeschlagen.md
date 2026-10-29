@@ -17,7 +17,12 @@ es läuft nichts Kaputtes.
    ```
    | Grund | Bedeutung |
    |---|---|
-   | Download fehlgeschlagen | Netz/GitHub – später erneut versuchen |
+   | Download fehlgeschlagen | Netz/GitHub bzw. Forgejo – später erneut versuchen |
+   | Quelle verlangt Anmeldung / Forgejo verlangt eine Anmeldung | Forgejo-Repository nicht ohne Anmeldung lesbar – öffentlich machen oder zurück zu GitHub: `einrichten.sh quelle` |
+   | Weiterleitung / Forgejo leitet weiter | Adresse in `MONITOR_UPDATE_FORGEJO` stimmt nicht genau (z. B. http statt https, fehlender Pfad) – `einrichten.sh quelle` |
+   | Release-Information stammt noch von der vorigen Update-Quelle | nach `einrichten.sh quelle`: Info › Updates › „Jetzt prüfen“, dann erneut |
+   | Herkunft nicht bestätigt | keine GitHub-Attestierung zu diesem Paket (z. B. nur auf Forgejo veröffentlicht oder verändert) – **nicht** von Hand installieren |
+   | Paket enthält Version … statt … | Paket passt nicht zur angebotenen Version – verworfen, Quelle prüfen |
    | wird noch bereitgestellt / Release enthält kein Archiv mit Prüfsumme | Release gerade erst veröffentlicht, das Paket wird noch angehängt – Info › Updates › „Jetzt prüfen“, dann erneut versuchen (ab 0.6 von selbst nach 2 Minuten) |
    | Prüfsumme stimmt nicht | Archiv beschädigt oder manipuliert – **nicht** von Hand installieren, Issue melden |
    | neue Version hat nicht geantwortet | `journalctl -u runner-monitor -n 50` zeigt den Fehler der neuen Version |

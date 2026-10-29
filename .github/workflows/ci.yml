@@ -1,5 +1,7 @@
-# Prüfungen bei jedem Pull Request (Anweisung 01).
-# Läuft bei PRs nach develop und main sowie bei Push auf beide. Forgejo liest .forgejo/workflows,
+# Prüfungen (Anweisung 01, Takt nach E-30): „geheimnisse“ (gitleaks) bei jedem PR und Push; die volle
+# Prüfung „pruefen“ nur vor dem Release – bei PRs nach main, bei Push auf main und von Hand. PRs nach
+# develop prüft Claude vor dem Merge lokal (Tests, Node-Tests), damit der einzige Forgejo-Runner nicht
+# je Issue 10–15 Minuten belegt ist. Forgejo liest .forgejo/workflows,
 # sonst .github/workflows (dieser Ordner); dafür braucht Forgejo einen Actions-Runner (Issue #108).
 # Öffentliches Repository: läuft immer auf GitHubs Rechnern (ubuntu-latest), nie auf dem eigenen
 # Runner – sonst könnte Code aus fremden Pull Requests auf der Runner-VM laufen.
@@ -20,6 +22,9 @@ concurrency:
 
 jobs:
   pruefen:
+    # Nur vor dem Release (E-30): PR nach main, Push auf main, von Hand. PRs nach develop und Push auf
+    # develop bekommen nur „geheimnisse“ (gitleaks läuft so auch bei direkten Pushes auf develop).
+    if: github.base_ref == 'main' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       matrix:

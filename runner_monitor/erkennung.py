@@ -419,12 +419,15 @@ def deute_unit(text: str, unit: Unit) -> None:
             unit.heim = wert == "~"
             unit.arbeitsverz = pruefe_pfad(wert) if wert and not unit.heim else None
         elif abschnitt == "Service" and schluessel == "User":
-            unit.benutzer = wert if BENUTZER.fullmatch(wert) else None
+            # roh merken: „User=“ (leer) = root; ein ungültiger Wert oder Platzhalter (%i) ist unbekannt, nicht root
+            unit.benutzer = wert or None
 
 
 def heimatordner(q: Quelle, benutzer: str | None) -> str | None:
     """Heimatordner eines Benutzers aus ``/etc/passwd`` (nur gelesen, root-eigen) – für ``WorkingDirectory=~``.
-    Ohne ``User=`` läuft die Unit als root (``/root``)."""
+    Ohne ``User=`` läuft die Unit als root (``/root``); ein ungültiger Name (z. B. ``%i``) ergibt None."""
+    if benutzer is not None and not BENUTZER.fullmatch(benutzer):
+        return None
     benutzer = benutzer or "root"
     daten = q.lies("/etc/passwd", 1024 * 1024)
     for zeile in (daten or b"").decode("utf-8", "replace").splitlines()[:20000]:

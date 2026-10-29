@@ -4,7 +4,25 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Neu
+- Update-Quelle wählbar (#138, ADR-0007): Neben GitHub (bleibt Vorgabe, für bestehende VMs ändert sich
+  nichts) kommen Updates auf Wunsch von einem Forgejo-Server – `sudo einrichten.sh quelle` bzw.
+  `MONITOR_UPDATE_QUELLE=forgejo` und `MONITOR_UPDATE_FORGEJO=https://…` in `konfig.env`. Ohne Token
+  (das Repository muss ohne Anmeldung lesbar sein), ohne Weiterleitungen, `http://` nur mit
+  `MONITOR_UPDATE_HTTP_ERLAUBT=1`. Die Herkunft prüft der Hilfsdienst auch dann per GitHub-Attestierung
+  gegen das GitHub-Repository. Info › Updates zeigt die Zeile „Quelle“, `einrichten.sh status` ebenso.
+  Das Update auf diese Version selbst kommt noch von GitHub (bzw. per Paket); danach `einrichten.sh quelle`.
+
+### Sicherheit
+- Update-Hilfsdienst: Anmeldeseiten (HTML, Weiterleitung auf `/user/login`, 401/403) enden als klarer
+  Fehler „Quelle verlangt Anmeldung“, ein Download muss ein gzip-Archiv sein, und die Datei `VERSION`
+  im Paket muss die Zielversion nennen – ein älteres Paket unter neuerer Nummer wird vor dem Neustart
+  verworfen (S-UPD-02).
+
 ### Behoben
+- CI auf Forgejo (#133): Der Test „Live-Strom endet bei Überlauf“ sendete feste 2100 Nachrichten; auf einem
+  langsamen Runner las der Server schnell genug mit, die Schlange lief nie über, und der Test lief in eine
+  Zeitüberschreitung. Er sendet jetzt, bis die Schlange überläuft. Das Programm ist unverändert.
 - Forgejo/Gitea: Runner, die auf **Instanz-Ebene** registriert sind oder beim Server anders heißen als
   ihre Unit, werden gefunden (#145). Zugeordnet wird über UUID und Name aus der `.runner`-Datei (die
   Erkennung liest sie jetzt mit, auch bei `WorkingDirectory=~`), gesucht in der Liste der Organisation,
@@ -17,6 +35,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 - Info › Runner: Server und Sicherheitsgrad nutzen den Server aus `runner.json` (die Erkennung prüft ihn
   ohne Zugangsdaten); „wahrscheinlich“ nennt den Grund der Erkennung statt pauschal „Server nicht
   erreichbar“ (#145).
+
+### Geändert
+- Doku-Links in der Einrichtung (Anleitung zu Forgejo/Gitea, GitLab, Anbieter ergänzen) und im
+  Hinweis von `einrichten.sh zugang` zeigen auf den Tag der laufenden Version
+  (`…/blob/v<VERSION>/docs/…`) statt auf `blob/main`; ohne bekannte Release-Version bleibt `main`
+  der Rückfall (#132, E-28). Die Links bleiben auf GitHub, weil die Forgejo-Spiegelung `main`,
+  `develop`, `release/*` und alle Tags dorthin schiebt. Neuer Test `tests/test_doku_links.py`
+  prüft Dateien und Anker gegen die Überschriften in `docs/`.
+- CI-Takt (E-30): Die volle Prüfung läuft nur noch vor dem Release (PRs nach `main`, Push auf `main`, von Hand);
+  PRs nach `develop` prüfen nur auf Geheimnisse (gitleaks), die Tests laufen vor dem Merge lokal.
 
 ## [0.8.1] – 29.10.2026
 
