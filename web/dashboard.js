@@ -40,6 +40,9 @@
     // Live-Log je Runner (#95): Quelle des gewählten Runners ('seiten' | 'journal' | 'datei' | null) und die
     // Runner-ID, deren Journal der aktuelle Live-Strom liefert (/events?journal=…; null = keins).
     logQuelle: 'seiten', journalUnit: '', stromJournal: null, journalFehler: null,
+    // Info › Runner (#97): Funde der Erkennung, „Neu erkennen“, neue Funde, offenes Formular / offene Box
+    anlRunner: null,  // Runner, dessen Zugangsdaten-Anleitung der Link bei „Zugangsdaten ändern“ zeigt
+    ir: { funde: null, zeit: null, erkZeit: null, geladen: 0, fehler: false, erk: 'ruhe', aktiv: false, neu: [], form: null, zugang: null, werte: {}, formFehler: {}, meldung: '', sendet: false },
   };
 
   /* ------------------------------------------------------------ ANSI → Segmente */
@@ -136,7 +139,7 @@
 
   function waehleRunner(id) {
     if (!id || id === S.wahl.gewaehlt || !S.wahl.waehle(id, S.runner)) { S.mehrOffen = false; renderReiter(); return; }
-    S.mehrOffen = false;
+    S.mehrOffen = false; S.anlRunner = null;
     abgleich();
     // Karten sofort neu zeichnen, auch wenn die Sperre gegen Neuzeichnen (Fokus in der Karte) sonst greifen würde
     $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; $('status').dataset.html = '';
@@ -316,7 +319,7 @@
           text: (d.grund === 'oom-kill' ? t('Speicher voll – ein Job hat den Arbeitsspeicher gesprengt.') + ' ' : grund ? `${grund}. ` : '') + t('Jobs bleiben in der Warteschlange') + wartend };
       } else if (m.id === 'fehlt') {
         e = m.runner ? { cls: 'warn', ic: IC.warn(18), titel: t('Kein Dienst'), text: t('Der Dienst dieses Runners wurde nicht gefunden') }
-          : { cls: 'warn', ic: IC.warn(18), titel: t('Kein Runner eingerichtet'), text: t('auf dieser VM wurde kein GitHub-Runner gefunden') };
+          : { cls: 'warn', ic: IC.warn(18), titel: t('Kein Runner eingerichtet'), text: t('auf dieser VM wurde kein Runner gefunden') };
       } else if (m.id === 'offline') {
         e = { cls: 'fehler', ic: IC.x(18), titel: vor ? t('Offline bei {dienst}', { dienst: RUNNER.dienstName(m.dienst) || 'GitHub' }) : t('Runner offline bei GitHub'), text: `${d.seit ? t('seit {z}', { z: zeit(d.seit) }) + ' · ' : ''}${t('Jobs werden nicht zugestellt')}` };
       } else if (m.id === 'pausiert') {
@@ -403,11 +406,14 @@
     // Teilweise (Jobs ja, Schritte nein): „Schritte nicht verfügbar“. Gesteuert nur über faehig (RUNNER.ansicht).
     const grund = !!st.nurGrund, ohneSchritte = !!st.ohneSchritte;
     // „unbekannt“ (#93): Runner-Liste oder Läufe beim Dienst nicht lesbar – dann nie „Bereit“ behaupten
-    const unbekannt = st.zustand === 'unbekannt' && st.dienst.zustand === 'aktiv';
-    const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : unbekannt ? 'unbekannt' : 'bereit';
+    // Alter des letzten guten Stands (#123): fällt die Abfrage länger aus, bleibt Job/Online-Status nicht stehen
+    const alt = grund ? { stufe: 'frisch' } : RUNNER.alter(w, jetzt);
+    const veraltet = alt.stufe === 'veraltet' && st.dienst.zustand === 'aktiv';
+    const unbekannt = (st.zustand === 'unbekannt' || veraltet) && st.dienst.zustand === 'aktiv';
+    const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : veraltet ? 'unbekannt' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : unbekannt ? 'unbekannt' : 'bereit';
     const nichtZuordenbar = art === 'job' && st.job.zuordenbar === false;  // beschäftigt, Job nicht gefunden (#93)
     const pillD = st.dienst.zustand === 'aktiv' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Dienst aktiv')}</span>` : st.dienst.zustand === 'fehlt' ? `<span class="pill neutral">${IC.unklar()}${t('Kein Dienst')}</span>` : `<span class="pill fehler">${IC.x(13, 1.7)}${t('Dienst gestoppt')}</span>`;
-    const g = st.github.zustand;
+    const g = veraltet ? 'unbekannt' : st.github.zustand;
     const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei {dienst}', { dienst: dn })}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei {dienst}', { dienst: dn })}</span>` : `<span class="pill neutral">${IC.unklar()}${t('{dienst}: unbekannt', { dienst: dn })}</span>`;
     // Runner aus runner[] ohne Dienst (keine Unit, Unit weg): neutral „Kein Dienst“ wie sein Reiter (Review #114).
     // „Kein Runner“ mit Einrichtungsbefehl nur, wenn es gar keinen Runner gibt (Altformat ohne runner[], ohne id).
@@ -456,10 +462,11 @@
       const text = {
         aktiv: t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.'),
         bereit: t('Wartet auf den nächsten Job. Neue Jobs starten automatisch.'),
-        gestoppt: grund ? t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.') : t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei GitHub in der Warteschlange, bis er wieder startet.')
+        gestoppt: grund ? t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.') : t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei {dienst} in der Warteschlange, bis er wieder startet.', { dienst: dn })
           + (st.dienst.grund === 'oom-kill' ? ' ' + t('Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.') : ''),
         offline: t('Der Dienst läuft, aber {dienst} sieht den Runner nicht. Jobs werden ihm gerade nicht zugestellt.', { dienst: dn }),
-        unbekannt: t('Der Dienst läuft, aber {dienst} liefert gerade keinen lesbaren Stand – ob ein Job läuft, ist unbekannt. Verbindung und Rechte des Tokens prüfen.', { dienst: dn }),
+        unbekannt: veraltet && alt.seit ? t('Der Dienst läuft, aber der letzte Stand von {dienst} ist von {z} ({vor}) – ob ein Job läuft, ist unbekannt. Verbindung und Rechte des Tokens prüfen.', { dienst: dn, z: zeit(alt.seit), vor: vor((jetzt - alt.seit) / 1000) })
+          : t('Der Dienst läuft, aber {dienst} liefert gerade keinen lesbaren Stand – ob ein Job läuft, ist unbekannt. Verbindung und Rechte des Tokens prüfen.', { dienst: dn }),
         fehlt: keinDienst ? t('Für diesen Runner wurde kein Dienst gefunden.') : t('Auf dieser VM ist kein GitHub-Runner eingerichtet. Das Einrichtungsskript kann ihn mit einrichten.'),
       }[art];
       const wartend = w && w.abfrage === 'ok' ? w.repos.reduce((a, r) => a + r.wartet, 0) : null;
@@ -488,6 +495,7 @@
       <div class="karte-kopf"><span class="karte-titel">${t('Runner-Status')}</span><div class="pillen">${pillD}${grund ? '' : pillG}</div></div>
       <div class="zustand ${kopf[0]}">${kopf[1]}<span class="zustand-titel">${kopf[2]}</span></div>
       ${mitte}
+      ${alt.stufe === 'hinweis' && alt.seit ? `<div class="hinweis warn alt-hinweis">${IC.warn()}<div>${t('Stand von {z} ({vor})', { z: zeit(alt.seit), vor: vor(alt.sekunden) })} <span>${t('– {dienst} liefert seitdem keine neuen Daten.', { dienst: dn })}</span></div></div>` : ''}
       ${grund ? '' : `<div class="letzte"><div class="letzte-titel">${t('Letzte Jobs')}</div>${letzte || `<div class="leer">${t('Seit dem Start des Monitors noch keine Jobs.')}</div>`}</div>`}`;
     // nur bei Änderung neu schreiben – sonst gehen Klicks und Fokus auf Knöpfen der Karte verloren
     const karte = $('status');
@@ -517,7 +525,7 @@
       // Runner ohne Jobs (faehig.jobs false, Grundüberwachung): ruhiger Leerzustand wie im Design (Aufbau wie „Kein Token“),
       // Unit als Pfad, „Runner zuordnen ›“ öffnet Info & Hilfe (Zuordnung ändern kommt mit dem Info-Blatt, #97)
       const unit = S.status.unit ? `<div class="leer-pfad">${esc(S.status.unit)}</div>` : '';
-      const leer = `<div class="karte-kopf"><span class="karte-titel">${t('Jobs je Repository')}</span><span class="karte-meta">${t('keine Anbindung')}</span></div><div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">${t('Jobs nicht verfügbar')}</div><div class="leer-text">${t('Für diesen Runner gibt es keine Anbindung an den Dienst. Dienst, Auslastung und Log laufen normal weiter.')}</div>${unit}<button type="button" class="link-knopf" data-aktion="info" data-anleitung="alle">${t('Runner zuordnen ›')}</button></div><div class="wf-fuss"><div class="wf-zeit">${t('Abfrage aus')}</div></div>`;
+      const leer = `<div class="karte-kopf"><span class="karte-titel">${t('Jobs je Repository')}</span><span class="karte-meta">${t('keine Anbindung')}</span></div><div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">${t('Jobs nicht verfügbar')}</div><div class="leer-text">${t('Für diesen Runner gibt es keine Anbindung an den Dienst. Dienst, Auslastung und Log laufen normal weiter.')}</div>${unit}<button type="button" class="link-knopf" data-aktion="runner-zuordnen" data-runner="${esc(S.status.id || '')}">${t('Runner zuordnen ›')}</button></div><div class="wf-fuss"><div class="wf-zeit">${t('Abfrage aus')}</div></div>`;
       if (el.dataset.html !== leer) { el.innerHTML = leer; el.dataset.html = leer; }
       return;
     }
@@ -525,13 +533,16 @@
     if (el.contains(document.activeElement) && el.dataset.letzte && Date.now() - Number(el.dataset.letzte) < 5000) return;
     el.dataset.letzte = String(Date.now());
     const jetzt = Date.now();
+    // Dienst des gewählten Runners (#123): Texte, Pfad und „Was tun?“ gelten für ihn, nicht für GitHub
+    const dn = RUNNER.dienstName(S.status && S.status.anbieter) || 'GitHub', gw = gewaehlterRunner();
+    const tokenPfad = S.status && S.status.id ? INFO.tokenDatei(S.status.id) : '/etc/runner-monitor/github-token';
     let inhalt = '', fuss = '', zeitText = '';
     if (w.abfrage === 'ausstehend') {
       // E-25: neu angebunden, die erste Abfrage beim Dienst läuft noch – keine Meldung „Kein Token“
       inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.uhr(26, 1.2)}</span><div class="leer-titel">${t('Wird abgefragt …')}</div><div class="leer-text">${t('Die erste Abfrage beim Dienst läuft.')}</div></div>`;
       fuss = `<div class="wf-zeit">${t('Abfrage läuft')}</div>`;
     } else if (w.abfrage === 'kein-token') {
-      inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">${t('Kein GitHub-Token eingerichtet')}</div><div class="leer-text">${t('Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.')}</div><div class="leer-pfad">/etc/runner-monitor/github-token</div><button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">${t('Anleitung: Token einrichten ›')}</button></div>`;
+      inhalt = `<div class="leerzustand"><span class="leer-ic">${IC.schluessel(26, 1.2)}</span><div class="leer-titel">${t('Kein {dienst}-Token eingerichtet', { dienst: dn })}</div><div class="leer-text">${t('Ohne Token bleibt dieser Bereich leer. Runner-Status, Auslastung und Log laufen normal weiter.')}</div><div class="leer-pfad">${esc(tokenPfad)}</div><button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">${t('Anleitung: Token einrichten ›')}</button></div>`;
       fuss = `<div class="wf-zeit">${t('Abfrage aus')}</div>`;
     } else {
       const aktiv = w.repos.filter(r => r.laeuft || r.wartet), ruhig = w.repos.filter(r => !r.laeuft && !r.wartet);
@@ -548,8 +559,8 @@
         ${S.wfOffen ? `<div class="ruhig-liste">${ruhig.map(r => `<span class="ruhig-repo">${esc(r.name)}</span>`).join('')}</div>` : ''}
       </div>`;
       if (alt) {
-        const texte = { 'nicht-erreichbar': t('GitHub nicht erreichbar'), kontingent: t('API-Kontingent erschöpft'), 'token-ungueltig': t('Token ungültig oder abgelaufen'), 'keine-rechte': t('Token ohne Zugriff auf die Organisation'), fehler: t('Abfrage fehlgeschlagen') };
-        fuss += `<div class="hinweis warn">${IC.warn()}<div>${texte[w.abfrage] || t('Abfrage fehlgeschlagen')} <span>${t('– angezeigt wird der Stand von {z}.', { z: w.abgefragt ? zeit(w.abgefragt) : '–' })}${w.naechste ? ' ' + t('Neuer Versuch in {n} s.', { n: Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000)) }) : ''}</span></div></div>`;
+        const texte = { 'nicht-erreichbar': t('{dienst} nicht erreichbar', { dienst: dn }), kontingent: t('API-Kontingent erschöpft'), 'token-ungueltig': t('Token ungültig oder abgelaufen'), 'keine-rechte': t('Token ohne Zugriff auf die Organisation'), fehler: t('Abfrage fehlgeschlagen') };
+        fuss += `<div class="hinweis warn">${IC.warn()}<div>${texte[w.abfrage] || t('Abfrage fehlgeschlagen')} <span>${t('– angezeigt wird der Stand von {z} ({vor}).', { z: w.abgefragt ? zeit(w.abgefragt) : '–', vor: w.abgefragt ? vor((jetzt - ms(w.abgefragt)) / 1000) : '–' })}${w.naechste ? ' ' + t('Neuer Versuch in {n} s.', { n: Math.max(0, Math.round((ms(w.naechste) - jetzt) / 1000)) }) : ''}</span></div></div>`;
       }
       if (w.tokenAblauf) {
         const tage = Math.ceil((ms(w.tokenAblauf) - jetzt) / 86400000);
@@ -559,7 +570,8 @@
       zeitText = alt ? t('Letzte erfolgreiche Abfrage {z}', { z: w.abgefragt ? zeit(w.abgefragt) : '–' }) : t('Abgefragt {z}', { z: zeit(w.abgefragt) }) + (S.verbindung === 'verbunden' && nx != null ? ' · ' + t('nächste in {n} s', { n: nx }) : '');
       fuss += '<div class="wf-zeit"></div>';
     }
-    const meta = ['kein-token', 'ausstehend'].includes(w.abfrage) ? esc(w.org) : `${esc(w.org)} · ${t('{n} Repositories', { n: w.repos.length })}`;
+    const orgText = w.org || INFO.ohneSchema(gw && gw.server) || '–';
+    const meta = ['kein-token', 'ausstehend'].includes(w.abfrage) ? esc(orgText) : `${esc(orgText)} · ${t('{n} Repositories', { n: w.repos.length })}`;
     const html = `<div class="karte-kopf"><span class="karte-titel">${t('Jobs je Repository')}</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
     // nur bei Änderung neu schreiben; die sekündlich wechselnde Zeitzeile per textContent
     if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
@@ -732,7 +744,7 @@
     const text = S.logFremd ? (S.logQuelle === 'datei' ? t('Die Ausgabe dieses Runners wird hier noch nicht angezeigt.') : t('Ohne Dienst gibt es für diesen Runner kein Log.'))
       : S.logQuelle === 'journal' ? (S.journalFehler === 'grenze' ? t('Das Journal kann gerade nicht angezeigt werden – zu viele sind gleichzeitig geöffnet.') : t('Noch keine Einträge im Journal von {unit}.', { unit: S.journalUnit }))
       : st && st.dienst.zustand === 'gestoppt' ? t('Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.')
-      : st && st.github.zustand === 'offline' ? t('Kein Schritt läuft. GitHub stellt dem Runner gerade keine Jobs zu.')
+      : st && st.github.zustand === 'offline' ? t('Kein Schritt läuft. {dienst} stellt dem Runner gerade keine Jobs zu.', { dienst: RUNNER.dienstName(st.anbieter) || 'GitHub' })
       : t('Kein Schritt läuft. Die Ausgabe erscheint hier, sobald ein Job startet.');
     if (leer.textContent !== text) leer.textContent = text;
   }
@@ -760,74 +772,18 @@
   }
 
   /* ------------------------------------------------------------ Info & Hilfe */
+  /* Anleitungen „Was tun, wenn …“ für den gewählten Runner (Texte, Befehle mit seiner Unit: info.js). */
   function anleitungen() {
     const st = S.status || { dienst: {}, github: {} }, w = S.workflows || {}, u = S.update || {}, us = u.status || {};
-    const knapp = (S.platten || []).some(p => p.schwelleFrei && p.frei < p.schwelleFrei);
-    const tokenAblauf = w.tokenAblauf && (ms(w.tokenAblauf) - Date.now()) < 14 * 86400000;
-    return [
-      { id: 'token', titel: t('GitHub-Token einrichten oder erneuern'), aktiv: ['kein-token', 'token-ungueltig', 'keine-rechte'].includes(w.abfrage) || tokenAblauf, wann: t('Wenn „Kein GitHub-Token“, „ohne Zugriff“ oder „Token läuft ab“ gemeldet wird. Schritt 1 bis 4 auf github.com, Schritt 5 und 6 auf der VM.'), schritte: [
-        [t('Auf github.com: Profilbild › Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.')],
-        [t('Resource owner: die Organisation, nicht das eigene Konto. Repository access: All repositories. Ablauf zum Beispiel 1 Jahr.')],
-        [t('Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status zusätzlich Organization › Self-hosted runners „Read-only“.')],
-        [t('Verlangt die Organisation eine Freigabe: Organisation › Settings › Personal access tokens › Pending requests. Vorher meldet der Monitor „ohne Zugriff“.')],
-        [t('Auf der VM eintragen, die Eingabe bleibt unsichtbar. Das Skript fragt auch nach der Organisation, Enter behält die bisherige:'), `${SKRIPT} token`],
-        [t('Prüfen, ob GitHub das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):'), `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "Authorization: Bearer $(sudo cat /etc/runner-monitor/github-token)" \\\n  "https://api.github.com/orgs/${w.org || 'beispiel-org'}/repos?per_page=1"`],
-      ] },
-      { id: 'github', titel: t('GitHub nicht erreichbar'), aktiv: ['nicht-erreichbar', 'kontingent', 'fehler'].includes(w.abfrage), wann: t('Wenn die Abfrage der Workflows fehlschlägt. Die Karte zeigt dann den letzten Stand.'), schritte: [
-        [t('Zuerst den Status von GitHub prüfen: githubstatus.com.')],
-        [t('Von der VM aus testen, ob die API antwortet:'), 'curl -sI https://api.github.com | head -1'],
-        [t('Antwort 401: Token ungültig oder abgelaufen, siehe „GitHub-Token einrichten oder erneuern“. Antwort 403: API-Kontingent erschöpft, die Abfrage setzt bis zum Reset aus.')],
-        [t('Keine Antwort: DNS, Firewall oder Proxy der VM prüfen. Letzte Meldungen des Sammlers:'), 'journalctl -u runner-monitor-sammler -n 30'],
-      ] },
-      { id: 'gestoppt', titel: t('Runner-Dienst gestoppt'), aktiv: st.dienst.zustand === 'gestoppt', cls: 'fehler', wann: t('Wenn der systemd-Dienst des Runners nicht läuft. Jobs bleiben dann in der Warteschlange.'), schritte: [
-        [t('Status und letzte Meldungen ansehen:'), "systemctl status 'actions.runner.*'"],
-        ...(st.dienst.grund === 'oom-kill' ? [
-          [t('„oom-kill“: Ein Job hat den Arbeitsspeicher gesprengt. RAM und Swap ansehen – für Builds und Docker-Images mindestens 8 GB RAM plus Swap (docs/RUNNER.md):'), 'free -h; swapon --show'],
-          [t('Dienst gegen Speichermangel einstellen (dann scheitert nur der Job) und fehlenden Swap anlegen:'), `${SKRIPT} runner`],
-        ] : []),
-        [t('Dienst starten:'), 'sudo systemctl start "$(cat /opt/actions-runner/.service)"'],
-        [t('Startet er nicht, das Protokoll prüfen:'), "journalctl -u 'actions.runner.*' -n 50"],
-        [t('Wartende Jobs laufen danach von selbst an.')],
-        [t('Woran es lag, steht in den Logs – siehe „Runner-Logs abrufen“.')],
-      ] },
-      { id: 'runner', titel: t('Kein Runner eingerichtet'), aktiv: st.dienst.zustand === 'fehlt', cls: 'warn', wann: t('Wenn auf dieser VM kein GitHub-Runner gefunden wird.'), schritte: [
-        [t('Registrierungs-Token holen: GitHub › Organisation › Settings › Actions › Runners › „New self-hosted runner“ (1 Stunde gültig).')],
-        [t('Runner auf der VM einrichten – das Skript fragt Organisation, Token und Labels ab:'), `${SKRIPT} runner`],
-        [t('Der Monitor erkennt den Runner danach von selbst.')],
-      ] },
-      { id: 'offline', titel: t('Runner offline bei GitHub'), aktiv: st.github.zustand === 'offline', cls: 'fehler', wann: t('Wenn der Dienst läuft, GitHub den Runner aber nicht sieht.'), schritte: [
-        [t('Netz der VM prüfen:'), 'curl -sI https://github.com | head -1'],
-        [t('Dienst neu starten, damit er sich neu anmeldet:'), "sudo systemctl restart 'actions.runner.*'"],
-        [t('Wurde der Runner in GitHub entfernt (Organisation › Settings › Actions › Runners), neu registrieren:'), `${SKRIPT} runner --umziehen`],
-        [t('Warum die Verbindung fehlt, steht im Diagnoseprotokoll des Runners – siehe „Runner-Logs abrufen“.')],
-      ] },
-      { id: 'logs', titel: t('Runner-Logs abrufen (Diagnose)'), aktiv: st.dienst.zustand === 'gestoppt' || st.github.zustand === 'offline', cls: st.dienst.zustand === 'gestoppt' ? 'fehler' : 'warn', wann: t('Wenn der Runner-Dienst stoppt, abstürzt, offline ist oder Jobs nicht annimmt. Alle Befehle auf der VM ausführen.'), schritte: [
-        [t('Dienst-Protokoll: Start, Stopp, Abstürze, Job-Start und -Ende. Die letzten 100 Zeilen:'), "journalctl -u 'actions.runner.*' -n 100 --no-pager"],
-        [t('Dasselbe live mitlesen (Strg+C beendet):'), "journalctl -u 'actions.runner.*' -f"],
-        [t('Diagnoseprotokoll des Runners: Anmeldung bei GitHub, Verbindungsfehler, Updates. Neueste Datei:'), 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Runner_*.log | head -1)"'],
-        [t('Protokoll des letzten Jobs (Worker), wenn ein Job abbricht oder hängt:'), 'sudo tail -n 100 "$(ls -t /opt/actions-runner/_diag/Worker_*.log | head -1)"'],
-        [t('Ausgabe der einzelnen Schritte, eine Datei je Schritt:'), 'ls -lt /opt/actions-runner/_diag/pages/ | head'],
-        [t('Logs abgeschlossener Jobs liegen bei GitHub: Repository › Actions › Lauf öffnen › Job › „Download log archive“.')],
-        [t('Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:'), "sudo tar czf ~/runner-diag.tgz -C /opt/actions-runner _diag\njournalctl -u 'actions.runner.*' --since today > ~/runner-journal.txt"],
-      ] },
-      { id: 'platte', titel: t('Platte knapp'), aktiv: knapp, wann: t('Wenn auf „/“ weniger als 25 GB frei sind.'), schritte: [
-        [t('Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:'), 'sudo runner-aufraeumen'],
-        [t('Wer belegt den Platz?'), 'docker system df'],
-        [t('Freien Platz an Proxmox zurückgeben:'), 'sudo fstrim -av'],
-        [t('Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.')],
-      ] },
-      { id: 'monitor', titel: t('Verbindung zum Monitor unterbrochen'), aktiv: S.verbindung === 'getrennt', cls: 'fehler', wann: t('Wenn diese Seite keine Daten mehr von der VM bekommt. Sie zeigt dann den letzten Stand.'), schritte: [
-        [t('Die Seite versucht es selbst weiter. Ist die VM im Netz erreichbar?'), `ping ${st.vm || 'runner-vm'}`],
-        [t('Monitor-Dienst auf der VM neu starten:'), 'sudo systemctl restart runner-monitor'],
-        [t('Letzte Meldungen des Monitors:'), 'journalctl -u runner-monitor -n 30'],
-      ] },
-      { id: 'update', titel: t('Monitor aktualisieren'), aktiv: us.zustand === 'fehler' || (u.neueste && vergleiche(u.neueste.version, u.installiert) > 0), cls: us.zustand === 'fehler' ? 'fehler' : 'warn', wann: t('Wenn eine neue Version gemeldet wird oder ein Update fehlgeschlagen ist.'), schritte: [
-        [t('Am einfachsten oben in „Updates“ auf „Jetzt aktualisieren“ klicken. Ein Hilfsdienst auf der VM lädt das offizielle Release, prüft die Prüfsumme, installiert es und startet den Monitor neu. Antwortet die neue Version nicht, stellt er die alte wieder her.')],
-        [t('Oder per SSH auf der VM:'), `${SKRIPT} aktualisieren`],
-        [t('Protokoll des letzten Updates:'), 'journalctl -u runner-monitor-update -n 50'],
-        [t('Zur vorherigen Version zurück:'), `${SKRIPT} zurueck`],
-      ] },
-    ];
+    const r = gewaehlterRunner() || {}, zr = S.anlRunner && (S.runner || []).find((x) => x.id === S.anlRunner);
+    return INFO.anleitungen({
+      dienst: st.anbieter || r.dienst || 'github', id: st.id || r.id || '', unit: st.unit || r.unit || '', server: r.server || '', org: r.org || w.org || '',
+      grund: st.dienst && st.dienst.grund, vm: st.vm, abfrage: w.abfrage,
+      tokenAblauf: !!(w.tokenAblauf && (ms(w.tokenAblauf) - Date.now()) < 14 * 86400000),
+      gestoppt: st.dienst.zustand === 'gestoppt', fehlt: st.dienst.zustand === 'fehlt', offline: st.github.zustand === 'offline',
+      knapp: (S.platten || []).some(p => p.schwelleFrei && p.frei < p.schwelleFrei), getrennt: S.verbindung === 'getrennt',
+      updFehler: us.zustand === 'fehler', updNeu: !!(u.neueste && vergleiche(u.neueste.version, u.installiert) > 0),
+    }, t, zr && { dienst: zr.dienst, id: zr.id, server: zr.server || '', org: zr.org || '' });
   }
 
   /* „Jetzt prüfen“: fragt GitHub sofort nach einer neuen Version (über den root-Sammler, höchstens
@@ -883,14 +839,23 @@
     if (ebene.querySelector('.info.raus')) ebene.replaceChildren(); // gerade beim Schließen: neu aufbauen
     ebene.hidden = false;
     renderInfo();
+    irLade();  // Funde der Erkennung (Info › Runner)
     const aside = ebene.querySelector('.info');
     if (aside) aside.focus();
-    const ziel = id && ebene.querySelector(`[data-anleitung="${id}"]`);
+    const ziel = id && id !== 'alle' && document.getElementById(`anl-${id}`);
     if (ziel) ziel.scrollIntoView({ block: 'start' });
+  }
+  /* „Runner zuordnen ›“ im Leerzustand der Karte: Info öffnen, zum Abschnitt Runner springen, Formular auf. */
+  function oeffneRunnerZuordnung(id) {
+    oeffneInfo('alle');
+    const f = id && irFund(id);
+    if (f) { S.ir.form = id; S.ir.zugang = null; S.ir.werte[id] = INFO.formStart(f); S.ir.formFehler[id] = {}; renderInfo(`[data-feld="dienst"][data-runner="${CSS.escape(id)}"]`); }
+    const z = document.getElementById('abschnitt-runner');
+    if (z) z.scrollIntoView({ block: 'start' });
   }
   function schliesseInfo() {
     const ebene = $('info-ebene'), aside = ebene.querySelector('.info');
-    S.info = null;
+    S.info = null; S.anlRunner = null;
     if (aside && !reduziert.matches) {
       aside.classList.add('raus');
       setTimeout(() => { if (!S.info) { ebene.hidden = true; ebene.replaceChildren(); } }, 240);
@@ -983,26 +948,18 @@
 
     const anl = anleitungen().map(a => {
       const offen = S.info === a.id;
-      return `<div class="anl"><button type="button" class="anl-kopf" data-aktion="anleitung" data-anleitung="${a.id}" aria-expanded="${offen}">${IC.chev(offen)}<span class="anl-titel">${a.titel}</span>${a.aktiv ? `<span class="pill ${a.cls || 'warn'}">${t('jetzt aktiv')}</span>` : ''}</button>${offen ? `<p class="anl-wann">${a.wann}</p><ol class="anl-schritte">${a.schritte.map(([text, code]) => `<li><span>${esc(text)}</span>${code ? codeBox(code) : ''}</li>`).join('')}</ol>` : ''}</div>`;
+      return `<div class="anl" id="anl-${a.id}"><button type="button" class="anl-kopf" data-aktion="anleitung" data-anleitung="${a.id}" aria-expanded="${offen}">${IC.chev(offen)}<span class="anl-titel">${a.titel}</span>${a.aktiv ? `<span class="pill ${a.cls || 'warn'}">${t('jetzt aktiv')}</span>` : ''}</button>${offen ? `<p class="anl-wann">${a.wann}</p><ol class="anl-schritte">${a.schritte.map(([text, code]) => `<li><span>${esc(text)}</span>${code ? codeBox(code) : ''}</li>`).join('')}</ol>` : ''}</div>`;
     }).join('');
 
-    const tage = w.tokenAblauf ? Math.ceil((ms(w.tokenAblauf) - jetzt) / 86400000) : null;
-    const kont = w.kontingent || {};
-    const gh = kv([
-      [t('Organisation'), esc(w.org || '–')],
-      ['Token', w.abfrage === 'kein-token' ? t('nicht eingerichtet') : w.abfrage === 'token-ungueltig' ? t('ungültig oder abgelaufen') : t('hinterlegt, nur lesend'), ['kein-token', 'token-ungueltig'].includes(w.abfrage) ? 'warn' : ''],
-      [t('Rechte'), t('Actions, Metadata, Self-hosted runners – je Read-only') + (w.runnerGrund ? ` <span class="warn">(${esc(w.runnerGrund)})</span>` : '')],
-      [t('Ablauf'), w.tokenAblauf ? t('{d} (in {n} {tage})', { d: datum(w.tokenAblauf), n: tage, tage: mehrzahl(tage, t('Tag'), t('Tagen')) }) : '–', tage != null && tage <= 14 ? 'warn' : ''],
-      [t('Letzte Abfrage'), w.abfrage === 'kein-token' ? t('aus') : w.abfrage === 'ausstehend' ? t('wird abgefragt') : w.abfrage === 'ok' ? t('{z} · erfolgreich', { z: zeit(w.abgefragt) }) : t('fehlgeschlagen · letzte erfolgreiche {z}', { z: w.abgefragt ? zeit(w.abgefragt) : '–' }), !['ok', 'kein-token', 'ausstehend'].includes(w.abfrage) ? 'warn' : ''],
-      [t('Nächste Abfrage'), '<span data-tick="naechste"></span>'],
-      [t('API-Kontingent'), kont.limit ? t('{a} von {b} frei, Reset {z}', { a: zahl(kont.frei), b: zahl(kont.limit), z: hm(kont.reset) }) : '–'],
-      [t('Token-Datei'), '/etc/runner-monitor/github-token'],
-    ]);
+    // Verbindungen: je angebundenem Dienst eine Gruppe; Felder nur, wenn der Zustand sie hergibt, sonst „–“
+    const verbs = INFO.verbindungen(S.runner, { t, RM, jetzt });
+    const verb = verbs.length ? verbs.map((v) => `<div class="vb-titel"><span class="label">${esc(v.dienst)}</span><span>${esc(v.titel)}</span><span class="mut">· ${esc(v.runner)}</span></div><dl class="kv">${v.kv.map(([k, x, cls, tick]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${tick ? `<span data-tick="${tick}" data-runner="${esc(v.id)}"></span>` : esc(x)}</dd></div>`).join('')}</dl>`).join('')
+      : `<p class="info-notiz keine-oben">${t('Kein Runner ist an einen Dienst angebunden. Dienst, Auslastung und Log laufen trotzdem. Anbinden: unter „Runner“ den Befehl bei „Zugangsdaten ändern“ auf der VM ausführen.')}</p>`;
     const ueber = kv([
       ['Version', esc(u.installiert || st.monitorVersion || '–')],
       [t('Adresse'), esc(location.host)],
       [t('Dienst'), t('runner-monitor (systemd, eigener Benutzer)')],
-      [t('Aktualisierung'), t('Systemwerte jede Sekunde, GitHub alle 30 s')],
+      [t('Aktualisierung'), t('Systemwerte jede Sekunde, Dienste (GitHub, Forgejo) alle 30 s')],
     ]);
 
     // Teile einzeln austauschen statt das ganze Blatt neu zu bauen: Sonst startet die Einblend-
@@ -1012,12 +969,14 @@
       upd,
       modi: `<div class="info-zeile"><span class="mut">${t('Modus')}</span><div class="segment" role="group" aria-label="${t('Hell oder dunkel')}">${modi}</div></div><p class="info-notiz">${t('„Automatisch“ folgt der Einstellung des Systems. Die Wahl gilt nur für diesen Browser.')}</p><div class="info-zeile sprach-zeile"><span class="mut">${t('Sprache')}</span><div class="segment" role="group" aria-label="${t('Sprache')}">${sprachen}</div></div><p class="info-notiz">${t('„Automatisch“ folgt der Sprache des Systems. Andere Sprachen als Deutsch zeigen Englisch. Die Wahl gilt nur für diesen Browser.')}</p>`,
       anl,
-      gh,
-      ueber: `<p class="info-text">${t('Live-Dashboard für den selbst gehosteten GitHub-Actions-Runner: Runner-Status, Auslastung mit Netzwerk, Prozesse, Platten, Workflows je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.')}</p>${ueber}<p class="info-text umbruch">${t('Ersteller:')} Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>${t('Quellcode und Doku:')} <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
+      verb,
+      runner: runnerHtml(),
+      ueber: `<p class="info-text">${t('Live-Dashboard für selbst gehostete CI-Runner auf einer VM – GitHub Actions, Forgejo, Gitea, GitLab, andere mit Grundüberwachung: Runner-Status, Auslastung mit Netzwerk, Prozesse, Platten, Jobs je Repository und Live-Log. Fehler und Hinweise erscheinen als Meldung in der Mitte der Kopfzeile, „Was tun?“ führt zur passenden Anleitung.')}</p>${ueber}<p class="info-text umbruch">${t('Ersteller:')} Bamberger IT Services · <a class="verweis" href="https://bamberger-it-services.de" rel="noopener" target="_blank">bamberger-it-services.de</a><br>${t('Quellcode und Doku:')} <a class="verweis" href="https://github.com/${REPO}" rel="noopener" target="_blank">github.com/${REPO}</a></p>`,
       issue: `<p class="info-text">${t('Fehler und Wünsche gehen per E-Mail an')} <a class="verweis" href="mailto:${MAIL.ADRESSE}">${MAIL.ADRESSE}</a>${t('. Der Knopf öffnet das E-Mail-Programm mit Betreff und einer Vorlage, in der die technischen Angaben schon stehen:')}</p>${kv([
         ['Version', `Runner-Monitor ${esc(u.installiert || st.monitorVersion || '–')}`],
         ['System', esc(st.system || '–')],
-        ['Runner', runnerVersion(st)],
+        // Beginnt die Version schon mit dem Dienst („Forgejo Runner 9.1“), wird er nicht doppelt genannt (wie in mail.js)
+        ['Runner', runnerAngaben().map((r) => { const dv = (r.dienst && r.version && String(r.version).toLowerCase().startsWith(String(r.dienst).toLowerCase()) ? [r.version] : [r.dienst, r.version]).filter(Boolean).join(' '); return `${esc(r.name)} (${esc(dv)})`; }).join(', ') || '–'],
         ['Browser', t('wird automatisch ergänzt')],
       ])}<div class="knopf-reihe"><a class="knopf" href="${esc(MAIL.fehler(mailAngaben, t))}">${IC.brief()}${t('Fehler melden')}</a><a class="knopf" href="${esc(MAIL.idee(mailAngaben, t))}">${t('Idee vorschlagen')}</a></div><p class="info-notiz">${t('Vor dem Absenden prüfen: Keine Tokens oder Passwörter mitschicken. Log-Ausschnitte nur gekürzt einfügen.')}</p>`,
     };
@@ -1031,32 +990,212 @@
           <div class="info-kopf-knoepfe"><button type="button" class="knopf" data-aktion="abmelden">${t('Abmelden')}</button><button type="button" class="knopf" data-aktion="info-zu">${t('Schließen')}</button></div>
         </div>
         <div class="info-body">
-          <section class="info-abschnitt"><h3 class="info-h">${t('Updates')}</h3><div data-teil="upd"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">${t('Darstellung')}</h3><div data-teil="modi"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">${t('Was tun, wenn …')}</h3><div data-teil="anl"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">${t('GitHub-Verbindung')}</h3><div data-teil="gh"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">${t('Über diesen Monitor')}</h3><div data-teil="ueber"></div></section>
-          <section class="info-abschnitt"><h3 class="info-h">${t('Fehler gefunden oder Idee?')}</h3><div data-teil="issue"></div></section>
+          <div class="info-spalten">
+            <div class="info-spalte">
+              <section class="info-abschnitt" id="abschnitt-runner" aria-labelledby="runner-h"><div data-teil="runner"></div></section>
+              <section class="info-abschnitt" id="abschnitt-verbindungen"><h3 class="info-h">${t('Verbindungen')}</h3><div data-teil="verb"></div></section>
+              <section class="info-abschnitt"><h3 class="info-h">${t('Was tun, wenn …')}</h3><div data-teil="anl"></div></section>
+            </div>
+            <div class="info-spalte">
+              <section class="info-abschnitt"><h3 class="info-h">${t('Updates')}</h3><div data-teil="upd"></div></section>
+              <section class="info-abschnitt"><h3 class="info-h">${t('Darstellung')}</h3><div data-teil="modi"></div></section>
+              <section class="info-abschnitt"><h3 class="info-h">${t('Über diesen Monitor')}</h3><div data-teil="ueber"></div></section>
+              <section class="info-abschnitt"><h3 class="info-h">${t('Fehler gefunden oder Idee?')}</h3><div data-teil="issue"></div></section>
+            </div>
+          </div>
         </div>
       </aside>`;
 
-  function renderInfo() {
+  /* Selektor, mit dem sich ein Bedienelement des Blatts nach dem Neuzeichnen wiederfinden lässt. */
+  function fokusSelektor(el) {
+    const d = el.dataset || {};
+    if (!d.aktion) return null;
+    let sel = `[data-aktion="${d.aktion}"]`;
+    for (const k of ['runner', 'anleitung', 'thema', 'sprache', 'feld']) if (d[k]) sel += `[data-${k}="${CSS.escape(d[k])}"]`;
+    return sel;
+  }
+
+  /* Blatt zeichnen. fokus: Selektor des Elements, das danach den Fokus bekommt (sonst bleibt der Fokus
+     auf dem Bedienelement, auch wenn sein Teil neu gezeichnet wurde). Beim Tippen im Formular bleibt der
+     Teil „Runner“ unberührt – die Eingabe wird nicht unterbrochen. */
+  function renderInfo(fokus) {
     if (!S.info) return;
     const ebene = $('info-ebene');
     if (!ebene.querySelector('.info')) ebene.innerHTML = INFO_GERUEST;
     const teile = infoTeile();
+    const aktiv = document.activeElement, imBlatt = aktiv && ebene.contains(aktiv);
+    const tippt = imBlatt && aktiv.matches('input, select, textarea');
+    const merke = imBlatt ? fokusSelektor(aktiv) : null;
     for (const [name, html] of Object.entries(teile)) {
       const el = ebene.querySelector(`[data-teil="${name}"]`);
-      if (el && el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+      if (!el || el.dataset.html === html) continue;
+      if (tippt && !fokus && el.contains(aktiv)) continue;
+      el.innerHTML = html; el.dataset.html = html;
     }
+    const ziel = fokus || (document.activeElement === document.body && merke ? merke : null);
+    if (ziel) { const z = ebene.querySelector(ziel); if (z) z.focus(); }
     tickInfo();
   }
 
   /* Werte, die sich jede Sekunde ändern, nur als Text setzen. */
   function tickInfo() {
-    const el = $('info-ebene').querySelector('[data-tick="naechste"]'); if (!el) return;
-    const w = S.workflows || {};
-    el.textContent = w.naechste && w.abfrage !== 'kein-token' ? t('in {n} s (alle 30 s)', { n: Math.max(0, Math.round((ms(w.naechste) - Date.now()) / 1000)) }) : '–';
+    for (const el of $('info-ebene').querySelectorAll('[data-tick="naechste"]')) {
+      const r = (S.runner || []).find((x) => x.id === el.dataset.runner);
+      el.textContent = INFO.naechste(r, { t, RM, jetzt: Date.now() });
+    }
+  }
+
+  /* ------------------------------------------------------------ Info › Runner (#97) */
+  /* Die Liste kommt von GET /api/einrichtung/runner (angemeldet, wie in der Einrichtung): alle Funde der
+     Erkennung samt Grad, auch ignorierte. Ändern geht über die vorhandenen Endpunkte (Auftrag an den Sammler,
+     der runner.json schreibt, E-22); Server, Organisation und Token nie – dafür steht der Befehl für die VM da. */
+  const warte = (zeitMs) => new Promise((ok) => setTimeout(ok, zeitMs));
+  const irFunde = () => S.ir.funde || INFO.fundeAusRunner(S.runner);
+  const irFund = (id) => irFunde().find((f) => f.id === id) || null;
+
+  function runnerHtml() {
+    const ir = S.ir, jetzt = Date.now(), fm = { t, RM, jetzt };
+    const funde = irFunde(), zeilen = INFO.runnerZeilen({ funde, runner: S.runner, neu: ir.neu, zeit: ir.funde ? ir.zeit : null }, fm);
+    const aktive = funde.filter((f) => f.stand !== 'ignoriert').length;
+    const status = ir.fehler && ir.erk !== 'laeuft' ? t('Die Liste der Erkennung ist gerade nicht abrufbar – angezeigt wird der Stand des Monitors.')
+      : INFO.erkennenText({ erk: ir.erk, zeit: ir.zeit, erkZeit: ir.erkZeit, anzahl: aktive, ignoriert: funde.length - aktive }, fm);
+    const laeuft = ir.erk === 'laeuft';
+    const dreh = '<svg class="upd-dreh" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 106.5 6.5"/></svg>';
+    const ruhe = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 11-1.61-3.89"/><path d="M13.5 2.5v3h-3"/></svg>';
+    const neuZ = zeilen.filter((z) => z.istNeu);
+    const neuBar = neuZ.length ? `<div class="ir-neu" role="status"><span>${neuZ.length === 1 ? t('1 neuer Runner gefunden:') : t('{n} neue Runner gefunden:', { n: neuZ.length })} <b>${neuZ.map((z) => esc(z.name)).join(', ')}</b>${neuZ.length === 1 ? ` <span class="label">${esc(neuZ[0].dienst)}</span>` : ''}</span><span class="ir-neu-knoepfe"><button type="button" class="knopf primaer" data-aktion="ir-neu-uebernehmen">${t('Übernehmen')}</button><button type="button" class="knopf" data-aktion="ir-neu-ignorieren">${t('Ignorieren')}</button></span></div>` : '';
+    const liste = zeilen.map((z, i) => {
+      const id = esc(z.id), formOffen = ir.form === z.id, zugOffen = ir.zugang === z.id;
+      const kvHtml = `<dl class="kv">${z.kv.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${esc(v)}</dd></div>`).join('')}</dl>`;
+      const aktionen = `<div class="ir-aktionen"><button type="button" class="link-knopf" data-aktion="ir-form" data-runner="${id}" aria-expanded="${formOffen}"${formOffen ? ` aria-controls="ir-form-${id}"` : ''}>${t('Zuordnung ändern')}</button><button type="button" class="link-knopf" data-aktion="ir-ignorieren" data-runner="${id}">${z.ignoriert ? t('Wieder anzeigen') : t('Ignorieren')}</button>${z.hatZugang ? `<button type="button" class="link-knopf" data-aktion="ir-zugang" data-runner="${id}" aria-expanded="${zugOffen}"${zugOffen ? ` aria-controls="ir-zugang-${id}"` : ''}>${t('Zugangsdaten ändern')}</button>` : ''}</div>`;
+      return `<div class="ir${i === 0 ? ' ir-erst' : ''}" data-runner="${id}"><div class="ir-kopf"><span class="punkt ${z.punkt}" aria-hidden="true"></span><span class="ir-name">${esc(z.name)}</span><span class="label">${esc(z.dienst)}</span><span class="pill ${z.pilleCls}">${z.pille}</span></div>${kvHtml}${aktionen}${formOffen ? irFormular(z.fund) : ''}${zugOffen ? irZugang(z) : ''}</div>`;
+    }).join('');
+    const leer = zeilen.length ? '' : `<p class="info-notiz">${t('Es wurde noch kein Runner erkannt. Unter „Was tun, wenn …“ › „Kein Runner eingerichtet“ steht, wie ein Runner eingerichtet wird.')}</p>`;
+    return `<div class="info-zeile ir-kopfzeile"><h3 class="info-h" id="runner-h">${t('Runner')}</h3><button type="button" class="knopf" data-aktion="ir-erkennen"${laeuft ? ' disabled' : ''}>${laeuft ? dreh : ruhe}${t('Neu erkennen')}</button></div>`
+      + `<p class="info-notiz ir-status" aria-live="polite">${esc(status)}</p>`
+      + (ir.meldung ? `<div class="hinweis fehler ir-meldung" role="alert">${IC.x(15)}<div>${esc(ir.meldung)}</div></div>` : '')
+      + neuBar + liste + leer;
+  }
+
+  function irFormular(f) {
+    const ir = S.ir, w = ir.werte[f.id] || INFO.formStart(f), fe = ir.formFehler[f.id] || {}, id = esc(f.id);
+    const opt = EINR.DIENST_WAHL.map((d) => `<option value="${d}"${(w.dienst || 'unbekannt') === d ? ' selected' : ''}>${esc(d === 'unbekannt' ? t('anderer') : EINR.dienstName(d))}</option>`).join('');
+    const hinweis = (feld, text) => (fe[feld] ? `<span class="ir-hinweis" id="ir-${id}-${feld}-h">${text}</span>` : '');
+    const attr = (feld) => (fe[feld] ? ` aria-invalid="true" aria-describedby="ir-${id}-${feld}-h"` : '');
+    return `<div class="ir-box" role="group" aria-label="${t('Zuordnung ändern')}" id="ir-form-${id}"><div class="ir-form">`
+      + `<label class="ir-feld">${t('Dienst')}<select data-feld="dienst" data-runner="${id}">${opt}</select></label>`
+      + `<label class="ir-feld">${t('Anzeigename')}<input data-feld="name" data-runner="${id}" value="${esc(w.name)}" maxlength="64" autocapitalize="none" spellcheck="false"${attr('name')}>${hinweis('name', t('Nur Buchstaben, Ziffern und . _ @ + - (höchstens 64 Zeichen).'))}</label>`
+      + `<label class="ir-feld">${t('systemd-Unit')}<input class="mono" data-feld="unit" data-runner="${id}" value="${esc(w.unit)}" placeholder="buildagent.service" maxlength="200" autocapitalize="none" spellcheck="false"${attr('unit')}>${hinweis('unit', t('Erwartet wird ein Name wie buildagent.service.'))}</label>`
+      + `<label class="ir-feld">${t('Log-Pfad')}<input class="mono" data-feld="log" data-runner="${id}" value="${esc(w.log)}" placeholder="${esc(t('leer = Journal der Unit'))}" maxlength="400" autocapitalize="none" spellcheck="false"${attr('log')}>${hinweis('log', t('Nur eine .log-Datei unter /var/log, /opt oder /srv.'))}</label>`
+      + `</div><div class="ir-knoepfe"><button type="button" class="knopf primaer" data-aktion="ir-form-speichern" data-runner="${id}"${ir.sendet ? ' disabled' : ''}>${t('Speichern')}</button><button type="button" class="knopf" data-aktion="ir-form-abbrechen" data-runner="${id}">${t('Abbrechen')}</button></div></div>`;
+  }
+  function irZugang(z) {
+    return `<div class="ir-box" id="ir-zugang-${esc(z.id)}"><span class="ir-text">${t('Zugangsdaten werden aus Sicherheitsgründen nur auf der VM geändert. Der Befehl fragt Server, Organisation und Token ab und prüft die Verbindung:')}</span>${codeBox(z.befehl)}<button type="button" class="link-knopf" data-aktion="anleitung-zeigen" data-anleitung="token" data-runner="${esc(z.id)}">${t('Anleitung: Zugangsdaten für {dienst} ›', { dienst: z.dienst })}</button></div>`;
+  }
+
+  /* Funde laden: im Browser vom Server, in der Demo aus demo.js. false, wenn es nicht ging. */
+  async function irLade() {
+    let d = null;
+    try {
+      if (DEMO) d = window.RM_DEMO ? window.RM_DEMO.funde() : null;
+      else { const r = await fetch('/api/einrichtung/runner', { credentials: 'same-origin' }); d = r.ok ? await r.json() : null; }
+    } catch (f) { d = null; }
+    S.ir.geladen = Date.now();
+    if (!d || !Array.isArray(d.runner)) { S.ir.fehler = true; renderInfo(); return null; }
+    S.ir.funde = d.runner; S.ir.zeit = d.zeit || null; S.ir.fehler = false;
+    renderInfo();
+    return d;
+  }
+
+  async function irErkennen() {
+    const ir = S.ir;
+    if (ir.erk === 'laeuft') return;
+    const vorher = irFunde().map((f) => ({ ...f }));
+    ir.erk = 'laeuft'; ir.meldung = ''; renderInfo();
+    let fertig = false;
+    if (DEMO) { await window.RM_DEMO.erkennen(); fertig = !!(await irLade()); } else {
+      const r = await RM.sende('/api/einrichtung/runner/erkennen', {});
+      if (!r.ok) { ir.erk = 'ruhe'; ir.meldung = r.daten.fehler ? RM.serverText(r.daten) : t('Nicht gespeichert.'); renderInfo(); return; }
+      const seit = r.daten.seit || Date.now() / 1000;
+      for (let i = 0; i < 45 && !fertig; i++) {  // Takt des Sammlers 2 s, Erkennung höchstens 60 s
+        await warte(2000);
+        const d = await irLade();
+        fertig = !!(d && d.zeit && d.zeit >= seit - 1);
+      }
+    }
+    if (!fertig) { ir.erk = 'zeit'; renderInfo(); return; }
+    ir.erkZeit = ir.zeit || Date.now() / 1000;
+    const neu = INFO.neueFunde(vorher, irFunde());
+    for (const id of neu) if (!ir.neu.includes(id)) ir.neu.push(id);
+    ir.erk = !neu.length && EINR.gleicheFunde(vorher, irFunde()) ? 'keine' : 'ruhe';
+    renderInfo('[data-aktion="ir-erkennen"]');
+  }
+
+  /* Auftrag zur Zuordnung. true, wenn angenommen; sonst steht der Grund in S.ir.meldung. */
+  async function irSende(eintraege) {
+    const ir = S.ir; ir.meldung = ''; ir.sendet = true;
+    let ok = true;
+    if (DEMO) window.RM_DEMO.zuordnung(eintraege);
+    else {
+      const r = await RM.sende('/api/einrichtung/runner/zuordnung', { runner: eintraege });
+      if (!r.ok) { ok = false; ir.meldung = r.daten.fehler ? RM.serverText(r.daten) : t('Nicht gespeichert.'); }
+    }
+    ir.sendet = false;
+    await irLade();
+    return ok;
+  }
+
+  function irAktion(a, b) {
+    const ir = S.ir, id = b.dataset.runner, f = id ? irFund(id) : null;
+    const knopf = id ? `[data-aktion="${a}"][data-runner="${CSS.escape(id)}"]` : `[data-aktion="${a}"]`;
+    if (a === 'ir-erkennen') irErkennen();
+    else if (a === 'ir-form' && f) {
+      if (ir.form === id) { ir.form = null; renderInfo(knopf); } else { ir.form = id; ir.zugang = null; ir.werte[id] = INFO.formStart(f); ir.formFehler[id] = {}; ir.meldung = ''; renderInfo(`[data-feld="dienst"][data-runner="${CSS.escape(id)}"]`); }
+    } else if (a === 'ir-form-abbrechen' && f) { ir.form = null; renderInfo(`[data-aktion="ir-form"][data-runner="${CSS.escape(id)}"]`); }
+    else if (a === 'ir-form-speichern' && f) irSpeichern(f);
+    else if (a === 'ir-zugang' && f) { ir.zugang = ir.zugang === id ? null : id; if (ir.zugang) ir.form = null; renderInfo(knopf); }
+    else if (a === 'ir-ignorieren' && f) irSende([{ id, stand: f.stand === 'ignoriert' ? null : 'ignoriert' }]).then(() => renderInfo(knopf));
+    else if (a === 'ir-neu-uebernehmen') {
+      // Übernehmen = zur Kenntnis genommen: der Fund steht schon in der Liste, es ändert sich nichts in runner.json.
+      const ids = ir.neu.slice(); ir.neu = [];
+      const letzter = ids.map(irFund).filter(Boolean).pop();
+      if (letzter && INFO.hatZugang(letzter)) { ir.zugang = letzter.id; ir.form = null; }
+      renderInfo(letzter && INFO.hatZugang(letzter) ? `[data-aktion="ir-zugang"][data-runner="${CSS.escape(letzter.id)}"]` : '[data-aktion="ir-erkennen"]');
+    } else if (a === 'ir-neu-ignorieren') {
+      const ids = ir.neu.slice(); ir.neu = [];
+      irSende(ids.map((x) => ({ id: x, stand: 'ignoriert' }))).then(() => renderInfo('[data-aktion="ir-erkennen"]'));
+    }
+  }
+
+  async function irSpeichern(f) {
+    const ir = S.ir, w = ir.werte[f.id] || INFO.formStart(f);
+    const fehler = EINR.pruefeFormular(w, false);
+    ir.formFehler[f.id] = fehler;
+    if (Object.keys(fehler).length) { renderInfo(`[data-feld="${Object.keys(fehler)[0]}"][data-runner="${CSS.escape(f.id)}"]`); return; }
+    const e = INFO.formEintrag(f, w, EINR.DIENST_WAHL);
+    const ok = INFO.geaendert(e) ? await irSende([e]) : true;
+    if (ok) ir.form = null;
+    renderInfo(ok ? `[data-aktion="ir-form"][data-runner="${CSS.escape(f.id)}"]` : '[data-aktion="ir-form-speichern"]');
+  }
+
+  /* Eingaben im Formular merken (ohne neu zu zeichnen). */
+  const irEingabe = (e) => {
+    const el = e.target.closest ? e.target.closest('[data-feld][data-runner]') : null;
+    if (!el) return;
+    const id = el.dataset.runner, w = S.ir.werte[id];
+    if (w) { w[el.dataset.feld] = el.value; if (S.ir.formFehler[id]) delete S.ir.formFehler[id][el.dataset.feld]; }
+  };
+  document.addEventListener('input', irEingabe);
+  document.addEventListener('change', irEingabe);
+
+  /* Tab bleibt im Blatt (Dialog): vom letzten Element zurück zum ersten und umgekehrt. */
+  function fokusFalle(e) {
+    const aside = $('info-ebene').querySelector('.info'); if (!aside) return;
+    const liste = [...aside.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
+    if (!liste.length) return;
+    const erst = liste[0], letzt = liste[liste.length - 1], a = document.activeElement;
+    if (e.shiftKey && (a === erst || a === aside || !aside.contains(a))) { e.preventDefault(); letzt.focus(); }
+    else if (!e.shiftKey && (a === letzt || !aside.contains(a))) { e.preventDefault(); erst.focus(); }
   }
 
   /* ------------------------------------------------------------ Bedienung */
@@ -1066,6 +1205,9 @@
     if (a === 'runner-waehlen') { waehleRunner(b.dataset.runner); const z = $('rw-tabs').querySelector(b.closest('#rw-pop') ? '.rw-t.an' : '[data-runner="' + CSS.escape(b.dataset.runner) + '"]'); if (z && b.closest('#rw-pop, #rw-tabs')) z.focus(); }
     else if (a === 'runner-mehr') { if (S.mehrOffen) schliesseMehr(false); else oeffneMehr(e.detail === 0); }  // detail 0: Tastatur (Enter, Leertaste) → Fokus in die Liste
     else if (a === 'info') oeffneInfo(b.dataset.anleitung);
+    else if (a.startsWith('ir-')) irAktion(a, b);
+    else if (a === 'runner-zuordnen') oeffneRunnerZuordnung(b.dataset.runner);
+    else if (a === 'anleitung-zeigen') { S.anlRunner = b.dataset.runner || null; S.info = b.dataset.anleitung; renderInfo(`#anl-${b.dataset.anleitung} .anl-kopf`); const z = document.getElementById(`anl-${b.dataset.anleitung}`); if (z) z.scrollIntoView({ block: 'start', behavior: reduziert.matches ? 'auto' : 'smooth' }); }
     else if (a === 'info-zu') schliesseInfo();
     else if (a === 'anleitung') { S.info = S.info === b.dataset.anleitung ? 'alle' : b.dataset.anleitung; renderInfo(); }
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
@@ -1094,7 +1236,16 @@
     if (DEMO) { S.update = { ...S.update, auto: el.checked }; return; }
     await RM.sende('/api/update/auto', { an: el.checked });
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && S.info) schliesseInfo(); });
+  document.addEventListener('keydown', (e) => {
+    if (!S.info) return;
+    if (e.key === 'Tab') { fokusFalle(e); return; }
+    if (e.key !== 'Escape') return;
+    // Ein offenes Formular oder eine Box im Blatt schließt zuerst, erst dann das Blatt
+    const box = e.target.closest ? e.target.closest('.ir-box') : null;
+    if (box && S.ir.form) { e.preventDefault(); const id = S.ir.form; S.ir.form = null; renderInfo(`[data-aktion="ir-form"][data-runner="${CSS.escape(id)}"]`); return; }
+    if (box && S.ir.zugang) { e.preventDefault(); const id = S.ir.zugang; S.ir.zugang = null; renderInfo(`[data-aktion="ir-zugang"][data-runner="${CSS.escape(id)}"]`); return; }
+    schliesseInfo();
+  });
   $('k-modus').addEventListener('click', () => {
     const folgt = { system: 'hell', hell: 'dunkel', dunkel: 'system' }[RM.thema()];
     RM.setzeThema(folgt); renderModus(); renderInfo();
@@ -1125,6 +1276,7 @@
       wartezeit = Math.min(wartezeit * 2, 30000); verbinde();
     }
     renderKopf(); renderStatus(); renderWorkflows(); if (S.info) renderInfo();
+    if (S.info && Date.now() - S.ir.geladen > 60000 && !S.ir.form && S.ir.erk !== 'laeuft') irLade();
   }, 1000);
 
   /* ------------------------------------------------------------ Verbindung */

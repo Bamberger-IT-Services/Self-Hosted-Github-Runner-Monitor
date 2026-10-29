@@ -259,3 +259,20 @@ test('ansicht reicht „unbekannt“ und nicht zuordenbare Jobs durch (#93)', ()
   assert.equal(j.job.zuordenbar, false);
   assert.equal(R.ansicht({ id: 'x' }).zustand, null);
 });
+
+test('Alter des letzten guten Stands (#123): frisch, Hinweis, veraltet', () => {
+  const jetzt = Date.UTC(2026, 9, 29, 12, 0, 0), sek = jetzt / 1000;
+  const mit = (abfrage, vor) => ({ abfrage, abgefragt: vor == null ? null : sek - vor });
+  assert.equal(R.alter(null, jetzt).stufe, 'frisch');
+  assert.equal(R.alter(mit('ok', 5), jetzt).stufe, 'frisch');
+  assert.equal(R.alter(mit('kein-token', null), jetzt).stufe, 'frisch');            // ohne Abfrage gibt es nichts, was veralten könnte
+  assert.equal(R.alter(mit('nicht-erreichbar', 30), jetzt).stufe, 'frisch');        // kurzer Ausfall ist normal
+  assert.deepEqual(R.alter(mit('nicht-erreichbar', 150), jetzt), { stufe: 'hinweis', sekunden: 150, seit: (sek - 150) * 1000 });
+  assert.equal(R.alter(mit('kontingent', 600), jetzt).stufe, 'veraltet');
+  assert.equal(R.alter(mit('token-ungueltig', 7200), jetzt).stufe, 'veraltet');
+  assert.equal(R.alter(mit('fehler', null), jetzt).stufe, 'veraltet');              // nie ein guter Stand
+  assert.equal(R.alter(mit('keine-rechte', 119), jetzt).stufe, 'frisch');
+  assert.equal(R.alter(mit('keine-rechte', 120), jetzt).stufe, 'hinweis');
+  assert.equal(R.ALT_HINWEIS, 120);
+  assert.equal(R.ALT_VERALTET, 600);
+});

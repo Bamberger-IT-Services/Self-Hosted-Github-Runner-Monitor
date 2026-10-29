@@ -91,6 +91,11 @@ window.RM_DEMO = (() => {
   // ?faehig=teilweise (Design 0.8.0 › „Teilweise · Job ohne Schritte“): runner-vm-01 liefert Jobs, aber keine Schritte
   const FAEHIG_TEIL = { status: true, jobs: true, schritte: false, logs: true, updates: false };
   let faehigWahl = 'voll';
+  // ?forgejo=angebunden (Design 0.8.0 › „Verbindungen · GitHub und Forgejo“): runner-vm-02 mit Jobs statt Grundüberwachung
+  let forgejoAngebunden = false;
+  // ?anbieter=kein-token|nicht-erreichbar|token-ungueltig (#123): Abfrage der Runner ab runner-vm-02 (Forgejo, Gitea, GitLab) mit Fehler;
+  // ?anbieteralter=N: Alter ihres letzten guten Stands in Sekunden (Standard 900 = veraltet; 200 = Hinweis mit Alter)
+  let anbieterAbfrage = 'ok', anbieterAlter = 900;
   // Grundüberwachung (#95): Dienst mit NRestarts (neustarts) und InactiveEnterTimestamp (letzterStopp) wie runner.dienst_status
   const grundRunner = (id, name, dienst, unit, einstufung, stand, dienstZustand, mehr = {}) => {
     const t = jetzt(), aktiv = dienstZustand === 'aktiv';
@@ -106,15 +111,16 @@ window.RM_DEMO = (() => {
   const vollRunner = (id, dienst, unit, labels, offline) => {
     const t = jetzt(), w = workflows();
     return {
-      id, name: id, dienst, server: 'https://git.example.org', org: 'beispiel-org', unit, stand: 'angebunden', einstufung: 'voll',
-      version: dienst === 'gitea' ? 'act_runner 0.2.11' : 'GitLab Runner 17.5', labels, faehig: FAEHIG_VOLL,
+      id, name: id, dienst, server: dienst === 'gitlab' ? 'https://gitlab.example.org' : 'https://git.example.org', org: dienst === 'gitlab' ? null : 'beispiel-org', unit, stand: 'angebunden', einstufung: 'voll',
+      version: dienst === 'gitea' ? 'act_runner 0.2.11' : dienst === 'forgejo' ? 'Forgejo Runner 9.1' : 'GitLab Runner 17.5', labels, faehig: FAEHIG_VOLL,
       status: { zustand: offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst: offline ? { zustand: 'offline', seit: START + 86400 } : { zustand: 'online', seit: null } },
       job: null, letzteJobs: [{ repo: 'datenimport', workflow: 'Import', name: 'nachts', ergebnis: 'erfolg', dauer: 128, ende: t - 720 }],
-      jobsJeRepository: { ...w, abfrage: 'ok', abgefragt: t - (takt % 30), naechste: t + 30 - (takt % 30), tokenAblauf: t + 160 * 86400, repos: REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })) },
+      jobsJeRepository: { ...w, abfrage: anbieterAbfrage, abgefragt: anbieterAbfrage === 'ok' ? t - (takt % 30) : t - anbieterAlter, naechste: t + 30 - (takt % 30), tokenAblauf: anbieterAbfrage === 'kein-token' ? null : t + 160 * 86400,
+        kontingent: {}, repos: anbieterAbfrage === 'kein-token' ? [] : REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })) },
       log: { art: 'journal', unit },
     };
   };
-  const runnerListe = () => {
+  const runnerListeAlle = () => {
     const st = status(), w = workflows();
     const zust = st.dienst.zustand === 'gestoppt' ? 'gestoppt' : st.job ? 'job' : st.github.zustand === 'offline' ? 'offline' : 'bereit';
     const unit = 'actions.runner.beispiel-org.runner-vm-01.service';
@@ -127,14 +133,52 @@ window.RM_DEMO = (() => {
       status: { zustand: zust, dienst: st.dienst, beimDienst: st.github }, job, letzteJobs: st.letzteJobs, jobsJeRepository: w,
       log: { art: 'seiten', unit },
     }];
-    if (runnerAnzahl >= 2) liste.push(grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'teil', 'grund', 'aktiv',
-      { neustarts: 2, letzterStopp: jetzt() - 26 * 3600 }));
+    if (runnerAnzahl >= 2) liste.push(forgejoAngebunden ? vollRunner('runner-vm-02', 'forgejo', 'forgejo-runner.service', ['ubuntu-latest'], false)
+      : grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'teil', 'grund', 'aktiv', { neustarts: 2, letzterStopp: jetzt() - 26 * 3600 }));
     if (runnerAnzahl >= 3) liste.push(grundRunner('buildagent', 'buildagent', 'unbekannt', 'buildagent.service', 'unbekannt', 'grund', zustand === 'gestoppt' ? 'gestoppt' : 'aktiv',
       { seit: jetzt() - (6 * 86400 + 4 * 3600 + 900) }));
     if (runnerAnzahl >= 4) liste.push(vollRunner('runner-vm-03', 'gitea', 'gitea-runner.service', ['linux', 'arm64'], false));
     if (runnerAnzahl >= 5) liste.push(vollRunner('runner-vm-04', 'gitlab', 'gitlab-runner.service', ['docker', 'shell'], true));
+    if (neuGefunden) liste.push(grundRunner(NEU_ID(), NEU_ID(), 'gitea', 'act_runner-2.service', 'teil', 'offen', 'aktiv'));
     return liste;
   };
+  // Zuordnung aus der Oberfläche (Info › Runner): Namen und Dienst überschreiben, ignorierte Runner fehlen in runner[]
+  const runnerListe = () => runnerListeAlle().filter((r) => (zuordn[r.id] || {}).stand !== 'ignoriert').map((r) => {
+    const z = zuordn[r.id] || {};
+    return { ...r, ...(z.name ? { name: z.name } : {}), ...(z.dienst ? { dienst: z.dienst } : {}), ...(z.stand === 'grund' ? { stand: 'grund' } : {}) };
+  });
+
+  /* Info › Runner (#97): Funde wie GET /api/einrichtung/runner, im Speicher. „Neu erkennen“ findet beim ersten Mal
+     einen neuen Gitea-Runner (Design: „1 neuer Runner gefunden“), danach „Keine Änderung“. */
+  let neuGefunden = false, erkennungen = 0, erkZeit = jetzt() - 7 * 60;
+  const zuordn = {};
+  const NEU_ID = () => (runnerAnzahl >= 4 ? 'runner-vm-05' : 'runner-vm-03');
+  const GRAD = { 'runner-vm-01': 'sicher', 'runner-vm-02': 'sicher', buildagent: 'unklar', 'runner-vm-03': 'sicher', 'runner-vm-04': 'wahrscheinlich', 'runner-vm-05': 'sicher' };
+  const SERVER_FUND = { github: 'https://github.com/beispiel-org', forgejo: 'https://git.example.org', gitea: 'https://git.example.org:3000', gitlab: 'https://gitlab.example.org' };
+  function fundVon(r) {
+    const z = zuordn[r.id] || {}, primaer = r.id === 'runner-vm-01', mitAdapter = ['forgejo', 'gitea', 'gitlab'].includes(r.dienst);
+    return {
+      id: r.id, name: z.name || r.name, dienst: z.dienst || r.dienst, server: SERVER_FUND[r.dienst] || r.server || null, version: r.version, grad: GRAD[r.id] || 'unklar',
+      merkmale: [`systemd-Unit ${r.unit}`], einstufung: r.einstufung, stand: z.stand || r.stand, unit: r.unit, faehig: r.faehig, aktiv: true, grund: null,
+      zuordnung: { ...z }, primaer, anbindung: primaer ? 'github' : r.stand === 'angebunden' ? 'angebunden' : mitAdapter ? 'ohne-server' : 'ohne-adapter',
+    };
+  }
+  function funde() {
+    return JSON.parse(JSON.stringify({ zeit: erkZeit, runner: runnerListeAlle().map(fundVon), auftrag: { erkennung: false, zuordnung: false } }));
+  }
+  function erkennen() {
+    erkennungen++;
+    if (erkennungen === 1) neuGefunden = true;
+    return new Promise((ok) => setTimeout(() => { erkZeit = jetzt(); if (api) runnerSenden(); ok(); }, 1600));
+  }
+  function zuordnung(eintraege) {
+    for (const e of eintraege) {
+      const z = zuordn[e.id] || (zuordn[e.id] = {});
+      if ('stand' in e) { if (e.stand === null) delete z.stand; else z.stand = e.stand; }
+      for (const k of ['dienst', 'name', 'unit', 'log']) if (k in e) { if (e[k] === null) delete z[k]; else z[k] = e[k]; }
+    }
+    if (api) runnerSenden();
+  }
   const meldungenListe = (liste) => {
     const M = [];
     for (const r of liste) {
@@ -292,6 +336,9 @@ window.RM_DEMO = (() => {
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
     const rn = parseInt(p.get('runner'), 10); if (rn >= 1 && rn <= 5) runnerAnzahl = rn;
     if (p.get('faehig') === 'teilweise') faehigWahl = 'teilweise';
+    forgejoAngebunden = p.get('forgejo') === 'angebunden';
+    if (['kein-token', 'nicht-erreichbar', 'token-ungueltig'].includes(p.get('anbieter'))) anbieterAbfrage = p.get('anbieter');
+    if (parseInt(p.get('anbieteralter'), 10) > 0) anbieterAlter = parseInt(p.get('anbieteralter'), 10);
     schritteLokal = p.get('schritte') === 'lokal';
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();
@@ -314,5 +361,5 @@ window.RM_DEMO = (() => {
     }, 1000);
   }
 
-  return { start, journal, updateStarten: () => { upd = 'laeuft'; updSchritt = 0; api.empfange('update', update()); }, pruefen: () => setTimeout(() => { const d = update(); d.neueste = { ...d.neueste, geprueft: jetzt() }; api.empfange('update', d); }, 1500) };
+  return { start, journal, funde, erkennen, zuordnung, updateStarten: () => { upd = 'laeuft'; updSchritt = 0; api.empfange('update', update()); }, pruefen: () => setTimeout(() => { const d = update(); d.neueste = { ...d.neueste, geprueft: jetzt() }; api.empfange('update', d); }, 1500) };
 })();

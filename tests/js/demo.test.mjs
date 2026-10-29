@@ -130,3 +130,39 @@ test('Teilweise (?faehig=teilweise): Jobs ja, Schritte nein – wie der Server o
   const voll = letzte(starteDemo('?demo&leiste=0').empfangen, 'runner')[0];
   assert.equal(voll.faehig.schritte, true);
 });
+
+test('Info › Runner (#97): Funde wie GET /api/einrichtung/runner, ignorieren, zuordnen, neu erkennen', () => {
+  const { demo, empfangen } = starteDemo('?demo&leiste=0&runner=3');
+  const d = JSON.parse(JSON.stringify(demo.funde()));   // aus dem Kontext von demo.js in diesen Kontext holen
+  assert.equal(d.runner.length, 3);
+  const FUND = ['aktiv', 'anbindung', 'dienst', 'einstufung', 'faehig', 'grad', 'grund', 'id', 'merkmale', 'name', 'primaer', 'server', 'stand', 'unit', 'version', 'zuordnung'];
+  for (const f of d.runner) assert.deepEqual(Object.keys(f).sort(), FUND);
+  assert.deepEqual(d.runner.map((f) => [f.id, f.grad, f.anbindung]), [['runner-vm-01', 'sicher', 'github'], ['runner-vm-02', 'sicher', 'ohne-server'], ['buildagent', 'unklar', 'ohne-adapter']]);
+  assert.equal(JSON.stringify(d).includes('token'), false);
+  // Ignorieren: der Fund bleibt in der Liste (zum Wieder-Anzeigen), fehlt aber in runner[]
+  demo.zuordnung([{ id: 'buildagent', stand: 'ignoriert' }]);
+  assert.equal(demo.funde().runner.find((f) => f.id === 'buildagent').stand, 'ignoriert');
+  assert.deepEqual(letzte(empfangen, 'runner').map((r) => r.id), ['runner-vm-01', 'runner-vm-02']);
+  demo.zuordnung([{ id: 'buildagent', stand: null }]);
+  assert.equal(letzte(empfangen, 'runner').length, 3);
+  // Zuordnung: Anzeigename und Dienst
+  demo.zuordnung([{ id: 'buildagent', stand: null, name: 'build-agent', dienst: 'gitea' }]);
+  const r3 = letzte(empfangen, 'runner').find((r) => r.id === 'buildagent');
+  assert.deepEqual([r3.name, r3.dienst], ['build-agent', 'gitea']);
+  // Neu erkennen: beim ersten Mal ein neuer Gitea-Runner, danach keine Änderung
+  demo.erkennen();
+  const neu = demo.funde().runner.find((f) => f.id === 'runner-vm-03');
+  assert.equal(neu.dienst, 'gitea');
+  assert.equal(neu.stand, 'offen');
+  assert.equal(neu.anbindung, 'ohne-server');
+  demo.erkennen();
+  assert.equal(demo.funde().runner.length, 4);
+});
+
+test('Info › Verbindungen: ?forgejo=angebunden zeigt Forgejo mit Jobs', () => {
+  const { empfangen } = starteDemo('?demo&leiste=0&runner=2&forgejo=angebunden');
+  const r = letzte(empfangen, 'runner').find((x) => x.id === 'runner-vm-02');
+  assert.equal(r.faehig.jobs, true);
+  assert.equal(r.server, 'https://git.example.org');
+  assert.ok(r.jobsJeRepository);
+});

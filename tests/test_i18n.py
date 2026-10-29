@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / "web"
-SEITEN = ["gemeinsam.js", "dashboard.js", "mail.js", "dashboard.html", "anmelden.js", "anmelden.html", "einrichtung.js", "einrichtung.html"]
+SEITEN = ["gemeinsam.js", "dashboard.js", "mail.js", "info.js", "dashboard.html", "anmelden.js", "anmelden.html", "einrichtung.js", "einrichtung.html"]
 WURZEL = WEB.parent
 
 

@@ -123,7 +123,24 @@ const RUNNER = (() => {
     return n === 0 ? { art: 'keine', n: 0 } : { art: 'zahl', n };
   }
 
-  return { SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd,
+
+  /* Alter des letzten guten Stands (#123): Schlägt die Abfrage beim Dienst fehl, behält der Sammler den letzten
+     guten Stand – Job, „Online bei …“ und Zahlen. Kurz ist das normal (der Kartenfuß nennt die Zeit); nach 2 Min.
+     steht ein Hinweis mit dem Alter, nach 10 Min. gilt der Stand als veraltet: „Zustand unbekannt“ statt eines
+     Jobs, der stundenlang „läuft“. Ohne Abfrage (kein Token, Grundüberwachung) gibt es nichts, was veralten könnte.
+     jobs = jobsJeRepository (abgefragt = letzte erfolgreiche Abfrage), jetzt in Millisekunden. */
+  const ALT_HINWEIS = 120, ALT_VERALTET = 600;
+  const AUSFALL = ['nicht-erreichbar', 'kontingent', 'fehler', 'token-ungueltig', 'keine-rechte'];
+  function alter(jobs, jetzt = Date.now()) {
+    if (!jobs || !AUSFALL.includes(jobs.abfrage)) return { stufe: 'frisch', sekunden: 0, seit: null };
+    const seit = jobs.abgefragt ? ms(jobs.abgefragt) : NaN;
+    if (!Number.isFinite(seit)) return { stufe: 'veraltet', sekunden: null, seit: null };  // nie ein guter Stand
+    const s = Math.max(0, Math.round((jetzt - seit) / 1000));
+    return { stufe: s >= ALT_VERALTET ? 'veraltet' : s >= ALT_HINWEIS ? 'hinweis' : 'frisch', sekunden: s, seit };
+  }
+  const ms = (z) => (z == null ? NaN : (typeof z === 'number' ? (z < 1e12 ? z * 1000 : z) : Date.parse(z)));
+
+  return { ALT_HINWEIS, ALT_VERALTET, alter, SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd,
     logQuelle, journalZiel, journalUrl, logZeilen, neustarts };
 })();
 
