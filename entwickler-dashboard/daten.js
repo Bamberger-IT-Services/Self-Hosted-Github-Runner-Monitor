@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "29.10.2026 23:14",
+  stand: "29.10.2026 23:40",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -263,6 +263,7 @@ window.RUNNER_MONITOR = {
 
   verlauf: [
     { datum: "29.10.2026 23:14", text: "#133: Forgejo-Protokoll gelesen (Anmeldung im Browser-Bereich). Letzter roter Test war test_server › live_strom_endet_bei_ueberlauf (Zeitüberschreitung, weil die Schlange auf dem langsamen Runner nie überlief); Test sendet jetzt bis zum Überlauf." },
+    { datum: "29.10.2026 23:40", text: "E-30 (Tobias): volle CI nur vor dem Release (PRs nach main, Push auf main, von Hand); PRs nach develop nur gitleaks, Tests lokal vor dem Merge. Spart je Issue 20–30 Minuten auf dem einzigen Forgejo-Runner." },
     { datum: "29.10.2026 22:46", text: "Release 0.8.1: Der GitHub-Release-Workflow brach bei 0.8.0 vor dem Paketbau ab (test_platte_ohne_runner maß die echte Platte, behoben mit #139). 0.8.1 = 0.8.0 + CI-Korrekturen; gitleaks-Fehlalarm (erfundenes Test-Token in alter Historie) per .gitleaksignore. GitHub-Releases legt Claude per gh an (Ausnahme vom Einfrieren, bis #138 erledigt ist)." },
     { datum: "29.10.2026 22:26", text: "#133 behoben (PR offen): CI „pruefen“ auf Forgejo. Ursachen lokal als root im act-Image (Ubuntu 24.04, wie der Forgejo-Runner) und unter Ubuntu 22.04 mit Python 3.10 nachgestellt: test_platte_ohne_runner hing von der freien Platte des Testrechners ab (misst jetzt nicht); Flut-Test des Journal-Folgers las _neu ohne Sperre (sporadisch 201 > 200, Toleranz eine Zeile, Programm unverändert); shellcheck fehlte (Installation als root ohne sudo), brach ohne UTF-8-Locale ab und meldete SC1111 für die deutschen Anführungszeichen in einrichten.sh (dateiweit ausgenommen); „Paket baut“ scheiterte an tar | head unter pipefail (SIGPIPE 141). Root selbst ließ keinen Test scheitern." },
     { datum: "29.10.2026 19:35", text: "Release 0.8.0 vorbereitet (PR nach develop offen, nicht gemergt, kein Tag, nicht veröffentlicht): VERSION, CHANGELOG [0.8.0] – 29.10.2026, Release-Notiz docs/releases/v0.8.0.md, Stand aller Dokus auf 0.8.0, CLAUDE.md auf Design v0.8.0, Paket mit werkzeuge/paket.sh gebaut und geprüft. Nicht auf einer echten VM geprüft; offen #132, #133." },
