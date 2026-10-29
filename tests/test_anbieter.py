@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from runner_monitor import anbieter, erkennung, github, konfig, runner, sammler, server, zustand
+from runner_monitor.anbieter import forgejo as fj_adapter
 from runner_monitor.anbieter import github as gh_adapter
 from runner_monitor.anbieter import gitlab as gitlab_adapter
 from runner_monitor.anbieter import token as zugangsdaten
@@ -60,9 +61,11 @@ class FaehigkeitenTest(unittest.TestCase):
     def test_registry(self):
         self.assertIs(anbieter.klasse_fuer("github"), gh_adapter.GitHub)
         self.assertIs(anbieter.klasse_fuer("gitlab"), gitlab_adapter.GitLab)
-        for dienst in ("forgejo", "gitea", "unbekannt", "gibt-es-nicht"):
+        self.assertIs(anbieter.klasse_fuer("forgejo"), fj_adapter.Forgejo)
+        self.assertIs(anbieter.klasse_fuer("gitea"), fj_adapter.Gitea)
+        for dienst in ("unbekannt", "gibt-es-nicht"):
             self.assertIs(anbieter.klasse_fuer(dienst), anbieter.Grundueberwachung, dienst)
-        a = anbieter.adapter(anbieter.RunnerKonfig(id="x", name="x", dienst="forgejo", unit="forgejo-runner.service"))
+        a = anbieter.adapter(anbieter.RunnerKonfig(id="x", name="x", dienst="unbekannt", unit="buildagent.service"))
         self.assertIsInstance(a, anbieter.Grundueberwachung)
 
     def test_registry_prueft(self):
@@ -474,8 +477,9 @@ class RunnerListeTest(unittest.TestCase):
         self.assertEqual(gh["log"], {"art": "seiten", "unit": self.unit})  # keine Pfade der VM in /api/zustand
         self.assertEqual(gh["jobsJeRepository"], self.z.bereiche["workflows"])
         self.assertEqual(gh["letzteJobs"], [])
-        # Forgejo: Grundüberwachung, Server und Log nie aus dem Fund (E-18)
+        # Forgejo ohne Server/Organisation in runner.json: Grundüberwachung, Server und Log nie aus dem Fund (E-18)
         self.assertEqual((fj["status"]["zustand"], fj["server"], fj["einstufung"]), ("gestoppt", None, "teil"))
+        self.assertEqual(fj["faehig"], {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False})
         self.assertEqual(fj["log"], {"art": "journal", "unit": "forgejo-runner.service"})
         self.assertIsNone(fj["jobsJeRepository"])
         # Log-Datei nur aus runner.json

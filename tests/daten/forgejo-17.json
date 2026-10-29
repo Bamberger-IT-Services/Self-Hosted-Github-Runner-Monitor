@@ -1,0 +1,40 @@
+{
+  "_hinweis": "Aufgezeichnet an Forgejo 17.0.1 (29.10.2026, nur lesend), gekürzt und neutralisiert: Server git.example.org, Organisation beispiel-org, Runner runner-vm-02/-03, UUIDs, IDs und Zeiten erfunden. Schlüssel = Pfad unter /api/v1 ohne Abfrage.",
+  "/version": {"version": "17.0.1+gitea-1.22.0"},
+  "/orgs/beispiel-org": {"id": 2, "name": "beispiel-org", "full_name": "", "email": "", "avatar_url": "https://git.example.org/avatars/0", "description": "", "website": "", "location": "", "visibility": "public", "repo_admin_change_team_access": false, "created": "2026-10-01T10:00:00+02:00", "username": "beispiel-org"},
+  "/orgs/beispiel-org/actions/runners": [
+    {"id": 2, "uuid": "00000000-0000-4000-8000-000000000002", "owner_id": 0, "repo_id": 0, "name": "runner-vm-02", "status": "active", "version": "v13.2.0", "labels": ["linux-amd64", "ubuntu-latest"], "description": "", "ephemeral": false},
+    {"id": 3, "uuid": "00000000-0000-4000-8000-000000000003", "owner_id": 2, "repo_id": 0, "name": "runner-vm-03", "status": "idle", "version": "v13.2.0", "labels": ["ubuntu-latest"], "description": "", "ephemeral": false}
+  ],
+  "/orgs/beispiel-org/repos": [
+    {"id": 1, "name": "web-portal", "full_name": "beispiel-org/web-portal", "private": false, "archived": false, "has_actions": true, "updated_at": "2026-10-29T09:58:00+01:00", "html_url": "https://git.example.org/beispiel-org/web-portal"},
+    {"id": 2, "name": "api-dienst", "full_name": "beispiel-org/api-dienst", "private": true, "archived": false, "has_actions": true, "updated_at": "2026-10-29T09:40:00+01:00", "html_url": "https://git.example.org/beispiel-org/api-dienst"},
+    {"id": 3, "name": "altes-archiv", "full_name": "beispiel-org/altes-archiv", "private": false, "archived": true, "has_actions": true, "updated_at": "2025-01-01T00:00:00+01:00"},
+    {"id": 4, "name": "dokumente", "full_name": "beispiel-org/dokumente", "private": false, "archived": false, "has_actions": false, "updated_at": "2026-10-20T00:00:00+02:00"},
+    {"id": 5, "name": "../../admin", "full_name": "beispiel-org/../../admin", "private": false, "archived": false, "has_actions": true}
+  ],
+  "/repos/beispiel-org/web-portal/actions/runs": {"workflow_runs": [
+    {"id": 11, "title": "Abhängigkeiten aktualisieren", "workflow_id": "ci.yml", "index_in_repo": 8, "prettyref": "main", "is_ref_deleted": false, "commit_sha": "0000000000000000000000000000000000000011", "is_fork_pull_request": false, "need_approval": false, "approved_by": 0, "event": "", "trigger_event": "push", "status": "running", "started": "2026-10-29T10:00:00+01:00", "stopped": null, "created": "2026-10-29T09:59:58+01:00", "updated": "2026-10-29T10:00:05+01:00", "duration": 0, "html_url": "https://git.example.org/beispiel-org/web-portal/actions/runs/8"},
+    {"id": 9, "title": "CI", "workflow_id": "ci.yml", "index_in_repo": 7, "prettyref": "develop", "trigger_event": "workflow_dispatch", "status": "success", "started": "2026-10-28T23:49:49+01:00", "stopped": "2026-10-29T00:32:18+01:00", "html_url": "https://git.example.org/beispiel-org/web-portal/actions/runs/7"}
+  ], "total_count": 2},
+  "/repos/beispiel-org/api-dienst/actions/runs": {"workflow_runs": [
+    {"id": 13, "title": "Version 1.4.0", "workflow_id": "release.yaml", "prettyref": "v1.4.0", "trigger_event": "push", "status": "running", "started": "2026-10-29T09:59:00+01:00", "html_url": "https://git.example.org/beispiel-org/api-dienst/actions/runs/3"},
+    {"id": 14, "title": "Tests", "workflow_id": "ci.yml", "prettyref": "#12", "trigger_event": "pull_request", "status": "waiting", "html_url": "https://git.example.org/beispiel-org/api-dienst/actions/runs/4"}
+  ], "total_count": 2},
+  "/repos/beispiel-org/web-portal/actions/runs/11/jobs": [
+    {"id": 98, "run_id": 11, "attempt": 1, "handle": "00000000-0000-4000-9000-000000000098", "repo_id": 1, "owner_id": 2, "name": "lint", "html_url": "https://git.example.org/beispiel-org/web-portal/actions/runs/8/jobs/0/attempt/1", "needs": null, "runs_on": ["ubuntu-latest"], "task_id": 77, "status": "success"},
+    {"id": 99, "run_id": 11, "attempt": 1, "handle": "00000000-0000-4000-9000-000000000099", "repo_id": 1, "owner_id": 2, "name": "build", "html_url": "https://git.example.org/beispiel-org/web-portal/actions/runs/8/jobs/1/attempt/1", "needs": ["lint"], "runs_on": ["ubuntu-latest"], "task_id": 83, "status": "running"}
+  ],
+  "/repos/beispiel-org/api-dienst/actions/runs/13/jobs": [
+    {"id": 120, "run_id": 13, "attempt": 1, "name": "paket", "html_url": "https://git.example.org/beispiel-org/api-dienst/actions/runs/3/jobs/0/attempt/1", "runs_on": ["ubuntu-latest"], "task_id": 90, "status": "running"}
+  ],
+  "/repos/beispiel-org/web-portal/actions/jobs/99/logs": "2026-10-29T09:00:01.3521170Z Runner 00000000-0000-4000-8000-000000000002 (version:v13.2.0) received task 83 of job build, triggered by event: push\n2026-10-29T09:00:01.3544742Z workflow prepared\n2026-10-29T09:00:01.5327409Z Start image=ghcr.io/catthehacker/ubuntu:act-24.04\n",
+  "/repos/beispiel-org/api-dienst/actions/jobs/120/logs": "2026-10-29T08:59:01.0000000Z Runner 00000000-0000-4000-8000-000000000003 (version:v13.2.0) received task 90 of job paket, triggered by event: push\n",
+  "/repos/beispiel-org/web-portal/actions/jobs/99": {"id": 99, "run_id": 11, "attempt": 1, "handle": "00000000-0000-4000-9000-000000000099", "repo_id": 1, "owner_id": 2, "name": "build", "html_url": "https://git.example.org/beispiel-org/web-portal/actions/runs/8/jobs/1/attempt/1", "needs": ["lint"], "runs_on": ["ubuntu-latest"], "task_id": 83, "status": "running", "steps": [
+    {"number": 0, "name": "Set up job", "status": "success", "started": "2026-10-29T10:00:01+01:00", "stopped": "2026-10-29T10:00:02+01:00"},
+    {"number": 1, "name": "actions/checkout@v7", "status": "success", "started": "2026-10-29T10:00:02+01:00", "stopped": "2026-10-29T10:00:04+01:00"},
+    {"number": 2, "name": "Tests", "status": "running", "started": "2026-10-29T10:00:04+01:00", "stopped": null},
+    {"number": 3, "name": "Paket bauen", "status": "waiting", "started": null, "stopped": null},
+    {"number": 4, "name": "Complete job", "status": "waiting", "started": null, "stopped": null}
+  ]}
+}
