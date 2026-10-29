@@ -481,7 +481,7 @@ class ReviewTest(ServerBasis):
     """Nachträge aus dem Review: Forgejo-Prüfung über anbieter.json, 401-Text, Größe, Units, Einstufung."""
 
     def forgejo(self, server=True):
-        schreibe_erkennung(self.k, [fund("runner-vm-01"), fund("runner-vm-02", "forgejo", "teil", server="https://git.example.org")])
+        schreibe_erkennung(self.k, [fund("runner-vm-01"), fund("runner-vm-02", "forgejo", server="https://git.example.org")])
         self.k.zuordnung_datei.parent.mkdir(parents=True, exist_ok=True)
         eintrag = {"server": "https://git.example.org", "org": "beispiel-org"} if server else {"name": "runner-vm-02"}
         self.k.zuordnung_datei.write_text(json.dumps({"runner": {"runner-vm-02": eintrag}}))

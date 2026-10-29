@@ -134,7 +134,7 @@ window.RM_DEMO = (() => {
       log: { art: 'seiten', unit },
     }];
     if (runnerAnzahl >= 2) liste.push(forgejoAngebunden ? vollRunner('runner-vm-02', 'forgejo', 'forgejo-runner.service', ['ubuntu-latest'], false)
-      : grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'teil', 'grund', 'aktiv', { neustarts: 2, letzterStopp: jetzt() - 26 * 3600 }));
+      : grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'voll', 'grund', 'aktiv', { neustarts: 2, letzterStopp: jetzt() - 26 * 3600 }));
     if (runnerAnzahl >= 3) liste.push(grundRunner('buildagent', 'buildagent', 'unbekannt', 'buildagent.service', 'unbekannt', 'grund', zustand === 'gestoppt' ? 'gestoppt' : 'aktiv',
       { seit: jetzt() - (6 * 86400 + 4 * 3600 + 900) }));
     if (runnerAnzahl >= 4) liste.push(vollRunner('runner-vm-03', 'gitea', 'gitea-runner.service', ['linux', 'arm64'], false));

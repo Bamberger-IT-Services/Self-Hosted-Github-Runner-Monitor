@@ -122,7 +122,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   sich solche Runner übernehmen und über `einrichten.sh zugang` anbinden; Gitea bleibt „teil“
   (Grundüberwachung), bis der Adapter an einem echten Server geprüft ist. „Verbindung prüfen“ nennt bei
   GitLab den Dienst und keine Organisation; der Hinweis im Schritt „Anbinden“ beschreibt, dass der Befehl
-  Server, Organisation (nicht bei GitLab) und Token abfragt (#126, E-20, E-23, E-27).
+  Server, Organisation (nicht bei GitLab) und Token abfragt; fehlt bei GitLab der Server, meldet die Prüfung
+  nur „Server fehlt“ statt „Server und Organisation fehlen“. Ein weiterer GitHub-Runner (nicht der des
+  Monitors) bekommt im Schritt „Anbinden“ wieder den allgemeinen Hinweis statt des GitLab-Texts
+  (#126, E-20, E-23, E-27).
 - Handbuch, Funktionsweise und Bildschirmfotos auf Design 0.8.0: Kapitel zu mehreren Runnern (Reiter, „+N“,
   Grundüberwachung), Zeitraum der Auslastung, Sprache, Info › Runner und Verbindungen, Fehler/Idee per E-Mail
   und `einrichten.sh zugang <runner>`; neue Bilder (`dashboard-mehrere-runner`, `dashboard-grundueberwachung`,

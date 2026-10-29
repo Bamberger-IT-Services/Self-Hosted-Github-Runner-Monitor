@@ -120,7 +120,8 @@ oder aktiv sind. Zwischen Forgejo und Gitea entscheidet die Antwort des Servers.
 Schritte (Status, Jobs, Logs – die API hat keine Schrittliste); Gitea `teil` (Dienst und Journal, der
 Adapter ist nur nach der OpenAPI-Beschreibung umgesetzt und noch nicht an einem echten Server geprüft);
 unbekannt `unbekannt` (Grundüberwachung). Seit #126, weil Sammler (#115) und Einrichtung (#96, #120)
-die Adapter tragen (E-20, E-23, E-27). Ein Test erlaubt, dass die Adapter-Klasse mehr kann als die Tabelle,
+die Adapter tragen (E-20, E-23, E-27); GitLab folgt der offiziellen Dokumentation und ist gegen nachgestellte
+Server getestet, seine Unsicherheiten bleiben offene Prüfpunkte (siehe „GitLab-Adapter“). Ein Test erlaubt, dass die Adapter-Klasse mehr kann als die Tabelle,
 nie umgekehrt.
 `updates` ist überall `false` (E-16). Ein Fund ohne Unit hat weder `status` noch `logs`.
 
@@ -456,10 +457,13 @@ GitLab 16/17 steht die **Version** eines Runners ggf. nicht mehr in `/runners/:i
 (Runner mit mehreren Rechnern); der Monitor liest sie dort nicht, die Version fehlt dann. (2) Ob `project.name` in den Jobs der
 Runner-API steht (bei fehlendem Namen steht „Projekt <Nummer>“). (3) `GET /personal_access_tokens/self` gibt es
 ab GitLab 15.5. (4) Der Runner wird über den Namen gefunden, nicht über die Runner-Nummer, weil die
-Nummer in `config.toml` nicht steht und das Runner-Token nie gelesen wird. Diese Punkte sind mit einem
-echten GitLab-Server zu bestätigen, bevor GitLab als „vollständig unterstützt“ eingestuft wird
-(seit #126 steht `erkennung.EINSTUFUNG["gitlab"]` auf „voll“ und `erkennung.FAEHIG["gitlab"]` auf Status,
-Jobs und Logs – E-20, E-27; die Unsicherheiten bleiben offen und stehen oben).
+Nummer in `config.toml` nicht steht und das Runner-Token nie gelesen wird. Diese Punkte bleiben offene
+Prüfpunkte gegen einen echten GitLab-Server. Seit #126 steht `erkennung.EINSTUFUNG["gitlab"]` trotzdem auf
+„voll“ und `erkennung.FAEHIG["gitlab"]` auf Status, Jobs und Logs (E-20, E-27): Der Adapter folgt der
+offiziellen GitLab-Dokumentation und ist mit Tests gegen nachgestellte Server (Fake-Server) geprüft; trifft
+einer der Punkte nicht zu, zeigt der Monitor ehrlich „keine Rechte“, „nicht gefunden“ oder fehlende Werte
+statt falscher Daten. Gitea bleibt dagegen „teil“, weil sein Adapter nur nach der OpenAPI-Beschreibung
+umgesetzt ist (E-23).
 
 **Anbindung im Sammler (#115):** Ein GitLab-Runner mit Unit und `server` in `runner.json` (keine
 Organisation nötig) wird wie Forgejo/Gitea in seinem eigenen Faden abgefragt (siehe „Abfrage im

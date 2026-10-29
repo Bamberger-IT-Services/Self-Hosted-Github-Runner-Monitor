@@ -88,9 +88,9 @@ Fast geschafft. Schließen Sie die Einrichtung im Browser ab:
 3. **Runner:** die Funde der Runner-Erkennung, je Fund mit Dienst (`GitHub`, `Forgejo`, `Gitea`,
    `GitLab`, `unbekannt`), Sicherheitsgrad (sicher, wahrscheinlich, unklar), Server, Version, Einstufung und
    aufklappbarer Begründung. Je nach Einstufung:
-   - *vollständig unterstützt* (heute GitHub): Schalter „Übernehmen“ – die Zugangsdaten folgen im nächsten
+   - *vollständig unterstützt* (GitHub, Forgejo, GitLab; seit #126): Schalter „Übernehmen“ – die Zugangsdaten folgen im nächsten
      Schritt; aus = ignoriert.
-   - *erkannt, noch nicht unterstützt*: „Grundüberwachung“ (Dienst, Auslastung, Log, Neustarts) oder „Ignorieren“.
+   - *erkannt, noch nicht unterstützt* (heute Gitea): „Grundüberwachung“ (Dienst, Auslastung, Log, Neustarts) oder „Ignorieren“.
    - *unbekannt*: „Zuordnen“ (Dienst, Anzeigename, systemd-Unit, Log-Pfad; leer = Journal der Unit) oder
      „Ignorieren“. Als Log-Pfad ist nur eine `*.log`-Datei unter `/var/log`, `/opt` oder `/srv` erlaubt.
 

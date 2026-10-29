@@ -106,3 +106,12 @@ test('Einrichtung: kein Inline-Skript, keine style-Attribute, Sie-Ansprache, Dat
   for (const m of js.matchAll(/\bt\('((?:[^'\\]|\\.)*)'/g)) assert.doesNotMatch(m[1], /\b(du|dein|deine|dich|dir)\b/i, m[1]);
   for (const name of ['einrichtung-runner.js', 'einrichtung.js']) assert.match(name, /^[a-z0-9-]+\.(css|js|svg)$/);
 });
+
+test('#126: Forgejo und GitLab „voll“ erscheinen in „Anbinden“, Gitea „teil“ nur mit Grundüberwachung', () => {
+  const funde = [f('runner-vm-02', 'voll', { dienst: 'forgejo' }), f('buildagent', 'voll', { dienst: 'gitlab' }), f('runner-vm-03', 'teil', { dienst: 'gitea' })];
+  const w = E.mischeWahl(funde, {});
+  assert.deepEqual(w, { 'runner-vm-02': 'an', buildagent: 'an', 'runner-vm-03': 'grund' });
+  assert.deepEqual(E.anbinden(funde, w).map((x) => x.id), ['runner-vm-02', 'buildagent']);
+  // übernommen: kein Stand „grund“ in runner.json, sonst fragte der Sammler sie nie ab (E-26)
+  assert.deepEqual(E.eintraege(funde, w), [{ id: 'runner-vm-03', stand: 'grund' }]);
+});
