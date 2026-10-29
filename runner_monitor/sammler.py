@@ -9,6 +9,11 @@ Aufträge der Oberfläche liegen als Dateien in ``/var/lib/runner-monitor/auftra
 
 * ``github-token`` – neues Token aus der Einrichtung → nach ``/etc/runner-monitor/github-token`` und
   ``/etc/runner-monitor/zugang/<runner>.token`` (#92, E-19)
+* ``runner-zuordnung`` – Zuordnung/Ignorieren aus der Einrichtung → ``/etc/runner-monitor/runner.json``
+  (noch einmal geprüft, nur die Felder der Oberfläche, 0640; danach neu erkennen – #96, E-22)
+* ``erkennung-neu`` – „Neu erkennen“: Erkennung sofort, höchstens alle 10 s (#96)
+* ``verbindung-pruefen`` – „Verbindung prüfen“: nächste Abfrage des GitHub-Adapters sofort, höchstens
+  alle 10 s; das Ergebnis steht wie immer in ``github.json`` (#96)
 * ``update``       – wird vom systemd-Pfad ``runner-monitor-update.path`` verarbeitet, nicht hier
 """
 
@@ -26,7 +31,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import VERSION, anbieter, erkennung, github, runner
+from . import VERSION, anbieter, einrichtung, erkennung, github, runner
 from .anbieter import github as gh_adapter
 from .anbieter import token as zugangsdaten
 from .konfig import Konfig, lade
@@ -44,6 +49,8 @@ PAKET_WURZEL = Path(__file__).resolve().parent.parent
 AUTO_FENSTER = (3, 7)     # automatisches Update: ab 3 Uhr, spätestens bis 7 Uhr (#77)
 TAKT_NICHT_BEREIT = 120  # Release ohne Paket (Workflow lädt noch hoch): bald erneut fragen (#63)
 MANUELL_MIN_ABSTAND = 60  # „Jetzt prüfen“ schont das GitHub-Kontingent
+ERKENNUNG_MIN_ABSTAND = 10  # „Neu erkennen“ aus der Einrichtung: höchstens alle 10 s (#96)
+PRUEFEN_MIN_ABSTAND = 10    # „Verbindung prüfen“ aus der Einrichtung: höchstens alle 10 s (#96)
 
 
 def schreibe_oeffentlich(pfad: Path, daten: object) -> None:
@@ -117,6 +124,9 @@ class Sammler:
         self.naechste_erkennung = 0.0
         self._erkennung: tuple | None = None  # (Prozess, Ausgabedatei, Startzeit) der laufenden Erkennung
         self.letzte_manuelle_pruefung = 0.0
+        self.letzte_manuelle_erkennung = float("-inf")  # monotonic
+        self.letzte_verbindungspruefung = float("-inf")
+        self._erkennung_nochmal = False  # Anforderung während eines Laufs: danach gleich noch einmal
         self._gh_speicher: dict = {}  # ETags und ruhige Repositories über die Durchläufe (Issue #15)
         self._gh_speicher_token: tuple[str, str] = ("", "")
         self._token_migriert = False  # Übernahme des alten GitHub-Tokens nach zugang/ (#92), einmal je Start
@@ -175,13 +185,17 @@ class Sammler:
 
     def auftraege(self) -> None:
         self.auftrag_release_pruefen()
-        datei = self.k.auftraege_verz / "github-token"
-        if not datei.is_file():
-            return
         try:
-            token = json.loads(datei.read_text(encoding="utf-8")).get("token", "").strip()
-        except (OSError, ValueError):
-            token = ""
+            self.auftrag_einrichtung()
+        except Exception:  # noqa: BLE001 – ein kaputter Auftrag darf das Token nicht aufhalten
+            LOG.exception("Auftrag aus der Einrichtung nicht verarbeitet")
+        datei = self.k.auftraege_verz / "github-token"
+        if not os.path.lexists(datei):
+            return
+        # Wie alle Aufträge streng lesen: regulär, ohne Symlink, begrenzt (der Ordner gehört dem Webserver).
+        auftrag = einrichtung.lies_streng(datei, 4096)
+        token = auftrag.get("token", "") if isinstance(auftrag, dict) else ""
+        token = token.strip() if isinstance(token, str) else ""
         datei.unlink(missing_ok=True)
         if not re.fullmatch(r"[A-Za-z0-9_]{20,255}", token):
             LOG.warning("Auftrag github-token verworfen: ungültiges Format")
@@ -201,6 +215,40 @@ class Sammler:
                 self._zugang_verwerfen(rid, f"Neues GitHub-Token nicht nach zugang/ geschrieben: {type(fehler).__name__}")
         LOG.info("Neues GitHub-Token übernommen")
         self.naechste_github = 0
+
+    def auftrag_einrichtung(self, jetzt: float | None = None, mono: float | None = None) -> None:
+        """Aufträge aus der Einrichtung (#96): Zuordnung schreiben, neu erkennen, Verbindung prüfen."""
+        jetzt = time.time() if jetzt is None else jetzt
+        mono = time.monotonic() if mono is None else mono
+        if einrichtung.verarbeite_auftrag(self.k.auftraege_verz, self.k.zuordnung_datei):
+            self.erkennung_anfordern(mono)  # erkennung.json übernimmt Ignorieren und Zuordnung
+        if einrichtung.lies_einfachen_auftrag(self.k.auftraege_verz, einrichtung.AUFTRAG_ERKENNUNG) is not None:
+            LOG.info("Runner-Erkennung von Hand angestoßen")
+            self.erkennung_anfordern(mono)
+        auftrag = einrichtung.lies_einfachen_auftrag(self.k.auftraege_verz, einrichtung.AUFTRAG_PRUEFEN)
+        if auftrag is not None:
+            rid = zugangsdaten.github_id(self.k.runner_verz)
+            if not rid or auftrag.get("id") != rid:
+                return  # andere Runner fragt der Sammler noch nicht ab (die Oberfläche sagt das selbst)
+            start = max(jetzt, self.letzte_verbindungspruefung + PRUEFEN_MIN_ABSTAND)
+            self.letzte_verbindungspruefung = start
+            self.naechste_github = min(self.naechste_github, start)
+
+    def erkennung_anfordern(self, mono: float | None = None) -> None:
+        """Erkennung bald starten – frühestens 10 s nach der letzten Anforderung; läuft gerade eine,
+        dann gleich nach ihr (sie hat die neue Zuordnung womöglich noch nicht gelesen)."""
+        mono = time.monotonic() if mono is None else mono
+        if self._erkennung is not None:
+            self._erkennung_nochmal = True
+            return
+        start = max(mono, self.letzte_manuelle_erkennung + ERKENNUNG_MIN_ABSTAND)
+        self.letzte_manuelle_erkennung = start
+        self.naechste_erkennung = min(self.naechste_erkennung, start)
+
+    def _erkennung_beendet(self, mono: float) -> None:
+        if self._erkennung_nochmal:
+            self._erkennung_nochmal = False
+            self.erkennung_anfordern(mono)
 
     def auftrag_release_pruefen(self, jetzt: float | None = None) -> None:
         """„Jetzt prüfen“ aus Info › Updates: nächste Release-Abfrage sofort, höchstens einmal je Minute."""
@@ -341,8 +389,10 @@ class Sammler:
             self._erkennung = None
             self._logge_stderr(fehler_ausgabe)
             LOG.warning("Runner-Erkennung nach %s s abgebrochen – nächster Versuch in 6 Stunden", ERKENNUNG_FRIST)
+            self._erkennung_beendet(jetzt)
             return
         self._erkennung = None
+        self._erkennung_beendet(jetzt)
         try:
             ausgabe.seek(0)
             roh = ausgabe.read(erkennung.MAX_ERGEBNIS + 1)

@@ -501,9 +501,9 @@ body.formular { min-height: 100%; display: flex; flex-direction: column; font-si
   .karte, .form-karte { border: 1px solid var(--border-strong); }
 }
 
-/* ------------------------------------------------------------ Einrichtung (Design 0.3.0: Setup-Web)
+/* ------------------------------------------------------------ Einrichtung (Design 0.8.0: Setup-Web, #96)
    Werte 1:1 aus dem Design; eigener Bereich, damit Dashboard- und Anmelde-Klassen nicht durchschlagen. */
-body.einrichtung { min-height: 100vh; display: flex; flex-direction: column; font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; }
+body.einrichtung { --knauf: #ffffff; min-height: 100vh; display: flex; flex-direction: column; font-size: 14px; line-height: 20px; font-variant-numeric: tabular-nums; }
 .einrichtung .kopf { flex: 0 0 60px; display: flex; align-items: center; gap: 12px; padding: 0 24px; border-bottom: 1px solid var(--border); }
 .einrichtung .vm-icon { width: 32px; height: 32px; border-radius: 4px; background: var(--brand); color: var(--on-brand); display: grid; place-items: center; }
 .einrichtung .kopf-titel { font-size: 17px; font-weight: 650; letter-spacing: -.015em; }
@@ -516,13 +516,16 @@ body.einrichtung { min-height: 100vh; display: flex; flex-direction: column; fon
 .einrichtung .st.aktiv { color: var(--ink); font-weight: 600; }
 .einrichtung .st.aktiv .st-nr { background: var(--brand); border-color: var(--brand); color: var(--on-brand); }
 .einrichtung .st.fertig .st-nr { border-color: var(--success); color: var(--success); }
-.einrichtung .st-linie { width: 40px; height: 1px; background: var(--border); }
+.einrichtung .st-nr { flex: none; }
+.einrichtung .st-linie { width: 32px; height: 1px; background: var(--border); }
 .einrichtung .karte { width: 880px; max-width: calc(100% - 32px); flex: 1; min-height: 0; display: flex; flex-direction: column; background: var(--surface-alt); border-radius: 4px; padding: 32px 40px 28px; margin: 0; }
 .einrichtung .karte-inhalt { flex: 1; min-height: 0; display: flex; flex-direction: column; animation: rein-ew .35s cubic-bezier(.22,1,.36,1); }
+.einrichtung .karte-inhalt.still { animation: none; }
 @keyframes rein-ew { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .einrichtung .eyebrow { font-size: 12px; line-height: 16px; font-weight: 700; letter-spacing: 1px; color: var(--brand); text-transform: uppercase; }
-.einrichtung h1 { margin: 6px 0 8px; font-size: 28px; line-height: 34px; font-weight: 650; letter-spacing: -.022em; }
-.einrichtung .einl { margin: 0 0 22px; font-size: 15px; line-height: 22px; color: var(--ink-muted); max-width: 640px; }
+.einrichtung h1 { margin: 6px 0 8px; font-size: 28px; line-height: 34px; font-weight: 650; letter-spacing: -.022em; text-wrap: balance; }
+.einrichtung h1:focus { outline: none; }
+.einrichtung .einl { margin: 0 0 20px; font-size: 15px; line-height: 22px; color: var(--ink-muted); max-width: 660px; text-wrap: pretty; }
 .einrichtung .feld { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
 .einrichtung .feld label { font-size: 13px; font-weight: 600; }
 .einrichtung .feld input { height: 40px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 2px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; }
@@ -537,7 +540,7 @@ body.einrichtung { min-height: 100vh; display: flex; flex-direction: column; fon
 .einrichtung .erkannt-titel { font-size: 12px; font-weight: 650; color: var(--ink-muted); }
 .einrichtung .zeile { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
 .einrichtung .zeile svg { flex: none; }
-.einrichtung .fuss { margin-top: auto; padding-top: 20px; display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); }
+.einrichtung .fuss { margin-top: auto; padding-top: 20px; display: flex; align-items: center; flex-wrap: wrap; gap: 10px; border-top: 1px solid var(--border); }
 .einrichtung .fuss-text { font-size: 13px; }
 .einrichtung .luecke { flex: 1; }
 .einrichtung .knopf { display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 18px; border-radius: 2px; border: 1px solid var(--border-strong); background: var(--surface); font-size: 14px; font-weight: 550; text-decoration: none; color: var(--ink); transition: transform .1s ease-out; }
@@ -552,7 +555,7 @@ body.einrichtung { min-height: 100vh; display: flex; flex-direction: column; fon
 .einrichtung .staerke span.an { background: var(--brand); }
 .einrichtung .hinweis-hash { margin: 4px 0 0; }
 .einrichtung .hinweis-nachholen { margin: 10px 0 0; }
-.einrichtung .hinweis-ende { margin: 0; }
+.einrichtung .hinweis-ende { margin: 12px 0 0; }
 .einrichtung .zwei { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 32px; min-height: 0; }
 .einrichtung .zwei > div:first-child { display: flex; flex-direction: column; }
 .einrichtung .anl { padding: 16px 18px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border); align-self: start; }
@@ -566,7 +569,76 @@ body.einrichtung { min-height: 100vh; display: flex; flex-direction: column; fon
 .einrichtung .liste .zeile { min-height: 44px; border-bottom: 1px solid var(--border); gap: 10px; }
 .einrichtung .liste b { font-weight: 600; }
 .einrichtung .meldung-box { margin-bottom: 16px; }
-@media (prefers-reduced-motion: reduce) { .einrichtung .karte-inhalt { animation: einblenden .2s linear; } }
+.einrichtung .feld select { height: 40px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: 2px; background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; min-width: 0; width: 100%; }
+.einrichtung .feld input { min-width: 0; }
+.einrichtung .feld input[readonly] { background: var(--surface-alt); color: var(--ink-muted); }
+.einrichtung .liste-titel { margin-bottom: 6px; }
+.einrichtung .liste .zeile { flex-wrap: wrap; padding: 6px 0; }
+.einrichtung .stand-text { font-weight: 550; }
+.einrichtung .klein-text { font-size: 13px; }
+/* Schritt 3: Runner (Werkzeugzeile, Fundkarten, Zuordnen, Leerzustand) */
+.einrichtung .koerper { position: relative; flex: 1; min-height: 0; overflow: auto; margin: 0 -10px; padding: 2px 10px 4px; }
+.einrichtung .werkzeug { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.einrichtung .werkzeug .knopf.klein { align-self: center; }
+.einrichtung .werkzeug-text { font-size: 13px; color: var(--ink-muted); display: inline-flex; align-items: center; gap: 6px; }
+.einrichtung .dreh { animation: dreh-ew 1s linear infinite; transform-origin: 50% 50%; }
+@keyframes dreh-ew { to { transform: rotate(360deg); } }
+.einrichtung .funde { display: flex; flex-direction: column; gap: 10px; }
+.einrichtung .fund { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+.einrichtung .fund.offen-e { border-color: var(--border-strong); }
+.einrichtung .fund-kopf { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.einrichtung .fund-name { font-size: 15px; line-height: 20px; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.einrichtung .fund-stand { margin-left: auto; font-size: 13px; font-weight: 550; white-space: nowrap; }
+.einrichtung .fund-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; color: var(--ink-muted); }
+.einrichtung .fund-meta b { font-family: var(--mono); font-size: 12.5px; font-weight: 500; color: var(--ink); overflow-wrap: anywhere; }
+.einrichtung .fund-meta b.fund-art { font-family: inherit; font-size: 13px; font-weight: 600; }
+.einrichtung .plak { display: inline-flex; align-items: center; font-family: var(--mono); font-size: 11px; line-height: 18px; padding: 0 6px; border-radius: 2px; border: 1px solid var(--border-strong); color: var(--ink); font-weight: 500; white-space: nowrap; flex: none; }
+.einrichtung .pill { flex: none; }
+.einrichtung .fund .link-knopf, .einrichtung .aktion .link-knopf, .einrichtung .block .link-knopf { margin-top: 0; }
+.einrichtung .begr { margin: 0; padding: 8px 12px 8px 30px; border-radius: 2px; background: var(--surface-alt); display: flex; flex-direction: column; gap: 4px; font-size: 13px; line-height: 18px; overflow-wrap: anywhere; }
+.einrichtung .aktion { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }
+.einrichtung .aktion .knopf.klein { align-self: center; }
+.einrichtung .aktion-text { font-size: 13px; color: var(--ink-muted); }
+.einrichtung .schalter { position: relative; width: 36px; height: 20px; border-radius: 10px; border: 0; padding: 0; background: var(--border-strong); flex: none; transition: background .15s; }
+.einrichtung .schalter span { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: var(--knauf); transition: transform .2s cubic-bezier(.22,1,.36,1); }
+.einrichtung .schalter.an { background: var(--brand); }
+.einrichtung .schalter.an span { transform: translateX(16px); }
+.einrichtung .schalter-z { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; }
+.einrichtung .wahl { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 2px; overflow: hidden; flex: none; }
+.einrichtung .wahl button { height: 32px; padding: 0 12px; border: 0; background: var(--surface); color: var(--ink); font-size: 13px; font-weight: 550; }
+.einrichtung .wahl button + button { border-left: 1px solid var(--border-strong); }
+.einrichtung .wahl button.an { background: var(--brand); color: var(--on-brand); }
+.einrichtung .einr-hinweis { display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 4px; background: color-mix(in srgb, currentColor 8%, var(--surface)); font-size: 13px; line-height: 18px; }
+.einrichtung .einr-hinweis svg { flex: none; margin-top: 1px; }
+.einrichtung .einr-hinweis-text { color: var(--ink); }
+.einrichtung .einr-hinweis a { color: var(--brand); }
+.einrichtung .zuordnen-form { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 0 16px; padding: 14px 14px 2px; border-radius: 4px; background: var(--surface-alt); border: 1px solid var(--border); }
+.einrichtung .zuordnen-form .feld { margin-bottom: 12px; min-width: 0; }
+.einrichtung .zuordnen-form .feld input, .einrichtung .zuordnen-form .feld select { height: 36px; font-size: 14px; }
+.einrichtung .zuordnen-form .feld input.mono { font-size: 13px; }
+.einrichtung .zuordnen-fuss { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; padding-bottom: 12px; }
+.einrichtung .leer-box { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 22px 24px; border-radius: 4px; background: var(--surface); border: 1px dashed var(--border-strong); }
+.einrichtung .leer-titel { font-size: 17px; line-height: 22px; font-weight: 650; }
+.einrichtung .leer-text { font-size: 14px; line-height: 20px; max-width: 640px; }
+.einrichtung .wege { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin-top: 12px; width: 100%; }
+.einrichtung .weg { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 4px; background: var(--surface-alt); min-width: 0; }
+.einrichtung .weg-titel { font-size: 14px; font-weight: 650; }
+.einrichtung .codeblock { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 10px; margin-bottom: 12px; border-radius: 2px; background: var(--log-bg); color: var(--log-ink); font-family: var(--mono); font-size: 12px; line-height: 16px; }
+.einrichtung .weg .codeblock { margin-bottom: 0; }
+.einrichtung .codeblock span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.einrichtung .codeblock button { flex: none; height: 26px; padding: 0 9px; border-radius: 2px; border: 1px solid var(--log-muted); background: transparent; color: var(--log-ink); font-size: 12px; font-weight: 600; }
+/* Schritt 4: Anbinden (ein Block je Runner; mit nur einem Runner ohne Rahmen wie 0.4.0) */
+.einrichtung .block { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px 18px; margin-bottom: 12px; }
+.einrichtung .block-kopf { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.einrichtung .block-kopf .fund-name { margin-right: 2px; }
+.einrichtung .block-server { font-size: 12.5px; overflow-wrap: anywhere; }
+.einrichtung .block .anl { background: var(--surface-alt); }
+.einrichtung .block.zu { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 18px; }
+@media (prefers-reduced-motion: reduce) {
+  .einrichtung .karte-inhalt { animation: einblenden .2s linear; }
+  .einrichtung .dreh { animation: none; }
+  .einrichtung .chev, .einrichtung .schalter, .einrichtung .schalter span { transition: none; }
+}
 /* Ab 390 px bedienbar (Anweisung 06): Karte volle Breite, Spalten untereinander */
 @media (max-width: 920px) {
   .einrichtung .mitte { padding: 20px 0 24px; }
@@ -576,6 +648,31 @@ body.einrichtung { min-height: 100vh; display: flex; flex-direction: column; fon
   .einrichtung .st-linie { width: 16px; }
   .einrichtung .feld input.gross { width: 100%; }
   .einrichtung .kopf-sub { display: none; }
+}
+/* Telefon (Design: 390 px): Stepper nur mit dem aktiven Schritt, Karte randlos, alles einspaltig,
+   primärer Knopf volle Breite; die Seite scrollt als Ganzes, kein waagrechtes Scrollen. */
+@media (max-width: 560px) {
+  body.einrichtung { height: auto; }
+  .einrichtung .kopf { padding: 0 16px; gap: 10px; }
+  .einrichtung .kopf-rechts { display: none; }
+  .einrichtung .sprache-knopf { margin-left: auto; }
+  .einrichtung .mitte { flex: 1 0 auto; padding: 16px 0 0; }
+  .einrichtung .stepper { gap: 6px; margin-bottom: 14px; flex-wrap: nowrap; }
+  .einrichtung .st { gap: 0; }
+  .einrichtung .st .st-text { display: none; }
+  .einrichtung .st.aktiv { gap: 6px; }
+  .einrichtung .st.aktiv .st-text { display: inline; }
+  .einrichtung .st-linie { width: 12px; }
+  .einrichtung .karte { width: 100%; max-width: none; flex: 1 0 auto; border-radius: 0; padding: 20px 16px; }
+  .einrichtung .karte-inhalt { flex: 1 0 auto; }
+  .einrichtung h1 { font-size: 23px; line-height: 28px; }
+  .einrichtung .einl { font-size: 14px; line-height: 20px; margin-bottom: 14px; }
+  .einrichtung .koerper { overflow: visible; flex: none; }
+  .einrichtung .fund-stand { margin-left: 0; width: 100%; }
+  .einrichtung .zuordnen-form, .einrichtung .zwei, .einrichtung .wege { grid-template-columns: minmax(0,1fr); }
+  .einrichtung .fuss .luecke { display: none; }
+  .einrichtung .fuss .fuss-text { flex-basis: 100%; order: -1; }
+  .einrichtung .fuss .knopf.primaer { flex: 1; }
 }
 
 /* Sprachumschalter auf Anmeldung und Einrichtung (#81) */

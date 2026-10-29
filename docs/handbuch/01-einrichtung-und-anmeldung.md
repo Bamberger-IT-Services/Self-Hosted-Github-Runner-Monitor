@@ -1,20 +1,21 @@
 # 1 Einrichtung und Anmeldung
 
-**Stand: 25.10.2026 · Version 0.7.0**
+**Stand: 29.10.2026 · Version 0.7.0 (Einrichtung in fünf Schritten aus Design 0.8.0)**
 
 ## Erster Aufruf
 
 Nach `sudo ./einrichten.sh` auf der VM ([Einrichtung](../EINRICHTUNG.md)) die angezeigte
 Adresse öffnen, z. B. `http://192.0.2.20:8090`. Solange kein Zugang besteht, führt jede
-Adresse zur Einrichtung in vier Schritten. Oben rechts lässt sich die Sprache wechseln
+Adresse zur Einrichtung in fünf Schritten. Oben rechts lässt sich die Sprache wechseln
 (Deutsch/English, Vorgabe nach Browser); auf der Anmeldeseite sitzt der Umschalter unten.
 
 | Schritt | Bild |
 |---|---|
 | **1 Code** – den achtstelligen Code aus dem Skript eingeben. Darüber steht, was auf der VM erkannt wurde (Monitor, Runner, Firewall). | ![](bilder/einrichtung-1-code.png) |
 | **2 Zugang** – Benutzername und Passwort. Mindestens 12 Zeichen, sonst keine Regeln; der Balken zeigt die Länge. | ![](bilder/einrichtung-2-zugang.png) |
-| **3 GitHub** (optional) – Organisation und Fine-grained Token, „Verbindung prüfen“ zeigt die Rechte. „Überspringen“ ist erlaubt. | ![](bilder/einrichtung-3-github.png) |
-| **4 Fertig** – Zusammenfassung, „Zum Monitor“ führt zur Anmeldung. | ![](bilder/einrichtung-4-fertig.png) |
+| **3 Runner** – alle Runner, die der Monitor auf der VM gefunden hat, mit Dienst, Sicherheitsgrad und Begründung. Je Fund: übernehmen (GitHub), Grundüberwachung oder ignorieren (noch nicht unterstützte Dienste), zuordnen oder ignorieren (unbekannte Dienste). „Neu erkennen“ sucht sofort neu. Ohne Fund: Runner einrichten, von Hand zuordnen oder nur die VM überwachen. | ![](bilder/einrichtung-3-runner.png) |
+| **4 Anbinden** (optional) – je übernommenem Runner ein nur lesendes Token. Für den GitHub-Runner Organisation und Fine-grained Token wie bisher; für andere Dienste trägt man die Zugangsdaten auf der VM ein (`einrichten.sh zugang <runner>`). „Verbindung prüfen“ zeigt, was ankommt; jeder Runner lässt sich überspringen. | ![](bilder/einrichtung-4-anbinden.png) |
+| **5 Fertig** – Zusammenfassung mit Zugang, Firewall und Stand je Runner, „Zum Monitor anmelden“ führt zur Anmeldung. | ![](bilder/einrichtung-5-fertig.png) |
 
 ## Anmelden
 
