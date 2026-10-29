@@ -113,7 +113,7 @@ def deute(eintrag: dict) -> tuple[list[dict], dict | None]:
     zeilen = [{"zeit": zeit, "text": bereinige(vorsatz + teil)} for teil in nachricht.split("\n")[:50]] if nachricht else []
     ereignis = None
     if systemd:
-        e = runner.deute_journalzeile({"MESSAGE": nachricht, "SYSLOG_IDENTIFIER": "systemd", "__REALTIME_TIMESTAMP": str(int(zeit * 1_000_000))})
+        e = runner.deute_journalzeile({"MESSAGE": nachricht, "_COMM": "systemd", "_PID": "1", "__REALTIME_TIMESTAMP": str(int(zeit * 1_000_000))})
         if e and e.art in ("dienst-gestartet", "dienst-gestoppt"):
             ereignis = {"zeit": e.zeit, "art": e.art}
     return zeilen, ereignis

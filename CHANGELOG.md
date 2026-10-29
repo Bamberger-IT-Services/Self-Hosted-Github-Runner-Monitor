@@ -90,6 +90,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   den aufgehobenen Stand wieder setzen.
 
 ### Behoben
+- Dienst gestartet/gestoppt erkennt der Monitor im Journal des GitHub-Runners nur noch an Meldungen von
+  systemd selbst (`_COMM=systemd` und `_PID=1`), nicht mehr am `SYSLOG_IDENTIFIER`, den ein Job setzen
+  kann; ein Job kann so keinen „Dienst gestoppt“ mehr vortäuschen (#119, S-JOURNAL-01).
 - Reiter und Karte zeigen für einen Runner ohne systemd-Dienst beide „Kein Dienst“ (der Reiter zeigte
   „Unbekannt“) (#95, Review #114).
 - GitLab: Ein Job mit `status` als Liste oder Objekt ließ die ganze Runde als „unerwartete Antwort“
