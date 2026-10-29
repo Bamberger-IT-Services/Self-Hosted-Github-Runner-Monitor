@@ -161,7 +161,7 @@ class ServerTest(unittest.TestCase):
 
     def live_strom_endet_bei_ueberlauf(self):
         """Kommt ein Browser nicht hinterher, endet der Strom (er verbindet neu), statt stumm offen zu bleiben."""
-        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=15)
         c.request("GET", "/events", headers={"Host": f"127.0.0.1:{self.port}", "Cookie": f"rm_sitzung={self.cookies['rm_sitzung']}"})
         r = c.getresponse()
         self.assertEqual(r.status, 200)
@@ -172,10 +172,14 @@ class ServerTest(unittest.TestCase):
                 break
             threading.Event().wait(0.01)
         self.assertEqual(v.anzahl, 1)
-        for i in range(2100):
+        # So lange senden, bis die Schlange überläuft: Liest der Server schnell mit (langsamer CI-Rechner),
+        # reichen 2100 Nachrichten nicht, und der Strom bliebe zu Recht offen (#133).
+        for i in range(200_000):
             v.sende("system", {"i": i})
-        rest = r.read()  # endet nur, wenn der Server den Strom schließt (sonst Zeitüberschreitung)
-        self.assertLessEqual(rest.count(b"event: system"), 2000)
+            if not v.anzahl:
+                break
+        self.assertEqual(v.anzahl, 0, "Schlange ist nicht übergelaufen")
+        r.read()  # endet nur, wenn der Server den Strom schließt (sonst Zeitüberschreitung)
         c.close()
         self.assertEqual(v.anzahl, 0)
 

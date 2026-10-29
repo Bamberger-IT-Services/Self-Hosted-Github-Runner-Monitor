@@ -4,6 +4,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Behoben
+- CI auf Forgejo (#133): Der Test „Live-Strom endet bei Überlauf“ sendete feste 2100 Nachrichten; auf einem
+  langsamen Runner las der Server schnell genug mit, die Schlange lief nie über, und der Test lief in eine
+  Zeitüberschreitung. Er sendet jetzt, bis die Schlange überläuft. Das Programm ist unverändert.
+
 ### Geändert
 - CI-Takt (E-30): Die volle Prüfung läuft nur noch vor dem Release (PRs nach `main`, Push auf `main`, von Hand);
   PRs nach `develop` prüfen nur auf Geheimnisse (gitleaks), die Tests laufen vor dem Merge lokal.
