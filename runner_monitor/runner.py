@@ -113,26 +113,42 @@ def _systemd_zeit(wert: str) -> float | None:
     return datetime.strptime(treffer.group(1), "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc).timestamp()
 
 
+MAX_NEUSTARTS = 10**6
+
+
+def _neustarts(wert: str) -> int | None:
+    """``NRestarts`` von systemd: automatische Neustarts (Restart=) seit dem letzten Start von Hand."""
+    wert = (wert or "").strip()
+    return int(wert) if wert.isdigit() and int(wert) <= MAX_NEUSTARTS else None
+
+
 def dienst_status(unit: str) -> dict:
-    """``{"zustand": "aktiv"|"gestoppt"|"fehlt", "seit": unix|None, "grund": str|None}``
+    """``{"zustand": "aktiv"|"gestoppt"|"fehlt", "seit": unix|None, "grund": str|None,
+    "neustarts": int|None, "letzterStopp": unix|None}``
 
     ``grund`` ist bei gestopptem Dienst das ``Result`` von systemd, wenn es kein normales Ende war
-    (z. B. ``oom-kill``, ``exit-code``, ``signal``) – die Oberfläche nennt dann die Ursache (#68)."""
+    (z. B. ``oom-kill``, ``exit-code``, ``signal``) – die Oberfläche nennt dann die Ursache (#68).
+    ``neustarts`` ist ``NRestarts`` (automatische Neustarts seit dem letzten Start von Hand),
+    ``letzterStopp`` ``InactiveEnterTimestamp`` (zuletzt beendet; None, wenn seit dem Booten nie) – beides
+    für die Grundüberwachung (#95)."""
     if not unit:
         return {"zustand": "fehlt", "seit": None, "unit": ""}
     try:
         lauf = subprocess.run(
-            ["systemctl", "show", unit, "-p", "ActiveState,ActiveEnterTimestamp,InactiveEnterTimestamp,Result", "--timestamp=utc"],
+            ["systemctl", "show", unit, "-p", "ActiveState,ActiveEnterTimestamp,InactiveEnterTimestamp,Result,NRestarts",
+             "--timestamp=utc"],
             capture_output=True, text=True, timeout=5, check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return {"zustand": "fehlt", "seit": None, "unit": unit}
     werte = dict(z.split("=", 1) for z in lauf.stdout.splitlines() if "=" in z)
     aktiv = werte.get("ActiveState") == "active"
-    seit = _systemd_zeit(werte.get("ActiveEnterTimestamp" if aktiv else "InactiveEnterTimestamp", ""))
+    stopp = _systemd_zeit(werte.get("InactiveEnterTimestamp", ""))
+    seit = _systemd_zeit(werte.get("ActiveEnterTimestamp", "")) if aktiv else stopp
     ergebnis = werte.get("Result", "").strip()
     grund = None if aktiv or ergebnis in ("", "success") or not re.fullmatch(r"[a-z-]{1,32}", ergebnis) else ergebnis
-    return {"zustand": "aktiv" if aktiv else "gestoppt", "seit": seit, "unit": unit, "grund": grund}
+    return {"zustand": "aktiv" if aktiv else "gestoppt", "seit": seit, "unit": unit, "grund": grund,
+            "neustarts": _neustarts(werte.get("NRestarts", "")), "letzterStopp": stopp}
 
 
 # ---------------------------------------------------------------- Journal: Job-Ereignisse

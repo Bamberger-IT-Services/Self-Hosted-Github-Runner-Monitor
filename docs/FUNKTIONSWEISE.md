@@ -314,7 +314,7 @@ Ein Eintrag in `runner[]`:
   "stand": "angebunden", "einstufung": "voll", "version": "2.338.1", "labels": ["self-hosted", "linux"],
   "faehig": { "status": true, "jobs": true, "schritte": true, "logs": true, "updates": false },
   "status": { "zustand": "job",
-              "dienst": { "zustand": "aktiv", "seit": 1761700000, "grund": null },
+              "dienst": { "zustand": "aktiv", "seit": 1761700000, "grund": null, "neustarts": 0, "letzterStopp": null },
               "beimDienst": { "zustand": "online", "seit": null } },
   "job": { "repo": "web-portal", "workflow": "CI", "name": "test", "start": 1761700100,
            "schritt": { "nr": 3, "von": 8, "name": "Abhängigkeiten" }, "schritte": ["…"] },
@@ -324,8 +324,13 @@ Ein Eintrag in `runner[]`:
 ```
 
 - `status.zustand`: `job|bereit|offline|gestoppt|fehlt` (mit Jobs), `aktiv|gestoppt|fehlt`
-  (Grundüberwachung: „Dienst aktiv“), `unbekannt` (ohne Fähigkeit `status`). `beimDienst` ist `null`
-  ohne Anbindung.
+  (Grundüberwachung: „Dienst aktiv“). Ohne Unit (Fähigkeit `status` fehlt) ist er seit #95 `fehlt` – Reiter
+  und Karte zeigen beide „Kein Dienst“ (Review #114); `unbekannt` bleibt nur für einen Adapter ohne jeden
+  Status. `beimDienst` ist `null` ohne Anbindung.
+- `status.dienst`: `zustand`, `seit` (aktiv seit bzw. gestoppt seit), `grund` (systemd-`Result`),
+  `neustarts` (`NRestarts`: automatische Neustarts durch `Restart=` seit dem letzten Start von Hand, sonst
+  `null`) und `letzterStopp` (`InactiveEnterTimestamp`, `null`, wenn die Unit seit dem Booten nie beendet
+  wurde) – alles aus `systemctl show` (#95).
 - `job` und `letzteJobs` sind `null` ohne Fähigkeit `jobs`; `job.schritt` ist `{nr, von|null, name}`,
   `von` ist `null`, solange der Dienst keine Schrittliste geliefert hat, und `job.schritt` ist `null`
   ohne Fähigkeit `schritte` („Schritte nicht verfügbar“).
@@ -382,13 +387,51 @@ einen Satz Bereiche für alle (Auslastung, Prozesse, Platten) und je gewähltem 
 - **Meldungen** aus `meldungen[]` (`gestoppt`, `fehlt`, `offline`, `abfrage`, `token`) nennen bei mehreren
   Runnern den Runner im Titel; betrifft eine Meldung einen anderen als den gewählten Runner, wechselt der
   Knopf „Anzeigen“ zu ihm. Platte, Verbindung und Updates des Monitors entstehen weiter im Browser.
-- **Runner ohne Jobs** (Grundüberwachung, `faehig.jobs = false`) zeigen vorerst Zustand „Dienst aktiv“ oder
-  „Gestoppt“ mit einem kurzen Hinweis und „Jobs nicht verfügbar“; die ausführliche Darstellung (Neustarts,
-  Journal, „Schritte nicht verfügbar“) folgt mit #95.
-- **Live-Log:** `/events` liefert die Ausgabe nur für den Runner mit Seiten-Log (`log.art = seiten`, GitHub).
-  Wählt man einen anderen, steht dort ein Hinweis; das Journal je Runner folgt mit #95.
+- **Grundüberwachung und „teilweise“** (#95) siehe den nächsten Abschnitt.
 - **Demo:** `?demo&runner=N` mit N = 1 bis 5 (GitHub-Job, Forgejo und unbekannter Runner in
-  Grundüberwachung, Gitea bereit, GitLab offline).
+  Grundüberwachung, Gitea bereit, GitLab offline); `&gewaehlt=N` wählt Runner N (z. B. `runner=3&gewaehlt=3`
+  = buildagent in Grundüberwachung), `&faehig=teilweise` lässt runner-vm-01 Jobs ohne Schritte melden.
+
+### Grundüberwachung und „teilweise“ (#95, Design 0.8.0 › „Nicht verfügbar“ ehrlich zeigen)
+
+Die Oberfläche richtet sich allein nach `faehig{…}` und `log` des Runners, nie nach dem Namen des Dienstes
+(`RUNNER.ansicht()` in `web/runner.js`; Tests in `tests/js/runner.test.mjs` und `tests/test_anbieter.py`
+prüfen, dass gleiche Fähigkeiten bei jedem Dienst dieselbe Ansicht ergeben). Der Name dient nur der Anzeige
+(Plakette, „Online bei GitHub“).
+
+| Fähigkeiten | Runner-Status | Jobs je Repository | Live-Log |
+|---|---|---|---|
+| `jobs` und `schritte` | wie bisher | wie bisher | Ausgabe der Schritte mit Trennern und Schritt-Chip |
+| `jobs` ohne `schritte` („teilweise“) | Job und Laufzeit; statt Schrittbalken „Aktueller Schritt / Schritte nicht verfügbar“ (gedämpft) und „Der Dienst meldet keine Schritte – Job und Laufzeit bleiben sichtbar.“; „Letzte Jobs“ bleiben | wie bisher | ohne Trenner und ohne Schritt-Chip (Trenner, die vor `runner[]` kamen, werden entfernt) |
+| ohne `jobs` (Grundüberwachung) | „Dienst aktiv“/„Dienst gestoppt“, Text „Nur Grundüberwachung: …“, kv Dienst (Unit · aktiv seit …), Neustarts („keine“ bzw. „3 automatisch“), Letzter Stopp; ohne „Online bei …“ und ohne „Letzte Jobs“ | ruhiger Leerzustand „Jobs nicht verfügbar“ mit Unit und „Runner zuordnen ›“ (öffnet vorerst Info & Hilfe, Zuordnung ändern kommt mit #97), Fuß „Abfrage aus“ | Journal der Unit, Chip „Journal · buildagent.service“, ohne Trenner |
+| ohne `status` (keine Unit) | „Kein Dienst“ (neutral), wie der Reiter | – | Hinweis „Ohne Dienst gibt es für diesen Runner kein Log.“ |
+
+Ohne Labels vom Dienst steht in der Kopfzeile die Unit als Label (wie im Design). Log-Quelle `datei`
+(Log-Pfad aus `runner.json`) zeigt das Dashboard noch nicht an; dort steht ein Hinweis.
+
+**Journal je Unit** (`runner_monitor/journal.py`): Ist das Live-Log des gewählten Runners das Journal
+(`faehig.logs` und `log.art = journal`), verbindet das Dashboard seinen Live-Strom als
+`GET /events?journal=<runner-id>` (nur angemeldet, wie `/events`; beim Wechsel des Runners verbindet es
+sich mit dem neuen Ziel neu, ein Strom je Fenster bleibt). Die Anfrage nennt nur die Runner-ID; welche
+Unit gelesen wird, steht allein in `runner[]` des Servers (`Zustand.journal_unit()`: Fähigkeit `logs`,
+Quelle `journal`, Name nach `erkennung.pruefe_unit`, E-17/E-18). Kommt `runner[]` erst nach dem
+Verbinden (Start des Monitors) oder ändert sich die Unit, hängt der Server das Journal beim nächsten
+Ereignis `runner` an bzw. um.
+
+- Je Unit läuft höchstens ein `journalctl --unit=<unit> --follow --output=json --lines=200` (ohne Shell,
+  `--output-fields` nur Nachricht, Kennung, PID, Zeit), geteilt von allen Fenstern und nur, solange eines
+  zusieht; höchstens 4 Units gleichzeitig (sonst Ereignis `journal` mit `hinweis: "grenze"`).
+- Grenzen: 4000 Zeichen je Zeile, 64 KiB je Rohzeile (längere werden verworfen), höchstens 200 Zeilen je
+  Nachricht (der Rest einer Flut wird als `{art: "luecke", n}` gezählt), die letzten 500 Zeilen für neu
+  verbundene Fenster; Zeilen alle 0,3 s gebündelt.
+- Beenden: `terminate()`, nach 2 s `kill()`; endet `journalctl` von selbst, startet es nach 5 s neu ab dem
+  letzten Cursor (`--after-cursor`, keine doppelten Zeilen).
+- Zeilen von systemd (PID 1) stehen ohne Vorsatz und werden zu den Ereignissen „Dienst gestartet“/„Dienst
+  gestoppt“; alle anderen wie im Journal als `kennung[pid]: text`. Bekannte Token-Muster (GitHub, GitLab,
+  40 Hex-Zeichen, `Authorization: …`) werden durch `***` ersetzt (S-JOURNAL-01).
+
+Ereignis `journal`: `{unit, neu?, zeilen[{zeit, text} | {zeit, art: "luecke", n}], ereignisse[{zeit, art}], hinweis?}`
+– `neu` leert die Ansicht (erst der Stand, dann neue Zeilen).
 
 ### Zugangsdaten je Runner und Übernahme des Tokens (E-19)
 
@@ -418,7 +461,8 @@ einen Satz Bereiche für alle (Auslastung, Prozesse, Platten) und je gewähltem 
 
 ## Vom Server in den Browser
 
-Der Browser öffnet nach der Anmeldung **eine** Verbindung `GET /events` (Server-Sent Events).
+Der Browser öffnet nach der Anmeldung **eine** Verbindung `GET /events` (Server-Sent Events) – mit einem
+Runner, dessen Live-Log das Journal ist, `GET /events?journal=<runner-id>` (#95).
 Zuerst kommt der komplette aktuelle Stand, danach nur noch Änderungen. Jeder Bereich hat ein
 eigenes Ereignis und ein eigenes Datenobjekt:
 
@@ -434,6 +478,7 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | `log` | `neu` (Ansicht leeren), `ereignisse[{art, zeit, repo, workflow, name, ergebnis, dauer}]`, `zeilen[{art: zeile\|schritt, zeit, text \| nr, von, name}]` (gebündelt, bis 1500 je Nachricht) |
 | `runner` | seit #92: Liste der Runner wie `runner[]` in `/api/zustand` (siehe „Anbieter-Adapter“), nur bei Änderung; das Dashboard nutzt sie seit #94 |
 | `meldungen` | seit #92: Liste wie `meldungen[]` in `/api/zustand`, nur bei Änderung |
+| `journal` | seit #95, nur mit `/events?journal=<runner-id>`: `unit`, `neu`, `zeilen[]`, `ereignisse[]`, `hinweis` (siehe „Grundüberwachung und ‚teilweise‘“) |
 
 Zeiten sind Unix-Sekunden. Alle 15 s kommt ein Kommentar `: lebt`, damit Proxys die Verbindung
 offen lassen. Nach 5 s ohne Daten zeigt der Browser „Getrennt“ und den letzten Stand; nach 10 s
@@ -552,8 +597,9 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 - Nichts verändern: kein Neustart des Runners, kein Abbrechen von Jobs (nur anschauen).
 - Kein HTTPS von sich aus – gedacht für das lokale Netz. Wer von außen zugreifen will, setzt
   einen Reverse-Proxy mit TLS davor ([Sicherheitsbericht](sicherheit/bericht.md), S-01).
-- Das Dashboard zeigt alle Runner der VM als Reiter (ab #94); das Live-Log kommt bis zu den Adaptern für
-  Forgejo und GitLab (#93, #99) nur für den GitHub-Runner, für die anderen steht dort ein Hinweis.
+- Das Dashboard zeigt alle Runner der VM als Reiter (ab #94); das Live-Log zeigt beim GitHub-Runner die
+  Ausgabe der Schritte, bei den anderen das Journal ihrer Unit (#95). Eine Log-Datei aus `runner.json`
+  zeigt es noch nicht an.
 
 ## Quellcode
 
@@ -566,10 +612,11 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/erkennung.py` | Erkennung aller Runner auf der VM (Units, Prozesse, Registrierungen, Server-Probe), Zuordnung aus `runner.json`, Ausgabe für `einrichten.sh` |
 | `runner_monitor/github.py` | GitHub-REST-Klient (ETag, Fehlerarten), Releases, Versionen; alte Namen der Runner-Auswertung leiten an den Adapter weiter |
 | `runner_monitor/anbieter/` | Anbieter-Adapter: Basisklasse, Grundüberwachung, Registry und Fähigkeiten (`__init__.py`), GitHub-Adapter (`github.py`), Zugangsdaten je Runner und Token-Übernahme (`token.py`) |
+| `runner_monitor/journal.py` | Journal je Unit fürs Live-Log (ein `journalctl` je Unit, Grenzen, Token-Filter) |
 | `runner_monitor/zustand.py` | Gesamtstand, Verlauf, `runner[]` und `meldungen[]`, Momentaufnahme, Verteilung an alle Browserfenster |
 | `runner_monitor/server.py` | HTTP, Anmeldung, Einrichtung, SSE, `GET /api/zustand` |
 | `runner_monitor/zugang.py` | Passwörter, Sitzungen, Sperren, Einrichtungscode |
 | `runner_monitor/sammler.py` | root-Sammler (GitHub, Docker, Releases, Aufträge) |
 | `runner_monitor/aktualisierer.py` | root-Update-Hilfsdienst |
-| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `runner.js` (Reiter, „+N“, gemerkte Wahl, Ansicht eines Runners), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
+| `web/` | Oberfläche: `dashboard.*`, `anmelden.*`, `einrichtung.*`, `demo.js`, `stil.css`, `gemeinsam.js`, `verlauf.js` (Eimer und Pfade der Verläufe), `runner.js` (Reiter, „+N“, gemerkte Wahl, Ansicht eines Runners nach Fähigkeiten, Log-Quelle und Journal-Ziel), `mail.js` (Vorlagen der `mailto:`-Links für Fehler, Idee und Update-Fehler), `i18n.js` (Sprache: deutscher Text als Schlüssel, englische Fassung in `EN`; Wahl `auto|de|en` je Browser in `localStorage["runner-monitor.sprache"]`, „auto“ folgt `navigator.languages[0]` (`de…` → Deutsch, sonst Englisch), der alte Schlüssel `rm-sprache` wird einmal übernommen; Entscheidung E-14: kein Umbau auf `de.json`/`en.json`). Anmeldung und Einrichtung setzen die Sprache über ihren Knopf fest auf `de` oder `en`; „Automatisch“ ist nur im Info-Blatt des Dashboards wählbar. Bei gesperrtem Speicher bleibt die Wahl wirkungslos |
 | `einrichten.sh` | Installation, Wartung, Entfernen |

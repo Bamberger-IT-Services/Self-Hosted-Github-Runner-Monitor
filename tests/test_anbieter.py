@@ -83,7 +83,8 @@ class FaehigkeitenTest(unittest.TestCase):
         self.assertEqual(a.faehig(), {"status": False, "jobs": False, "schritte": False, "logs": False, "updates": False})
         e = a.eintrag()
         self.assertEqual(set(e), EINTRAG_SCHLUESSEL)
-        self.assertEqual(e["status"]["zustand"], "unbekannt")
+        self.assertEqual(e["status"]["zustand"], "fehlt")  # wie die Karte „Kein Dienst“, nicht „unbekannt“ (Review #114)
+        self.assertEqual(e["status"]["dienst"]["zustand"], "fehlt")
         self.assertIsNone(e["log"])
         self.assertIsNone(e["job"])
         self.assertIsNone(e["jobsJeRepository"])
@@ -96,9 +97,11 @@ class FaehigkeitenTest(unittest.TestCase):
 
     def test_grundueberwachung_status(self):
         a = anbieter.Grundueberwachung(anbieter.RunnerKonfig(id="x", name="x", unit="buildagent.service"))
-        with mock.patch.object(runner, "dienst_status", return_value={"zustand": "gestoppt", "seit": 5.0, "unit": "buildagent.service", "grund": "oom-kill"}):
+        with mock.patch.object(runner, "dienst_status", return_value={"zustand": "gestoppt", "seit": 5.0, "unit": "buildagent.service", "grund": "oom-kill",
+                                                                     "neustarts": 3, "letzterStopp": 5.0}):
             e = a.eintrag(job={"name": "geheim"}, letzte_jobs=[{"name": "x"}])
-        self.assertEqual(e["status"], {"zustand": "gestoppt", "dienst": {"zustand": "gestoppt", "seit": 5.0, "grund": "oom-kill"}, "beimDienst": None})
+        self.assertEqual(e["status"], {"zustand": "gestoppt", "beimDienst": None, "dienst": {
+            "zustand": "gestoppt", "seit": 5.0, "grund": "oom-kill", "neustarts": 3, "letzterStopp": 5.0}})  # kv-Zeilen (#95)
         self.assertIsNone(e["job"])          # ohne Fähigkeit „jobs“ nie ein Job
         self.assertIsNone(e["letzteJobs"])
         with mock.patch.object(runner, "dienst_status", return_value={"zustand": "aktiv", "seit": 5.0, "unit": "u", "grund": None}):
@@ -118,6 +121,24 @@ class FaehigkeitenTest(unittest.TestCase):
             dienst={"zustand": "aktiv", "seit": 1, "grund": None}, job={"name": "build", "schritt": {"nr": 2, "von": 5, "name": "Tests"}, "schritte": ["a"]})
         self.assertIsNone(e["job"]["schritt"])  # „Schritte nicht verfügbar“
         self.assertEqual(e["status"]["zustand"], "job")
+
+    def test_steuerung_nur_ueber_faehigkeiten(self):
+        """#95: Gleiche Fähigkeiten ergeben denselben Eintrag, egal welcher Dienst – die Oberfläche kann sich
+        auf faehig{…} verlassen und muss den Namen nie auswerten."""
+        dienst = {"zustand": "aktiv", "seit": 1.0, "grund": None, "neustarts": 0, "letzterStopp": None}
+        job = {"name": "build", "schritt": {"nr": 2, "von": 5, "name": "Tests"}, "schritte": ["a", "b"]}
+        for faehig in ({"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False},
+                       {"status": True, "jobs": True, "schritte": False, "logs": True, "updates": False},
+                       {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False}):
+            eintraege = []
+            for name in ("github", "forgejo", "gitlab", "unbekannt"):
+                klasse = type(f"A_{name}", (anbieter.Anbieter,), {"dienst": name, "FAEHIG": faehig})
+                e = klasse(anbieter.RunnerKonfig(id="x", name="x", dienst=name, unit="u.service")).eintrag(
+                    dienst=dict(dienst), job=dict(job), letzte_jobs=[{"name": "alt"}])
+                eintraege.append({k: v for k, v in e.items() if k not in ("dienst", "einstufung")})
+            for e in eintraege[1:]:
+                self.assertEqual(e, eintraege[0], faehig)
+        self.assertEqual(eintraege[0]["log"], {"art": "journal", "unit": "u.service"})
 
 
 # ---------------------------------------------------------------- GitHub-Adapter
@@ -482,7 +503,7 @@ class RunnerListeTest(unittest.TestCase):
         self.assertEqual(ba["log"], {"art": "datei", "unit": "buildagent.service"})
         self.assertEqual(ba["status"]["zustand"], "aktiv")
         # ohne Unit: weder Status noch Log, kein systemctl-Aufruf
-        self.assertEqual((nd["status"]["zustand"], nd["log"], nd["faehig"]["status"]), ("unbekannt", None, False))
+        self.assertEqual((nd["status"]["zustand"], nd["log"], nd["faehig"]["status"]), ("fehlt", None, False))
 
     def test_job_mit_schritt(self):
         self.z.bei_journal(runner.JobEreignis(art="start", zeit=100.0, name="test"))
