@@ -161,17 +161,17 @@
     if (!mehr) S.mehrOffen = false;
     const wort = zustandsWort(), von = (id) => liste.find((r) => r.id === id);
     const tab = (r) => {
-      const z = RUNNER.zustand(r), an = r.id === S.wahl.gewaehlt;
+      const z = RUNNER.zustand(r, Date.now()), an = r.id === S.wahl.gewaehlt;
       return `<button type="button" role="tab" class="rw-t${an ? ' an' : ''}" aria-selected="${an}" tabindex="${an ? 0 : -1}" aria-controls="status workflows" data-aktion="runner-waehlen" data-runner="${esc(r.id)}" title="${esc(`${r.name} · ${dienstText(r)} · ${wort[z.wort]}`)}"><span class="rw-z1"><span class="punkt ${z.art}" aria-hidden="true"></span><span class="rw-name">${esc(r.name)}</span></span><span class="rw-z2"><span class="${z.art}">${wort[z.wort]}</span></span></button>`;
     };
     let html = `<div class="rw-liste" role="tablist" aria-label="${esc(t('Runner wählen'))}">${sichtbar.map((id) => tab(von(id))).join('')}</div>`;
     let popHtml = '';
     if (mehr) {
       const uebrige = rest.map(von);
-      const titel = `${t('Weitere Runner')}: ${uebrige.map((r) => `${r.name} ${wort[RUNNER.zustand(r).wort]}`).join(', ')}`;
-      html += `<button type="button" class="rw-t rw-mehr${S.mehrOffen ? ' an' : ''}" id="rw-mehr" aria-haspopup="listbox" aria-expanded="${S.mehrOffen}" aria-controls="rw-pop" aria-label="${esc(titel)}" title="${esc(titel)}" data-aktion="runner-mehr"><span class="rw-z1">+${rest.length}</span><span class="rw-z2">${uebrige.map((r) => `<span class="punkt ${RUNNER.zustand(r).art}" aria-hidden="true"></span>`).join('')}</span></button>`;
+      const titel = `${t('Weitere Runner')}: ${uebrige.map((r) => `${r.name} ${wort[RUNNER.zustand(r, Date.now()).wort]}`).join(', ')}`;
+      html += `<button type="button" class="rw-t rw-mehr${S.mehrOffen ? ' an' : ''}" id="rw-mehr" aria-haspopup="listbox" aria-expanded="${S.mehrOffen}" aria-controls="rw-pop" aria-label="${esc(titel)}" title="${esc(titel)}" data-aktion="runner-mehr"><span class="rw-z1">+${rest.length}</span><span class="rw-z2">${uebrige.map((r) => `<span class="punkt ${RUNNER.zustand(r, Date.now()).art}" aria-hidden="true"></span>`).join('')}</span></button>`;
       popHtml = uebrige.map((r) => {
-        const z = RUNNER.zustand(r);
+        const z = RUNNER.zustand(r, Date.now());
         return `<button type="button" role="option" class="rw-pz" aria-selected="${r.id === S.wahl.gewaehlt}" tabindex="-1" data-aktion="runner-waehlen" data-runner="${esc(r.id)}"><span class="punkt ${z.art}" aria-hidden="true"></span><span class="rw-name">${esc(r.name)}</span><span class="label">${esc(dienstText(r))}</span><span class="rw-zt ${z.art}">${wort[z.wort]}</span></button>`;
       }).join('');
     }
@@ -321,7 +321,7 @@
         e = m.runner ? { cls: 'warn', ic: IC.warn(18), titel: t('Kein Dienst'), text: t('Der Dienst dieses Runners wurde nicht gefunden') }
           : { cls: 'warn', ic: IC.warn(18), titel: t('Kein Runner eingerichtet'), text: t('auf dieser VM wurde kein Runner gefunden') };
       } else if (m.id === 'offline') {
-        e = { cls: 'fehler', ic: IC.x(18), titel: vor ? t('Offline bei {dienst}', { dienst: RUNNER.dienstName(m.dienst) || 'GitHub' }) : t('Runner offline bei GitHub'), text: `${d.seit ? t('seit {z}', { z: zeit(d.seit) }) + ' · ' : ''}${t('Jobs werden nicht zugestellt')}` };
+        e = { cls: 'fehler', ic: IC.x(18), titel: vor ? t('Offline bei {dienst}', { dienst: RUNNER.dienstName(m.dienst) || 'GitHub' }) : t('Runner offline bei {dienst}', { dienst: RUNNER.dienstName(m.dienst) || 'GitHub' }), text: `${d.seit ? t('seit {z}', { z: zeit(d.seit) }) + ' · ' : ''}${t('Jobs werden nicht zugestellt')}` };
       } else if (m.id === 'pausiert') {
         // GitLab: bewusst pausiert – kein „Offline“, ein laufender Job wird noch fertig (Review #121)
         e = { cls: 'warn', ic: IC.warn(18), titel: t('Pausiert bei {dienst}', { dienst: dn }),
@@ -885,7 +885,12 @@
 
   /* Ohne runner[] (Altformat) ist der Runner ein GitHub-Runner. */
   const istGitHub = (st) => !st.anbieter || st.anbieter === 'github';
-  const runnerVersion = (st) => (st.version ? `${istGitHub(st) ? 'actions-runner' : esc(RUNNER.dienstName(st.anbieter) || '')} ${esc(st.version)}`.trim() : '–');
+  /* „Forgejo Runner 9.1“ trägt den Dienst schon in der Version – dann nicht noch einmal davorsetzen. */
+  const runnerVersion = (st) => {
+    if (!st.version) return '–';
+    const name = istGitHub(st) ? 'actions-runner' : (RUNNER.dienstName(st.anbieter) || '');
+    return (String(st.version).toLowerCase().startsWith(name.toLowerCase()) ? esc(st.version) : `${esc(name)} ${esc(st.version)}`).trim();
+  };
   /* Alle Runner für die Fehler-Mail: Name, Dienst, Version (mail.js nennt sie „Runner:“). */
   function runnerAngaben() {
     if (Array.isArray(S.runner) && S.runner.length) return S.runner.map((r) => ({ name: r.name, dienst: RUNNER.dienstName(r.dienst) || t('unbekannt'), version: r.version || '' }));
@@ -902,7 +907,7 @@
     const mailAngaben = {
       version: u.installiert || st.monitorVersion || '', system: st.system || '', browser: navigator.userAgent,
       runner: runnerAngaben(),
-      gewaehlt: Array.isArray(S.runner) && S.runner.length ? (gewaehlterRunner() ? { name: gewaehlterRunner().name, zustand: RUNNER.zustand(gewaehlterRunner()).wort === 'job' ? t('Job') : zustandsWort()[RUNNER.zustand(gewaehlterRunner()).wort] } : null) : st.runner && dz && dz !== 'fehlt' ? { name: st.runner, zustand: dz === 'gestoppt' ? t('Gestoppt') : st.github && st.github.zustand === 'offline' ? t('Offline') : st.job ? t('Job') : t('Bereit') } : null,
+      gewaehlt: Array.isArray(S.runner) && S.runner.length ? (gewaehlterRunner() ? { name: gewaehlterRunner().name, zustand: RUNNER.zustand(gewaehlterRunner(), Date.now()).wort === 'job' ? t('Job') : zustandsWort()[RUNNER.zustand(gewaehlterRunner(), Date.now()).wort] } : null) : st.runner && dz && dz !== 'fehlt' ? { name: st.runner, zustand: dz === 'gestoppt' ? t('Gestoppt') : st.github && st.github.zustand === 'offline' ? t('Offline') : st.job ? t('Job') : t('Bereit') } : null,
     };
     const kv = (liste) => `<dl class="kv">${liste.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`).join('')}</dl>`;
 
@@ -1275,7 +1280,7 @@
     if (quelle && Date.now() - (S.letzteDaten || seitStart) > STILLE_MAX && Date.now() - letzterVersuch > wartezeit) {
       wartezeit = Math.min(wartezeit * 2, 30000); verbinde();
     }
-    renderKopf(); renderStatus(); renderWorkflows(); if (S.info) renderInfo();
+    renderReiter(); renderKopf(); renderStatus(); renderWorkflows(); if (S.info) renderInfo();
     if (S.info && Date.now() - S.ir.geladen > 60000 && !S.ir.form && S.ir.erk !== 'laeuft') irLade();
   }, 1000);
 

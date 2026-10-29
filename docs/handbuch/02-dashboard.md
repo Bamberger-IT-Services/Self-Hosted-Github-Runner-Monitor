@@ -32,6 +32,10 @@ Oben rechts zwei Plaketten: Dienst aktiv/gestoppt und Online/Offline bei GitHub
 
 ![Dienst gestoppt](bilder/dashboard-gestoppt.png)
 
+### Wenn der Dienst nicht antwortet
+
+Fällt die Abfrage bei einem Dienst aus, zeigt der Monitor den letzten guten Stand mit seinem Alter („Stand von 14:02:11 (vor 12 Min.)“). Nach zehn Minuten Ausfall steht in „Runner-Status“ „Zustand unbekannt“ statt eines Jobs, der angeblich noch läuft; derselbe Reiter über der Karte zeigt dann ebenfalls „Unbekannt“.
+
 ## Workflows
 
 Summe **läuft / wartet** über alle Repositories der Organisation, darunter nur die Repositories,

@@ -330,8 +330,8 @@ const I18N = (() => {
     "Organisation": "Organization",
     "nicht eingerichtet": "not set up",
     "ungültig oder abgelaufen": "invalid or expired",
-    "hinterlegt, nur lesend": "stored, read-only",
-    "Rechte": "Permissions",
+    "hinterlegt": "stored",
+    "Rechte (nötig)": "Permissions (needed)",
     "Actions, Metadata, Self-hosted runners – je Read-only": "Actions, Metadata, Self-hosted runners – each read-only",
     "Ablauf": "Expires",
     "{d} (in {n} {tage})": "{d} (in {n} {tage})",
@@ -727,12 +727,11 @@ const I18N = (() => {
     "Dieser Runner läuft in der Grundüberwachung: Der Monitor fragt keinen Dienst ab, deshalb gibt es hier nichts zu erreichen. Zuordnen lässt er sich unter „Runner“ › „Zuordnung ändern“.": "This runner runs in basic monitoring: the monitor does not query a service, so there is nothing to reach here. You can assign it under “Runners” › “Change assignment”.",
     "Es wurde noch kein Runner erkannt. Unter „Was tun, wenn …“ › „Kein Runner eingerichtet“ steht, wie ein Runner eingerichtet wird.": "No runner has been detected yet. “What to do if …” › “No runner set up” explains how to set one up.",
     "Forgejo / Gitea · Auf dem Server: Einstellungen › Anwendungen › „Neues Token generieren“. Rechte repository und organization jeweils „Lesen“.": "Forgejo / Gitea · On the server: Settings › Applications › “Generate new token”. Permissions repository and organization each “Read”.",
-    "Forgejo-, Gitea- und GitLab-Runner richten Sie nach der Anleitung des Dienstes ein und starten sie als systemd-Dienst.": "Set up Forgejo, Gitea and GitLab runners following the service’s guide and run them as a systemd service.",
+    "Forgejo-, Gitea- und GitLab-Runner werden nach der Anleitung des Dienstes eingerichtet und als systemd-Dienst gestartet.": "Forgejo, Gitea and GitLab runners are set up following the service’s guide and started as a systemd service.",
     "GitHub · Auf github.com: Profilbild › Settings › Developer settings › Personal access tokens › Fine-grained tokens › „Generate new token“.": "GitHub · On github.com: profile picture › Settings › Developer settings › Personal access tokens › Fine-grained tokens › “Generate new token”.",
     "GitHub · Registrierungs-Token holen: GitHub › Organisation › Settings › Actions › Runners › „New self-hosted runner“ (1 Stunde gültig).": "GitHub · Get a registration token: GitHub › Organization › Settings › Actions › Runners › “New self-hosted runner” (valid for 1 hour).",
     "GitHub-Runner richtet das Skript auf der VM ein – es fragt Organisation, Token und Labels ab:": "The script sets up a GitHub runner on the VM – it asks for organization, token and labels:",
     "GitLab · Benutzer › Einstellungen › Zugriffstoken. Bereich read_api.": "GitLab · User › Preferences › Access tokens. Scope read_api.",
-    "Jobs je Repository und Status beim Dienst sind aus": "Jobs per repository and the status at the service are off",
     "Journal des Dienstes: Start, Stopp, Abstürze, Aufträge. Die letzten 100 Zeilen:": "Service journal: start, stop, crashes, tasks. The last 100 lines:",
     "Kein Runner ist an einen Dienst angebunden. Dienst, Auslastung und Log laufen trotzdem. Anbinden: unter „Runner“ den Befehl bei „Zugangsdaten ändern“ auf der VM ausführen.": "No runner is connected to a service. Service, load and log work anyway. To connect one: under “Runners”, run the command at “Change credentials” on the VM.",
     "Kein Schritt läuft. {dienst} stellt dem Runner gerade keine Jobs zu.": "No step is running. {dienst} is not dispatching jobs to the runner right now.",
@@ -777,7 +776,8 @@ const I18N = (() => {
     "{dienst}-Token ohne Zugriff": "{dienst} token has no access",
     "{dienst}-Token ungültig oder abgelaufen": "{dienst} token invalid or expired",
     "– angezeigt wird der Stand von {z} ({vor}).": "– showing data as of {z} ({vor}).",
-    "– {dienst} liefert seitdem keine neuen Daten.": "– {dienst} has delivered no new data since."
+    "– {dienst} liefert seitdem keine neuen Daten.": "– {dienst} has delivered no new data since.",
+    "Runner offline bei {dienst}": "Runner offline at {dienst}"
   };
 
   return { sprache: () => aktuell, wahl: () => gewaehlt, setzeSprache, wahlLesen, wahlSpeichern, aufloesen, WAHLEN, t, wendeAn, EN };

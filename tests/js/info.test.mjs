@@ -27,8 +27,14 @@ const runner = (id, dienst, extra = {}) => ({ id, name: id, dienst, server: 'htt
 test('Befehl und Token-Datei nur mit gültiger Runner-ID', () => {
   assert.equal(INFO.befehlZugang('runner-vm-01'), 'sudo /opt/runner-monitor/aktuell/einrichten.sh zugang runner-vm-01');
   assert.equal(INFO.tokenDatei('runner-vm-02'), '/etc/runner-monitor/zugang/runner-vm-02.token');
-  assert.equal(INFO.befehlZugang('x; rm -rf /'), 'sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>');
-  assert.equal(INFO.tokenDatei('../../etc/passwd'), '/etc/runner-monitor/zugang/<runner>.token');
+  assert.equal(INFO.befehlZugang('x; rm -rf /'), 'sudo /opt/runner-monitor/aktuell/einrichten.sh zugang RUNNER');
+  assert.equal(INFO.tokenDatei('../../etc/passwd'), '/etc/runner-monitor/zugang/RUNNER.token');
+  // Regel wie einrichten.sh: a-z 0-9 _ am Rand, dazu . - im Inneren, höchstens 64 Zeichen
+  assert.equal(INFO.tokenDatei('_agent'), '/etc/runner-monitor/zugang/_agent.token');
+  assert.equal(INFO.tokenDatei('-agent'), '/etc/runner-monitor/zugang/RUNNER.token');
+  assert.equal(INFO.tokenDatei('agent.'), '/etc/runner-monitor/zugang/RUNNER.token');
+  assert.equal(INFO.tokenDatei('a'.repeat(64)), `/etc/runner-monitor/zugang/${'a'.repeat(64)}.token`);
+  assert.equal(INFO.tokenDatei('a'.repeat(65)), '/etc/runner-monitor/zugang/RUNNER.token');
 });
 
 test('Server für Befehle: nur Schema, Host, Port und einfacher Pfad', () => {
@@ -132,14 +138,15 @@ test('Verbindungen: je angebundenem Dienst eine Gruppe, nur vorhandene Felder, s
   const v = INFO.verbindungen(liste, f);
   assert.deepEqual(v.map((x) => [x.dienst, x.titel, x.runner]), [['GitHub', 'beispiel-org', 'runner-vm-01'], ['Forgejo', 'beispiel-org', 'runner-vm-02'], ['GitLab', 'git.example.org', 'runner-vm-04']]);
   const kv = (i) => Object.fromEntries(v[i].kv.map(([k, w]) => [k, w]));
-  assert.deepEqual(v[0].kv.map(([k]) => k), ['Server', 'Organisation', 'Token', 'Rechte', 'Ablauf', 'Letzte Abfrage', 'Nächste Abfrage', 'API-Kontingent', 'Token-Datei']);
+  assert.deepEqual(v[0].kv.map(([k]) => k), ['Server', 'Organisation', 'Token', 'Rechte (nötig)', 'Ablauf', 'Letzte Abfrage', 'Nächste Abfrage', 'API-Kontingent', 'Token-Datei']);
   assert.equal(kv(0)['Token-Datei'], '/etc/runner-monitor/zugang/runner-vm-01.token');
   assert.match(kv(0).Ablauf, /in 74 Tagen\)$/);
   assert.match(kv(0)['API-Kontingent'], /^4812 von 5000 frei, Reset /);
   assert.equal(kv(1).Ablauf, '–');                                              // Forgejo liefert kein Ablaufdatum
   assert.equal(kv(1)['API-Kontingent'], 'vom Server nicht gemeldet');          // nichts erfinden
-  assert.equal(kv(1).Rechte, 'repository, organization – je Lesen');
-  assert.equal(kv(2).Rechte, 'read_api');
+  assert.equal(kv(1)['Rechte (nötig)'], 'repository, organization – je Lesen');
+  assert.equal(kv(2)['Rechte (nötig)'], 'read_api');
+  assert.equal(kv(0).Token, 'hinterlegt');                                     // „nur lesend“ wäre nicht belegt
   assert.equal(kv(2).Organisation, '–');
   assert.equal(v[0].kv.find(([k]) => k === 'Nächste Abfrage')[3], 'naechste');
   assert.deepEqual(INFO.verbindungen(null, f), []);
@@ -155,7 +162,10 @@ test('Verbindungen: kein Token, ungültig, Abfrage fehlgeschlagen', () => {
   assert.match(kv({ abfrage: 'nicht-erreichbar', abgefragt: sek - 380 })['Letzte Abfrage'][0], /^fehlgeschlagen · letzte erfolgreiche /);
   assert.equal(kv({ abfrage: 'nicht-erreichbar' })['Letzte Abfrage'][1], 'warn');
   assert.equal(kv({ tokenAblauf: sek + 9 * 86400 }).Ablauf[1], 'warn');
-  assert.equal(kv({ runnerGrund: 'Recht fehlt' }).Rechte[1], 'warn');
+  assert.equal(kv({ runnerGrund: 'Recht fehlt' })['Rechte (nötig)'][1], 'warn');
+  // erste Abfrage läuft noch (E-25): weder Fehler noch Token-Aussage
+  assert.deepEqual(kv({ abfrage: 'ausstehend' })['Letzte Abfrage'], ['wird abgefragt', '']);
+  assert.equal(kv({ abfrage: 'ausstehend' }).Token[0], '–');
 });
 
 test('„Nächste Abfrage“ als Text', () => {
@@ -210,7 +220,9 @@ test('Anleitungen: kein Zugangs-Token und keine Server-Adresse mit Sonderzeichen
   const alles = INFO.anleitungen(ctx({ dienst: 'gitea', server: 'https://x.example.org; reboot', org: "a'b", unit: "evil';id", id: '../x' }), t);
   const code = alles.flatMap((a) => a.schritte.map(([, c]) => c || '')).join('\n');
   assert.doesNotMatch(code, /reboot|evil|a'b|\.\.\/x/);
-  assert.match(code, /https:\/\/<server>/);
+  assert.match(code, /https:\/\/SERVER/);
+  assert.match(code, /orgs\/ORGANISATION/);                                      // sichtbarer Platzhalter statt eines erfundenen Namens
+  assert.doesNotMatch(code, /<[a-z.]+>|beispiel-org/);   // keine spitzen Platzhalter (Shell-Umleitung)
 });
 
 test('Anleitungen: „Dienst nicht erreichbar“ je Dienst', () => {
@@ -254,7 +266,7 @@ test('Anleitungen: Befehle mit der Unit des gewählten Runners', () => {
   assert.match(codes(anl(ctx(), 'logs')), /_diag\/pages/);
   // ohne bekannte Unit: GitHub fällt auf das Muster zurück, andere Dienste auf einen Platzhalter
   assert.match(codes(anl(ctx({ unit: '' }), 'gestoppt')), /systemctl status 'actions\.runner\.\*'/);
-  assert.match(codes(anl(ctx({ dienst: 'gitea', unit: '' }), 'gestoppt')), /<unit>\.service/);
+  assert.match(codes(anl(ctx({ dienst: 'gitea', unit: '' }), 'gestoppt')), /'UNIT\.service'/);
 });
 
 test('Anleitungen: Kein Runner, Platte, Monitor, Update behalten ihre Flags', () => {

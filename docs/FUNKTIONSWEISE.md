@@ -591,7 +591,7 @@ Logik ohne DOM, geprüft mit `tests/js/info.test.mjs`).
   `POST /api/einrichtung/runner/erkennen` und fragt alle 2 s nach, bis `zeit` neuer ist (höchstens 90 s); IDs,
   die vorher fehlten, erscheinen sofort in der Liste als „neu gefunden“ mit der Hinweisleiste „1 neuer Runner
   gefunden“. „Übernehmen“ nimmt sie zur Kenntnis (es ändert sich nichts in `runner.json`) und öffnet
-  „Zugangsdaten ändern“, „Ignorieren“ schickt `stand: "ignoriert"`.
+  „Zugangsdaten ändern“, „Ignorieren“ schickt `stand: "ignoriert"`; „Wieder anzeigen“ schickt `stand: null` (= wie erkannt) – eine frühere Wahl `grund` geht dabei verloren.
 - **Zuordnung ändern** (Dienst, Anzeigename, systemd-Unit, Log-Pfad; Speichern/Abbrechen) und **Ignorieren /
   Wieder anzeigen** nutzen `POST /api/einrichtung/runner/zuordnung` – nur angemeldet, `Origin` = Host (CSRF),
   Auftrag an den Sammler, der `runner.json` schreibt (E-22). Gesendet wird nur, was sich gegenüber dem Fund
@@ -600,9 +600,9 @@ Logik ohne DOM, geprüft mit `tests/js/info.test.mjs`).
   den Befehl `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` mit „Kopieren“ und einen Link zur
   Anleitung des Dienstes – es gibt in der Oberfläche **kein** Feld für Token, Server oder Organisation (E-18, E-22).
 - **Verbindungen** (ersetzt „GitHub-Verbindung“): je Runner mit Fähigkeit `jobs` ein Kopf (Plakette,
-  Organisation bzw. Server, Runner) und kv: Server, Organisation, Token (`hinterlegt, nur lesend`,
-  `nicht eingerichtet`, `ungültig oder abgelaufen`, `ohne Zugriff` – abgeleitet aus `abfrage`), Rechte (was der
-  Dienst braucht: GitHub Actions/Metadata/Self-hosted runners, Forgejo/Gitea `repository, organization`, GitLab
+  Organisation bzw. Server, Runner) und kv: Server, Organisation, Token (`hinterlegt`,
+  `nicht eingerichtet`, `ungültig oder abgelaufen`, `ohne Zugriff` – abgeleitet aus `abfrage`), Rechte (nötig) (was das Token
+  braucht, nicht was der Dienst erlaubt: GitHub Actions/Metadata/Self-hosted runners, Forgejo/Gitea `repository, organization`, GitLab
   `read_api`), Ablauf (`tokenAblauf`, sonst „–“), Letzte/Nächste Abfrage, API-Kontingent (nur mit
   Kopfzeilen des Dienstes, sonst „–“ bzw. „vom Server nicht gemeldet“ – nichts erfunden) und Token-Datei
   `/etc/runner-monitor/zugang/<runner>.token`.

@@ -9,15 +9,15 @@
 const INFO = (() => {
   const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
   const NAMEN = { github: 'GitHub', forgejo: 'Forgejo', gitea: 'Gitea', gitlab: 'GitLab' };
-  const ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;                      // wie erkennung.als_id
+  const ID = /^[a-z0-9_]([a-z0-9._-]{0,62}[a-z0-9_])?$/;           // wie einrichten.sh (Runner-ID) und erkennung.als_id
   const EINHEIT = /^[A-Za-z0-9:_.@\\-]{1,200}$/;                  // wie erkennung.pruefe_unit (ohne Sonderfälle)
   const SERVER = /^(https?:\/\/[A-Za-z0-9.-]+(?::\d{1,5})?)(\/[A-Za-z0-9._~/-]*)?$/;
   const FEHLER_ABFRAGE = ['nicht-erreichbar', 'kontingent', 'fehler'];
   const KEIN_ZUGANG = ['kein-token', 'token-ungueltig', 'keine-rechte'];
 
   const dienstName = (d) => NAMEN[d] || null;
-  const befehlZugang = (id) => `${SKRIPT} zugang ${ID.test(String(id || '')) ? id : '<runner>'}`;
-  const tokenDatei = (id) => `/etc/runner-monitor/zugang/${ID.test(String(id || '')) ? id : '<runner>'}.token`;
+  const befehlZugang = (id) => `${SKRIPT} zugang ${ID.test(String(id || '')) ? id : 'RUNNER'}`;
+  const tokenDatei = (id) => `/etc/runner-monitor/zugang/${ID.test(String(id || '')) ? id : 'RUNNER'}.token`;
 
   /* Adresse des Servers für Befehle: nur Schema, Host, Port und Pfad ohne Sonderzeichen, sonst null. */
   function serverBasis(server) {
@@ -126,10 +126,10 @@ const INFO = (() => {
       const j = r.jobsJeRepository, abf = j.abfrage, server = r.server ? String(r.server) : '';
       const kont = j.kontingent || {}, tage = j.tokenAblauf ? Math.ceil((RM.ms(j.tokenAblauf) - jetzt) / 86400000) : null;
       const fehl = KEIN_ZUGANG.includes(abf);
-      const token = abf === 'kein-token' ? t('nicht eingerichtet') : abf === 'token-ungueltig' ? t('ungültig oder abgelaufen') : abf === 'keine-rechte' ? t('ohne Zugriff') : t('hinterlegt, nur lesend');
+      const token = abf === 'ausstehend' ? '–' : abf === 'kein-token' ? t('nicht eingerichtet') : abf === 'token-ungueltig' ? t('ungültig oder abgelaufen') : abf === 'keine-rechte' ? t('ohne Zugriff') : t('hinterlegt');
       const rechte = r.dienst === 'github' ? t('Actions, Metadata, Self-hosted runners – je Read-only')
         : r.dienst === 'gitlab' ? 'read_api' : t('repository, organization – je Lesen');
-      const letzte = abf === 'kein-token' ? t('aus') : abf === 'ok' ? t('{z} · erfolgreich', { z: RM.zeit(j.abgefragt) })
+      const letzte = abf === 'kein-token' ? t('aus') : abf === 'ausstehend' ? t('wird abgefragt') : abf === 'ok' ? t('{z} · erfolgreich', { z: RM.zeit(j.abgefragt) })
         : t('fehlgeschlagen · letzte erfolgreiche {z}', { z: j.abgefragt ? RM.zeit(j.abgefragt) : '–' });
       const kontingent = kont.limit ? t('{a} von {b} frei, Reset {z}', { a: RM.zahl(kont.frei), b: RM.zahl(kont.limit), z: RM.hm(kont.reset) })
         : (abf === 'ok' && r.dienst !== 'github' ? t('vom Server nicht gemeldet') : '–');
@@ -137,9 +137,9 @@ const INFO = (() => {
         [t('Server'), server || '–'],
         [t('Organisation'), r.org || j.org || '–'],
         ['Token', token, fehl ? 'warn' : ''],
-        [t('Rechte'), rechte + (j.runnerGrund ? ` (${j.runnerGrund})` : ''), j.runnerGrund ? 'warn' : ''],
+        [t('Rechte (nötig)'), rechte + (j.runnerGrund ? ` (${j.runnerGrund})` : ''), j.runnerGrund ? 'warn' : ''],
         [t('Ablauf'), tage != null ? t('{d} (in {n} {tage})', { d: RM.datum(j.tokenAblauf), n: tage, tage: RM.mehrzahl(tage, t('Tag'), t('Tagen')) }) : '–', tage != null && tage <= 14 ? 'warn' : ''],
-        [t('Letzte Abfrage'), letzte, abf !== 'ok' && abf !== 'kein-token' ? 'warn' : ''],
+        [t('Letzte Abfrage'), letzte, !['ok', 'kein-token', 'ausstehend'].includes(abf) ? 'warn' : ''],
         [t('Nächste Abfrage'), '', '', 'naechste'],
         [t('API-Kontingent'), kontingent],
         [t('Token-Datei'), tokenDatei(r.id)],
@@ -162,16 +162,16 @@ const INFO = (() => {
   function anleitungen(c, t, z) {
     const dienst = NAMEN[c.dienst] ? c.dienst : 'unbekannt', gh = dienst === 'github';
     const unit = einheit(c.unit);
-    const u = unit || (gh ? "'actions.runner.*'" : "'<unit>.service'");
-    const basis = serverBasis(c.server) || 'https://<server>';
+    const u = unit || (gh ? "'actions.runner.*'" : "'UNIT.service'");
+    const basis = serverBasis(c.server) || 'https://SERVER';
     /* Prüfbefehl für das Token eines Runners (der des Links „Anleitung: Zugangsdaten für …“, sonst der gewählte). */
     const pruefBefehl = (d) => {
-      const art = NAMEN[d.dienst] ? d.dienst : 'unbekannt', datei = tokenDatei(d.id), server = serverBasis(d.server) || 'https://<server>';
-      const org = (re, vorgabe) => (re.test(d.org || '') ? d.org : vorgabe);
-      if (art === 'github') return `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "Authorization: Bearer $(sudo cat ${datei})" \\\n  "https://api.github.com/orgs/${org(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/, 'beispiel-org')}/repos?per_page=1"`;
+      const art = NAMEN[d.dienst] ? d.dienst : 'unbekannt', datei = tokenDatei(d.id), server = serverBasis(d.server) || 'https://SERVER';
+      const org = (re) => (re.test(d.org || '') ? d.org : 'ORGANISATION');  // sichtbarer Platzhalter statt eines erfundenen Namens
+      if (art === 'github') return `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "Authorization: Bearer $(sudo cat ${datei})" \\\n  "https://api.github.com/orgs/${org(/^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/)}/repos?per_page=1"`;
       if (art === 'gitlab') return `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "PRIVATE-TOKEN: $(sudo cat ${datei})" \\\n  "${server}/api/v4/personal_access_tokens/self"`;
       if (art === 'unbekannt') return null;
-      return `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "Authorization: token $(sudo cat ${datei})" \\\n  "${server}/api/v1/orgs/${org(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/, 'beispiel-org')}"`;
+      return `curl -s -o /dev/null -w '%{http_code}\\n' \\\n  -H "Authorization: token $(sudo cat ${datei})" \\\n  "${server}/api/v1/orgs/${org(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/)}"`;
     };
     const zd = z || c, pruefenToken = pruefBefehl(zd);
 
@@ -222,7 +222,7 @@ const INFO = (() => {
     const fehlt = { id: 'runner', titel: t('Kein Runner eingerichtet'), aktiv: !!c.fehlt, cls: 'warn', wann: t('Wenn auf dieser VM kein Runner gefunden wird.'), schritte: [
       [t('GitHub · Registrierungs-Token holen: GitHub › Organisation › Settings › Actions › Runners › „New self-hosted runner“ (1 Stunde gültig).')],
       [t('GitHub-Runner richtet das Skript auf der VM ein – es fragt Organisation, Token und Labels ab:'), `${SKRIPT} runner`],
-      [t('Forgejo-, Gitea- und GitLab-Runner richten Sie nach der Anleitung des Dienstes ein und starten sie als systemd-Dienst.')],
+      [t('Forgejo-, Gitea- und GitLab-Runner werden nach der Anleitung des Dienstes eingerichtet und als systemd-Dienst gestartet.')],
       [t('Der Monitor erkennt den Runner danach von selbst (alle 6 Stunden) oder sofort mit „Neu erkennen“ unter „Runner“.')],
     ] };
 

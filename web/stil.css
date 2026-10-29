@@ -350,7 +350,7 @@ body.dashboard { overflow: hidden; }
 .info-titel { font-size: 20px; line-height: 24px; font-weight: 650; letter-spacing: -.015em; margin: 0; }
 .vm-eyebrow { font-size: 11px; line-height: 13px; color: var(--ink-muted); font-weight: 500; }
 .info-body { flex: 1; min-height: 0; overflow: auto; padding: 0 24px 24px; }
-/* Zwei Spalten im Goldenen Schnitt (Design 0.8.0): links Runner, Verbindungen, Was tun; rechts Updates … */
+/* Info & Hilfe, 890 px: zwei Spalten im Goldenen Schnitt (Design 0.8.0) – links Runner, Verbindungen, Was tun, wenn …; rechts Updates, Darstellung, Über, Fehler/Idee. Darunter „Info › Runner“ (.ir-*) und „Verbindungen“ (.vb-titel). */
 .info-spalten { display: grid; grid-template-columns: minmax(0, 1.618fr) minmax(0, 1fr); gap: 0 32px; align-items: start; }
 .info-spalte { min-width: 0; }
 .ir-kopfzeile { margin-bottom: 10px; }

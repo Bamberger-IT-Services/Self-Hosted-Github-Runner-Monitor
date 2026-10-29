@@ -57,9 +57,12 @@ const RUNNER = (() => {
 
   /* Kurzzustand für Reiter und Liste: art = Farbklasse (laeuft = --brand, ok = --success, fehler = --danger,
      warn = --warning, neutral), wort = Schlüssel des Zustandstexts (der Zustand steht immer auch als Text). */
-  function zustand(r) {
+  function zustand(r, jetzt) {
     // Ohne Unit (faehig.status false) gibt es keinen Dienst: Reiter und Karte zeigen beide „Kein Dienst“ (Review #114)
     const z = r && r.faehig && r.faehig.status === false ? 'fehlt' : r && r.status && r.status.zustand;
+    // Veralteter Stand beim Dienst (#123, alter()): ein Job oder „Bereit“ ist dann nicht mehr belegt – wie die Karte „unbekannt“
+    if (jetzt != null && ['job', 'bereit', 'offline'].includes(z) && r.status && r.status.dienst && r.status.dienst.zustand === 'aktiv'
+      && r.faehig && r.faehig.jobs && alter(r.jobsJeRepository, jetzt).stufe === 'veraltet') return { art: 'neutral', wort: 'unbekannt' };
     return {
       job: { art: 'laeuft', wort: 'job' }, bereit: { art: 'ok', wort: 'bereit' },
       gestoppt: { art: 'fehler', wort: 'gestoppt' }, offline: { art: 'warn', wort: 'offline' },

@@ -276,3 +276,18 @@ test('Alter des letzten guten Stands (#123): frisch, Hinweis, veraltet', () => {
   assert.equal(R.ALT_HINWEIS, 120);
   assert.equal(R.ALT_VERALTET, 600);
 });
+
+test('Zustand für Reiter und „+N“: veralteter Stand wird zu „unbekannt“ wie die Karte (#123)', () => {
+  const jetzt = Date.UTC(2026, 9, 29, 12, 0, 0), sek = jetzt / 1000;
+  const r = (zustand, abfrage, vor, extra = {}) => ({ faehig: { status: true, jobs: true }, status: { zustand, dienst: { zustand: 'aktiv' } }, jobsJeRepository: { abfrage, abgefragt: sek - vor }, ...extra });
+  assert.deepEqual(R.zustand(r('job', 'nicht-erreichbar', 700), jetzt), { art: 'neutral', wort: 'unbekannt' });
+  assert.deepEqual(R.zustand(r('bereit', 'kontingent', 3600), jetzt), { art: 'neutral', wort: 'unbekannt' });
+  assert.deepEqual(R.zustand(r('offline', 'fehler', 700), jetzt), { art: 'neutral', wort: 'unbekannt' });
+  assert.equal(R.zustand(r('job', 'nicht-erreichbar', 150), jetzt).wort, 'job');       // nur Hinweis, noch kein Herabstufen
+  assert.equal(R.zustand(r('job', 'ok', 5), jetzt).wort, 'job');
+  assert.equal(R.zustand(r('job', 'nicht-erreichbar', 700)).wort, 'job');              // ohne Zeitpunkt wie bisher
+  // der Dienst auf der VM und Runner ohne Jobs sind davon unabhängig
+  assert.equal(R.zustand(r('gestoppt', 'nicht-erreichbar', 700), jetzt).wort, 'gestoppt');
+  assert.equal(R.zustand(r('job', 'nicht-erreichbar', 700, { faehig: { status: true, jobs: false } }), jetzt).wort, 'job');
+  assert.equal(R.zustand(r('job', 'nicht-erreichbar', 700, { status: { zustand: 'job', dienst: { zustand: 'gestoppt' } } }), jetzt).wort, 'job');
+});

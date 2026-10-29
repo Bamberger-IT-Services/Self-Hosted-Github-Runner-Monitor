@@ -115,7 +115,7 @@ window.RM_DEMO = (() => {
       version: dienst === 'gitea' ? 'act_runner 0.2.11' : dienst === 'forgejo' ? 'Forgejo Runner 9.1' : 'GitLab Runner 17.5', labels, faehig: FAEHIG_VOLL,
       status: { zustand: offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst: offline ? { zustand: 'offline', seit: START + 86400 } : { zustand: 'online', seit: null } },
       job: null, letzteJobs: [{ repo: 'datenimport', workflow: 'Import', name: 'nachts', ergebnis: 'erfolg', dauer: 128, ende: t - 720 }],
-      jobsJeRepository: { ...w, abfrage: anbieterAbfrage, abgefragt: anbieterAbfrage === 'ok' ? t - (takt % 30) : t - anbieterAlter, naechste: t + 30 - (takt % 30), tokenAblauf: anbieterAbfrage === 'kein-token' ? null : t + 160 * 86400,
+      jobsJeRepository: { ...w, abfrage: anbieterAbfrage, abgefragt: anbieterAbfrage === 'ok' ? t - (takt % 30) : t - anbieterAlter, naechste: t + 30 - (takt % 30), tokenAblauf: null,  // Forgejo, Gitea und GitLab melden kein Ablaufdatum (E-18: nur, was der Dienst liefert)
         kontingent: {}, repos: anbieterAbfrage === 'kein-token' ? [] : REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })) },
       log: { art: 'journal', unit },
     };
