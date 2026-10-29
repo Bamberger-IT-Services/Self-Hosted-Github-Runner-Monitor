@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "29.10.2026 02:53",
+  stand: "29.10.2026 03:21",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -260,6 +260,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "29.10.2026 03:21", text: "Nachprüfung PR #121 (#115) eingearbeitet, rebased auf develop mit #118 (#96): Ergebnis einer Runde zum alten Server wird nach einem Serverwechsel verworfen (auch die Meldung „hängt“), der Runner sofort neu eingeplant; der Monitor zeigt ein Ergebnis mit fremdem Ziel als „ausstehend“; keine Übernahme alter Einträge ohne ziel; Text „Die erste Abfrage beim Dienst läuft.“ ohne Zeitangabe; „Verbindung prüfen“ der Einrichtung wartet bei „ausstehend“ statt „Prüfung fehlgeschlagen“." },
     { datum: "29.10.2026 02:58", text: "Review PR #121 (#115) eingearbeitet, nach Rebase auf develop (#117, #122): letzter guter Stand nur, wenn es einen gab (letzterErfolg) und zum selben Ziel (Server, Organisation, Name; neues Token ohne Altstand) – auch ohne laufenden Job, auch nach Neustart; neu angebunden „ausstehend“ statt „Kein Token“, Karte „Wird abgefragt …“ (E-25); _anbieter_erfolg/_speicher nur für angebundene IDs; GitLab-Frist mit langsamem Server getestet (Frist zur Laufzeit, nicht beim Import); eigene Meldung „Pausiert bei {dienst}“ statt „Offline“. Befunde 3 und 8 als Folge-Issue (Koordinator)." },
     { datum: "29.10.2026 02:50", text: "Review #118 eingearbeitet: auf develop mit #93 umgebaut; „Verbindung prüfen“ für angebundene Forgejo-/Gitea-Runner über den Sammler (anbieter.json), sonst „Server und Organisation fehlen in runner.json“; Hinweis im Block, dass einrichten.sh zugang nur das Token ablegt (Server/Organisation: #120); 401 bei abgelaufenem Code verweist auf einrichten.sh zugang; zu großer Auftrag → 400; Units nur aus Positivliste (Fund oder Unit-Datei); runner-monitor im Log-Pfad ohne Groß/klein; einstufung in pruefe_ergebnis geprüft." },
     { datum: "29.10.2026 02:35", text: "#115 umgesetzt (PR offen): Sammler fragt alle angebundenen Runner ab – je Runner ein eigener Faden (anbieter-<id>), höchstens 4 zugleich, ein_takt wartet nie; je Runner höchstens eine Runde (keine Fadenlecks), Frist je Runde (GitLab-Klient neu 25 s wie Forgejo, Sicherheitsnetz RUNDENFRIST 35 s → „nicht erreichbar“ mit letztem gutem Stand). GitLab im Sammler (ANBINDUNG, ohne Organisation), runner[] mit Job, letzten Jobs und Labels, ehrlich „unbekannt“ statt „bereit“; nicht hashbarer status eines GitLab-Jobs kostet nur diesen Job. Meldungen je Dienst im Dashboard („GitLab nicht erreichbar“, „Forgejo-Token ungültig oder abgelaufen“, de/en). einrichten.sh: veralteter Hinweis „GitLab folgt (#99)“ ersetzt. Tests: tests/test_sammler_anbieter.py (tröpfelnder Server blockiert den anderen Runner nicht, Grenze 4, Rundenfrist, Neustart, GitLab-Meldungen). FAEHIG/EINSTUFUNG nicht angehoben, weil #96 noch nicht in develop ist (E-20/E-23: Folgeschritt nach #96)." },
