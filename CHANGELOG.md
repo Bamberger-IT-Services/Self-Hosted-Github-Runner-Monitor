@@ -6,6 +6,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [0.8.2] – 30.10.2026
 
+### Behoben (vor dem Release)
+- Test „ohne Schreibrecht kein Docker-Aufruf“ läuft als root nicht mehr (die Forgejo-CI läuft als root, dort ist jedes Verzeichnis schreibbar).
+
 ### Neu
 - Update-Quelle wählbar (#138, ADR-0007): Neben GitHub (bleibt Vorgabe, für bestehende VMs ändert sich
   nichts) kommen Updates auf Wunsch von einem Forgejo-Server – `sudo einrichten.sh quelle` bzw.
