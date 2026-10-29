@@ -18,9 +18,20 @@ class JournalTest(unittest.TestCase):
         self.assertEqual((e.name, e.ergebnis), ("build (node 20)", "abgebrochen"))
 
     def test_dienst_meldungen_von_systemd(self):
-        e = runner.deute_journalzeile(self.eintrag("Stopped GitHub Actions Runner.", _COMM="systemd"))
+        e = runner.deute_journalzeile(self.eintrag("Stopped GitHub Actions Runner.", _COMM="systemd", _PID="1"))
         self.assertEqual(e.art, "dienst-gestoppt")
+        e = runner.deute_journalzeile(self.eintrag("Started GitHub Actions Runner.", _COMM="systemd", _PID="1"))
+        self.assertEqual(e.art, "dienst-gestartet")
         self.assertIsNone(runner.deute_journalzeile(self.eintrag("irgendwas anderes")))
+
+    def test_gefaelschte_kennung_taeuscht_keinen_dienst_vor(self):
+        # SYSLOG_IDENTIFIER setzt der Absender (ein Job), _COMM/_PID setzt journald (#119)
+        for extra in ({"SYSLOG_IDENTIFIER": "systemd"},
+                      {"SYSLOG_IDENTIFIER": "systemd", "_COMM": "bash", "_PID": "4711"},
+                      {"SYSLOG_IDENTIFIER": "systemd", "_COMM": "systemd", "_PID": "2187"},
+                      {"_COMM": "systemd"}):
+            for text in ("Stopped GitHub Actions Runner.", "Stopping GitHub Actions Runner.", "Started GitHub Actions Runner."):
+                self.assertIsNone(runner.deute_journalzeile(self.eintrag(text, **extra)), (text, extra))
 
     def test_byte_liste_wird_gelesen(self):
         e = runner.deute_journalzeile(self.eintrag(list(b"Running job: lint")))

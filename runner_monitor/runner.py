@@ -176,7 +176,9 @@ def deute_journalzeile(eintrag: dict) -> JobEreignis | None:
         return JobEreignis(zeit, "start", t.group("name"))
     if (t := LAUF_ENDE.search(nachricht)):
         return JobEreignis(zeit, "ende", t.group("name"), ERGEBNIS.get(t.group("ergebnis").lower(), "abgebrochen"))
-    if eintrag.get("_COMM") == "systemd" or eintrag.get("SYSLOG_IDENTIFIER") == "systemd":
+    # Nur echte Meldungen von systemd: _COMM und _PID setzt journald selbst, SYSLOG_IDENTIFIER dagegen der
+    # Absender – ein Job könnte sonst „Dienst gestoppt“ vortäuschen (#119, S-JOURNAL-01).
+    if eintrag.get("_COMM") == "systemd" and str(eintrag.get("_PID", "")) == "1":
         if nachricht.startswith("Started"):
             return JobEreignis(zeit, "dienst-gestartet")
         if nachricht.startswith(("Stopped", "Stopping")):
