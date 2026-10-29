@@ -24,7 +24,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from . import VERSION, anbieter, erkennung, journal, quelle, runner, system
+from . import VERSION, anbieter, aufraeumen, erkennung, journal, quelle, runner, system
 from .anbieter import github as gh_adapter
 from .konfig import Konfig
 
@@ -578,6 +578,11 @@ class Zustand:
             weitere = daten.get("runner") if isinstance(daten, dict) else None
             with self._sperre:
                 self.bereiche["_anbieter"] = weitere if isinstance(weitere, dict) else {}
+        pfad = self.k.lauf_verz / "aufraeumen.json"  # Aufräumen der Platte eingerichtet? (#144, vom root-Sammler)
+        if self._geaendert(pfad):
+            stand = aufraeumen.pruefe_stand(lies_json(pfad, None))
+            if stand is not None:
+                self._setze_wenn_neu("aufraeumen", stand)
         pfad = self.k.lauf_verz / "docker.json"
         if self._geaendert(pfad):
             self._setze("container", (lies_json(pfad, {}) or {}).get("container", []))

@@ -1,0 +1,22 @@
+# Platte der Runner-VM aufräumen, wenn auf „/“ weniger als 25 GB frei sind (#144).
+# Gestartet von runner-aufraeumen.timer (alle 15 Minuten); eingerichtet von
+# „sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen“. Läuft ein Job, räumt das Skript nur schonend auf.
+[Unit]
+Description=Platte der Runner-VM aufräumen (unter 25 GB frei)
+ConditionPathExists=/usr/local/bin/runner-aufraeumen
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/runner-aufraeumen 25
+Nice=10
+IOSchedulingClass=idle
+# hängt Docker, endet der Lauf; der nächste Takt versucht es erneut
+TimeoutStartSec=1h
+# Härtung: schreibt nur nach /var/lib/runner-aufraeumen, /opt/actions-runner/_diag und ins Journal; Docker über den Socket
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+LockPersonality=yes

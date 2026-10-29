@@ -162,7 +162,14 @@ class LeereVmTest(Basis):
         self.vm.unit("runner-monitor.service", "[Service]\nExecStart=/usr/bin/python3 -m runner_monitor\n")
         self.vm.unit("runner-monitor-sammler.service", "[Service]\nExecStart=/usr/bin/python3 -m runner_monitor.sammler\n")
         self.vm.unit("old-build.service", "[Service]\nExecStart=/usr/local/bin/build\n", aktiviert=False)  # aus und nicht aktiviert
-        self.assertEqual(self.erkenne(aktiv={"old-build.service": False}), {})
+        # Aufräumen der Platte (#144): läuft alle 15 Minuten kurz als Dienst – kein Runner
+        self.vm.unit("runner-aufraeumen.service", "[Service]\nType=oneshot\nExecStart=/usr/local/bin/runner-aufraeumen 25\n",
+                     aktiviert=False)
+        # ebenso der einmalige Neustart des GitHub-Runners nach dem Eintragen des Hooks (systemd-run, transient)
+        self.vm.unit("runner-neustart.service", "[Service]\nExecStart=/bin/sh -c 'while pgrep -f Runner.Worker; do sleep 20; done'\n",
+                     aktiviert=False)
+        self.assertEqual(self.erkenne(aktiv={"old-build.service": False, "runner-aufraeumen.service": True,
+                                             "runner-neustart.service": True}), {})
 
 
 class GitHubTest(Basis):

@@ -1,0 +1,12 @@
+# Alle 15 Minuten prüfen, ob auf „/“ weniger als 25 GB frei sind (#144) – für Runner ohne Hook vor
+# jedem Job (Forgejo, Gitea, GitLab …) und als Netz für lange Jobs. Über 25 GB frei endet der Lauf sofort.
+[Unit]
+Description=Platte der Runner-VM alle 15 Minuten prüfen
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=60
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

@@ -12,6 +12,15 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   `MONITOR_UPDATE_HTTP_ERLAUBT=1`. Die Herkunft prüft der Hilfsdienst auch dann per GitHub-Attestierung
   gegen das GitHub-Repository. Info › Updates zeigt die Zeile „Quelle“, `einrichten.sh status` ebenso.
   Das Update auf diese Version selbst kommt noch von GitHub (bzw. per Paket); danach `einrichten.sh quelle`.
+- Aufräumen der Platte für jeden Runner (#144): `sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen` richtet
+  `/usr/local/bin/runner-aufraeumen`, den nächtlichen Lauf mit `fstrim` und neu `runner-aufraeumen.timer` (alle 15 Minuten
+  unter 25 GB frei) ein – auch für Forgejo-, Gitea- und GitLab-Runner, die keinen Hook vor Jobs kennen; beim GitHub-Runner
+  zusätzlich vor jedem Job wie bisher. Idempotent; läuft gerade ein Job, räumt das Skript schonend auf: unbenutzte Images erst, wenn sie seit mindestens
+  30 Minuten auf der VM liegen und nicht gerade gebaut, geladen oder gezogen wurden, Container und Build-Cache erst nach
+  24 Stunden, nur anonyme Volumes (E-31).
+  `einrichten.sh runner` nutzt denselben Ablauf, die Erstinstallation bietet ihn an.
+- Der Monitor meldet, ob das Aufräumen eingerichtet ist (neuer Bereich `aufraeumen` in `/events` und `/api/zustand`,
+  additiv; der Sammler prüft als root ohne Symlinks zu folgen, S-AUFR-01).
 
 ### Sicherheit
 - Update-Hilfsdienst: Anmeldeseiten (HTML, Weiterleitung auf `/user/login`, 401/403) enden als klarer
@@ -35,6 +44,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 - Info › Runner: Server und Sicherheitsgrad nutzen den Server aus `runner.json` (die Erkennung prüft ihn
   ohne Zugangsdaten); „wahrscheinlich“ nennt den Grund der Erkennung statt pauschal „Server nicht
   erreichbar“ (#145).
+- „Platte knapp“ empfahl `sudo runner-aufraeumen`, auch wo es den Befehl nicht gab („command not found“, #144).
 
 ### Geändert
 - Doku-Links in der Einrichtung (Anleitung zu Forgejo/Gitea, GitLab, Anbieter ergänzen) und im
@@ -45,6 +55,10 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   prüft Dateien und Anker gegen die Überschriften in `docs/`.
 - CI-Takt (E-30): Die volle Prüfung läuft nur noch vor dem Release (PRs nach `main`, Push auf `main`, von Hand);
   PRs nach `develop` prüfen nur auf Geheimnisse (gitleaks), die Tests laufen vor dem Merge lokal.
+- Info › Was tun, wenn … › „Platte knapp“ zeigt `sudo /usr/local/bin/runner-aufraeumen` mit vollem Pfad und nur, wenn
+  es das Skript auf der VM gibt – sonst den Befehl zum Einrichten. Die Meldung „Platte knapp“ sagt, was wirklich aufräumt.
+- Der Hook vor dem Job ruft `runner-aufraeumen --vor-dem-job 25` auf; ein Neustart des GitHub-Runners nach dem Eintragen
+  geht über `systemctl try-restart` statt `svc.sh` aus dem Runner-Ordner. Hook und `.env` schreibt der Runner-Benutzer.
 
 ## [0.8.1] – 29.10.2026
 

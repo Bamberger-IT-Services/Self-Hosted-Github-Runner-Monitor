@@ -103,8 +103,10 @@ während eines Jobs ist normal – der Runner lädt dann Docker-Images und Paket
 Die sechs Prozesse mit der meisten CPU (PID, Benutzer, CPU %, RAM %, Befehl in Kurzform; die
 volle Befehlszeile steht im Tooltip). Darunter jedes Laufwerk mit freiem Platz (ein Netzlaufwerk, das
 nicht antwortet, fehlt, bis es wieder erreichbar ist). Für „/“ zeigt
-eine Marke die **Aufräumschwelle** (25 GB frei): Darunter räumt der Runner vor jedem Job auf, der
-Teil über der Schwelle wird orange.
+eine Marke die **Aufräumschwelle** (25 GB frei): Darunter räumt die VM auf – der GitHub-Runner vor jedem
+Job, alle anderen Runner alle 15 Minuten –, sofern das Aufräumen eingerichtet ist
+(`sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen`; die Meldung „Platte knapp“ sagt, ob). Der Teil über
+der Schwelle wird orange.
 
 ![Platte knapp](bilder/dashboard-platte-knapp.png)
 

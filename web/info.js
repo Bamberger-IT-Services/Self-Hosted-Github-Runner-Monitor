@@ -8,6 +8,7 @@
 
 const INFO = (() => {
   const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
+  const AUFRAEUMEN = 'sudo /usr/local/bin/runner-aufraeumen';  // voller Pfad: /usr/local/bin fehlt im PATH von sudo mancher VMs
   const NAMEN = { github: 'GitHub', forgejo: 'Forgejo', gitea: 'Gitea', gitlab: 'GitLab' };
   const ID = /^[a-z0-9_]([a-z0-9._-]{0,62}[a-z0-9_])?$/;           // wie einrichten.sh (Runner-ID) und erkennung.als_id
   const EINHEIT = /^[A-Za-z0-9:_.@\\-]{1,200}$/;                  // wie erkennung.pruefe_unit (ohne Sonderfälle)
@@ -159,8 +160,18 @@ const INFO = (() => {
 
   /* ------------------------------------------------------------ Was tun, wenn … */
 
+  /* Stand des Aufräumens der Platte (#144) aus dem Bereich „aufraeumen“ des Sammlers: 'unbekannt' (noch keine
+     Prüfung, älterer Sammler), 'fehlt' (kein Skript), 'teilweise' (Skript da, aber kein nächtlicher Lauf oder
+     weder Timer noch Hook vor dem Job) oder 'eingerichtet'. */
+  function aufraeumenLage(a) {
+    if (!a || typeof a !== 'object') return 'unbekannt';
+    if (a.skript !== true) return 'fehlt';
+    return a.nacht === true && (a.timer === true || a.vorDemJob === true) ? 'eingerichtet' : 'teilweise';
+  }
+
   /* Anleitungen für den gewählten Runner. c: dienst, id, unit, server, org, grund (Stopp-Ursache) und die Flags der
-     Lage (gestoppt, offline, fehlt, abfrage, tokenAblauf, knapp, getrennt, updNeu, updFehler). z (freiwillig): ein
+     Lage (gestoppt, offline, fehlt, abfrage, tokenAblauf, knapp, getrennt, updNeu, updFehler) sowie aufraeumen (Bereich
+     des Sammlers, #144). z (freiwillig): ein
      anderer Runner nur für „Zugangsdaten einrichten oder erneuern“ – der Link bei „Zugangsdaten ändern“. */
   function anleitungen(c, t, z) {
     const dienst = NAMEN[c.dienst] ? c.dienst : 'unbekannt', gh = dienst === 'github';
@@ -259,8 +270,22 @@ const INFO = (() => {
         [t('Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:'), `journalctl -u ${u} --since today > ~/runner-journal.txt`],
       ] };
 
+    /* Den Befehl runner-aufraeumen nur zeigen, wenn es ihn auf der VM gibt (#144) – sonst, wie man ihn einrichtet. */
+    const ar = c.aufraeumen || {}, lage = aufraeumenLage(c.aufraeumen), einrichten = `${SKRIPT} aufraeumen`;
+    const aufraeumen = lage === 'eingerichtet' ? [
+      [ar.vorDemJob === true ? t('Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:')
+        : t('Die VM räumt dann alle 15 Minuten selbst auf, während eines Jobs nur schonend. Sofort aufräumen:'), AUFRAEUMEN],
+    ] : lage === 'teilweise' ? [
+      [t('Das automatische Aufräumen ist nur teilweise eingerichtet. Vervollständigen (jede Nacht gründlich, alle 15 Minuten unter 25 GB frei; ein laufender Job wird nicht gestört):'), einrichten],
+      [t('Sofort aufräumen:'), AUFRAEUMEN],
+    ] : lage === 'fehlt' ? [
+      [t('Auf dieser VM ist kein automatisches Aufräumen eingerichtet (der Befehl runner-aufraeumen fehlt). Einrichten – jede Nacht gründlich, alle 15 Minuten unter 25 GB frei, beim GitHub-Runner auch vor jedem Job; ein laufender Job wird nicht gestört:'), einrichten],
+      [t('Danach sofort aufräumen:'), AUFRAEUMEN],
+    ] : [
+      [t('Ob das automatische Aufräumen eingerichtet ist, meldet der Monitor noch nicht. Einrichten oder auf den neuesten Stand bringen (schadet nicht, wenn es schon eingerichtet ist):'), einrichten],
+    ];
     const platte = { id: 'platte', titel: t('Platte knapp'), aktiv: !!c.knapp, wann: t('Wenn auf „/“ weniger als 25 GB frei sind.'), schritte: [
-      [t('Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:'), 'sudo runner-aufraeumen'],
+      ...aufraeumen,
       [t('Wer belegt den Platz?'), 'docker system df'],
       [t('Freien Platz an Proxmox zurückgeben:'), 'sudo fstrim -av'],
       [t('Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.')],
@@ -292,8 +317,8 @@ const INFO = (() => {
     return { name, text: (adresse ? `${name} · ${adresse}` : name) + (http ? ` · ${t('unverschlüsselt (http)')}` : ''), http, releases };
   }
 
-  return { SKRIPT, NAMEN, dienstName, befehlZugang, tokenDatei, serverBasis, ohneSchema, einheit, einstufung, fundeAusRunner, neueFunde,
-    hatZugang, formEintrag, geaendert, formStart, erkennenText, runnerZeilen, verbindungen, naechste, anleitungen, updateQuelle };
+  return { SKRIPT, AUFRAEUMEN, NAMEN, dienstName, befehlZugang, tokenDatei, serverBasis, ohneSchema, einheit, einstufung, fundeAusRunner, neueFunde,
+    hatZugang, formEintrag, geaendert, formStart, erkennenText, runnerZeilen, verbindungen, naechste, aufraeumenLage, anleitungen, updateQuelle };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = INFO;

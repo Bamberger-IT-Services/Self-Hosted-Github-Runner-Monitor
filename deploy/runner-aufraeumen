@@ -1,0 +1,139 @@
+#!/bin/sh
+# shellcheck disable=SC1111  # „…“ in den Texten sind gewollte deutsche Anführungszeichen
+# Platte der Runner-VM aufräumen (#144). Liegt als /usr/local/bin/runner-aufraeumen auf der VM;
+# eingerichtet von „sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen“
+# (deploy/aufraeumen-einrichten.sh) – für jeden Runner, nicht nur den GitHub-Runner.
+#
+#   runner-aufraeumen                     gründlich (jede Nacht, von Hand)
+#   runner-aufraeumen 25                  nur, wenn auf „/“ weniger als 25 GB frei sind (Timer alle 15 Min.)
+#   runner-aufraeumen --vor-dem-job 25    dasselbe als Hook des GitHub-Runners vor jedem Job: der Job,
+#                                         der den Hook aufruft, zählt nicht als laufender Job
+#
+# Ein laufender Job wird nie gestört:
+# - Laufende Container, ihre Images und Volumes entfernt Docker ohnehin nie.
+# - Läuft gerade ein Job (GitHub: Runner.Worker; Forgejo/Gitea: Container FORGEJO-/GITEA-ACTIONS-TASK-…;
+#   GitLab: Container runner-…-project-…-concurrent-…), räumt das Skript nur SCHONEND auf: gestoppte
+#   Container und Build-Cache erst nach 24 Stunden, nur anonyme Volumes. Images nur, wenn kein Container
+#   (auch kein gestoppter) sie nutzt und sie seit mindestens 30 Minuten auf der VM liegen und in dieser Zeit
+#   weder gebaut, geladen, gezogen noch neu benannt wurden (E-31).
+# - Läuft kein Job: GRÜNDLICH – gestoppte Container, unbenutzte Images älter als 24 Stunden,
+#   unbenutzte Volumes, Build-Cache über 20 GB.
+# Zwei Aufrufe gleichzeitig (Timer, Nacht, Hook) gibt es nicht: der zweite endet sofort.
+GRENZE=""
+EIGENE=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --vor-dem-job) EIGENE=1 ;;
+    -h|--help) awk 'NR > 2 && !/^#/ { exit } NR > 2 { sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
+    *)
+      case "$1" in
+        ''|*[!0-9]*) echo "runner-aufraeumen: unbekannte Angabe „$1“ (Hilfe: runner-aufraeumen --help)" >&2; exit 2 ;;
+      esac
+      GRENZE="$1" ;;
+  esac
+  shift
+done
+
+SCHUTZ=1800   # 30 Minuten: so lange bleibt ein neues Image auch während eines Jobs stehen (E-31)
+# Seit wann jedes Image auf der VM liegt. AUFRAEUMEN_WURZEL nur für Tests (tests/test_aufraeumen.py).
+BEKANNT="${AUFRAEUMEN_WURZEL:-}/var/lib/runner-aufraeumen/images"
+JETZT="$(date +%s)"
+ID_MUSTER='^sha256:[0-9a-f]+$'
+
+# Docker kennt bei einem Image nur, wann es gebaut wurde (darauf bezieht sich auch „image prune --filter until“),
+# nicht, wann es auf diese VM kam: ein gerade gezogenes, aber vor Wochen gebautes Image sähe alt aus. Deshalb
+# merkt sich jeder Lauf als root (Timer alle 15 Minuten, auch wenn genug frei ist), seit wann es jedes Image
+# gibt. Der Hook vor dem Job läuft als Runner-Benutzer, darf die Liste nicht schreiben und liest sie nur.
+merke_images() {
+  verz="$(dirname "$BEKANNT")"
+  command -v docker >/dev/null 2>&1 || return 0
+  mkdir -p "$verz" 2>/dev/null; [ -d "$verz" ] && [ -w "$verz" ] || return 0
+  ids="$(docker image ls -q --no-trunc 2>/dev/null)" || return 0   # Docker nicht erreichbar: Liste bleibt
+  tmp="$(mktemp "$verz/.images.XXXXXX" 2>/dev/null)" || return 0
+  if { cat "$BEKANNT" 2>/dev/null; echo --; printf '%s\n' "$ids"; } | awk -v jetzt="$JETZT" -v muster="$ID_MUSTER" '
+      $0 == "--" { neu = 1; next }
+      !neu { if ($1 ~ muster && $2 ~ /^[0-9]+$/) seit[$1] = $2; next }
+      $1 ~ muster && !($1 in da) { da[$1] = 1; print $1, ($1 in seit ? seit[$1] : jetzt) }' > "$tmp" \
+    && chmod 644 "$tmp" && mv -f "$tmp" "$BEKANNT"; then
+    return 0
+  fi
+  rm -f "$tmp"
+}
+
+# Schonend während eines Jobs (E-31): nur Images, die seit mindestens $SCHUTZ Sekunden bekannt sind, die kein
+# Container nutzt (auch kein gestoppter) und die in dieser Zeit nicht gebaut, geladen, gezogen oder neu benannt
+# wurden (Metadata.LastTagTime, Docker-Ereignisse). Ohne Liste oder ohne Antwort von Docker: kein Image.
+images_schonend() {
+  [ -r "$BEKANNT" ] || return 0
+  seit=$((JETZT - SCHUTZ))
+  alt="$(awk -v g="$seit" -v muster="$ID_MUSTER" '$1 ~ muster && $2 ~ /^[0-9]+$/ && $2 + 0 <= g + 0 { print $1 }' "$BEKANNT")"
+  [ -n "$alt" ] || return 0
+  container="$(docker ps -aq --no-trunc 2>/dev/null)" || return 0
+  benutzt=""
+  if [ -n "$container" ]; then
+    # shellcheck disable=SC2086  # eine ID je Wort
+    benutzt="$(docker inspect --format '{{.Image}}' $container 2>/dev/null)" || return 0
+  fi
+  # shellcheck disable=SC2086
+  frisch="$(docker image inspect --format '{{.Id}} {{.Metadata.LastTagTime.Unix}}' $alt 2>/dev/null \
+    | awk -v g="$seit" '$2 ~ /^-?[0-9]+$/ && $2 + 0 > g + 0 { print $1 }')"
+  # Ereignisse hält Docker nur im Speicher (die letzten 256) – eine Ergänzung, keine Garantie.
+  namen="$(docker events --since "$seit" --until "$JETZT" --filter type=image --filter event=pull --filter event=tag \
+    --filter event=load --filter event=import --format '{{.Actor.ID}}' 2>/dev/null | sort -u)"
+  if [ -n "$namen" ]; then
+    # shellcheck disable=SC2086
+    frisch="$frisch $(docker image inspect --format '{{.Id}}' $namen 2>/dev/null)"
+  fi
+  for id in $alt; do
+    case " $benutzt $frisch " in *"$id"*) continue ;; esac
+    namen="$(docker image inspect --format '{{range .RepoTags}}{{.}} {{end}}' "$id" 2>/dev/null)" || continue
+    # Ohne -f: nutzt inzwischen doch ein Container das Image, lehnt Docker das Löschen ab.
+    # shellcheck disable=SC2086  # Namen enthalten keine Leerzeichen
+    set -- $namen
+    [ $# -eq 0 ] || docker rmi "$@" >/dev/null 2>&1 || true
+    docker rmi "$id" >/dev/null 2>&1 || true
+  done
+}
+
+merke_images
+frei() { df --output=avail -BG / 2>/dev/null | tail -n 1 | tr -dc 0-9; }
+FREI="$(frei)"; FREI="${FREI:-0}"
+if [ -n "$GRENZE" ] && [ "$FREI" -ge "$GRENZE" ]; then exit 0; fi
+
+# Nur ein Lauf zugleich – gesperrt wird dieses Skript selbst (nur lesend geöffnet, keine Datei in /tmp)
+if command -v flock >/dev/null 2>&1; then
+  exec 9<"$0"
+  flock -n 9 || { echo "runner-aufraeumen: läuft schon – übersprungen"; exit 0; }
+fi
+
+# Läuft gerade ein Job? $EIGENE Runner.Worker gehören dem Aufrufer (Hook vor dem Job).
+job_laeuft() {
+  n="$(pgrep -fc 'Runner\.Worker' 2>/dev/null || true)"
+  [ "${n:-0}" -gt "$EIGENE" ] && return 0
+  command -v docker >/dev/null 2>&1 || return 1
+  docker ps --format '{{.Names}}' 2>/dev/null \
+    | grep -Eq '^(FORGEJO|GITEA)-ACTIONS-TASK-|^runner-[A-Za-z0-9_-]+-project-[0-9]+-concurrent-[0-9]+'
+}
+
+if job_laeuft; then
+  ART=schonend
+  echo "runner-aufraeumen: ${FREI} GB frei – ein Job läuft, räume schonend auf"
+  docker container prune -f --filter "until=24h" >/dev/null 2>&1 || true
+  images_schonend
+  # nur anonyme Volumes; ein Docker vor 23 kennt den Filter nicht und entfernt dann nichts
+  docker volume prune -f --filter "all=false" >/dev/null 2>&1 || true
+  docker builder prune -af --filter "until=24h" --max-used-space 20gb >/dev/null 2>&1 \
+    || docker builder prune -af --filter "until=24h" --keep-storage 20GB >/dev/null 2>&1 || true
+else
+  ART=gruendlich
+  echo "runner-aufraeumen: ${FREI} GB frei – räume auf"
+  docker container prune -f >/dev/null 2>&1 || true
+  docker image prune -af --filter "until=24h" >/dev/null 2>&1 || true
+  # Docker vor 23 kennt -a nicht; dort entfernt „volume prune“ ohnehin alle unbenutzten Volumes
+  docker volume prune -af >/dev/null 2>&1 || docker volume prune -f >/dev/null 2>&1 || true
+  docker builder prune -af --max-used-space 20gb >/dev/null 2>&1 \
+    || docker builder prune -af --keep-storage 20GB >/dev/null 2>&1 || true
+fi
+find /opt/actions-runner/_diag -name '*.log' -mtime +7 -delete 2>/dev/null || true
+journalctl --vacuum-size=500M >/dev/null 2>&1 || true
+echo "runner-aufraeumen: jetzt $(frei) GB frei (${ART})"

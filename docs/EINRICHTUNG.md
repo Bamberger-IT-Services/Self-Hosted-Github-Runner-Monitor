@@ -330,6 +330,7 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `sudo ./einrichten.sh token` | GitHub-Token eintragen oder erneuern |
 | `sudo ./einrichten.sh zugang <runner>` | Zugangsdaten eines Runners eintragen oder erneuern (`<runner>` = ID aus der Erkennung; ohne Angabe: Liste). Schreibt `/etc/runner-monitor/zugang/<runner>.token`, beim GitHub-Runner auch `github-token`; bei Forgejo, Gitea und GitLab auch Server und Organisation in `runner.json`, danach Verbindungsprüfung |
 | `sudo ./einrichten.sh runner` | GitHub-Runner einrichten |
+| `sudo ./einrichten.sh aufraeumen` | Aufräumen der Platte einrichten oder auf den Stand bringen – für jeden Runner (GitHub, Forgejo, Gitea, GitLab): `/usr/local/bin/runner-aufraeumen`, jede Nacht gründlich mit `fstrim`, alle 15 Minuten unter 25 GB frei (`runner-aufraeumen.timer`), beim GitHub-Runner auch vor jedem Job. Idempotent, stört keinen laufenden Job ([RUNNER.md](RUNNER.md), Abschnitt 6a) |
 | `sudo ./einrichten.sh aktualisieren` | neueste Version installieren ([UPDATE.md](UPDATE.md)) |
 | `sudo ./einrichten.sh quelle` | Update-Quelle wählen: GitHub (Vorgabe) oder Forgejo ([UPDATE.md](UPDATE.md#quelle-github-oder-forgejo)) |
 | `sudo ./einrichten.sh zurueck` | zur vorherigen Version |
