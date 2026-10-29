@@ -13,7 +13,7 @@ on:
   pull_request:
     branches: [develop, main]
   push:
-    branches: [main]
+    branches: [develop, main]
   workflow_dispatch:
 
 concurrency:
@@ -22,8 +22,9 @@ concurrency:
 
 jobs:
   pruefen:
-    # PRs nach develop: nur gitleaks (E-30); voll bei PRs nach main, Push auf main, von Hand
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    # Nur vor dem Release (E-30): PR nach main, Push auf main, von Hand. PRs nach develop und Push auf
+    # develop bekommen nur „geheimnisse“ (gitleaks läuft so auch bei direkten Pushes auf develop).
+    if: github.base_ref == 'main' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     strategy:
       matrix:
