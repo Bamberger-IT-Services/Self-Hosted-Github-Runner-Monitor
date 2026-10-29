@@ -225,8 +225,9 @@ Monitors in deren Team „Owners“ aufnehmen; `read:admin` nur, wenn beides nic
 gebraucht wird.
 
 Die Runner-Liste der Organisation zeigt Forgejo und Gitea nur ihren **Besitzern**. Gehört das Konto
-des Tokens nicht zu den Besitzern, bleibt „beim Dienst“ unbekannt, und bei Forgejo lassen sich
-Jobs keinem Runner zuordnen (Jobs je Repository gibt es trotzdem). Ein eigenes Konto nur für den
+des Tokens nicht zu den Besitzern, zeigt die Karte „Dienst aktiv“ mit „Forgejo: nicht sichtbar“;
+Jobs ordnet der Monitor dann nur über die UUID aus der `.runner`-Datei zu – fehlt sie, lassen sich
+Jobs bei Forgejo keinem Runner zuordnen (Jobs je Repository gibt es trotzdem). Ein eigenes Konto nur für den
 Monitor im Team „Owners“ ist die sauberste Lösung. Forgejo und Gitea melden einen Ablauf des Tokens
 nicht über die API; der Monitor kann deshalb nicht vorher warnen, sondern meldet erst „Token ungültig“.
 
