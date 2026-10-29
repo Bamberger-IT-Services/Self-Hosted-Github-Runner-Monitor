@@ -32,6 +32,18 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 - CI auf Forgejo (#133): Der Test „Live-Strom endet bei Überlauf“ sendete feste 2100 Nachrichten; auf einem
   langsamen Runner las der Server schnell genug mit, die Schlange lief nie über, und der Test lief in eine
   Zeitüberschreitung. Er sendet jetzt, bis die Schlange überläuft. Das Programm ist unverändert.
+- Forgejo/Gitea: Runner, die auf **Instanz-Ebene** registriert sind oder beim Server anders heißen als
+  ihre Unit, werden gefunden (#145). Zugeordnet wird über UUID und Name aus der `.runner`-Datei (die
+  Erkennung liest sie jetzt mit, auch bei `WorkingDirectory=~`), gesucht in der Liste der Organisation,
+  – wenn das Token es darf (`read:admin`, freiwillig) – in `/admin/actions/runners` und in den Listen der
+  Repositories; 403/404 dort ist kein Fehler. Laufende Jobs und „Letzte Jobs“ werden über die UUID auch
+  ohne Runner-Liste zugeordnet.
+- Runner-Status: Ist die Abfrage erfolgreich und aktuell und fehlt nur der Runner in den lesbaren Listen,
+  zeigt die Karte „Dienst aktiv“ bzw. „Job läuft“ mit „Forgejo: nicht sichtbar“ statt „Zustand
+  unbekannt“ (#145).
+- Info › Runner: Server und Sicherheitsgrad nutzen den Server aus `runner.json` (die Erkennung prüft ihn
+  ohne Zugangsdaten); „wahrscheinlich“ nennt den Grund der Erkennung statt pauschal „Server nicht
+  erreichbar“ (#145).
 - „Platte knapp“ empfahl `sudo runner-aufraeumen`, auch wo es den Befehl nicht gab („command not found“, #144).
 
 ### Geändert

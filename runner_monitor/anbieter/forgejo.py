@@ -7,7 +7,12 @@ sich deshalb nach der **Form der Antwort**, nicht nach dem Namen des Dienstes (d
 Forgejo und Gitea nur unterscheiden, wenn der Server ohne Anmeldung antwortet):
 
 * Runner: Forgejo ``[{name, uuid, status: offline|idle|active, labels: ["…"]}]``,
-  Gitea ``{runners: [{name, status: online|offline, busy, labels: [{name}]}]}``.
+  Gitea ``{runners: [{name, status: online|offline, busy, labels: [{name}]}]}``. Gesucht wird in der Liste
+  der Organisation bzw. des Benutzers (mit ``visible=true`` auch globale Runner, braucht Besitzerrechte),
+  sonst – höchstens alle 10 Minuten – in ``/admin/actions/runners`` (nur mit ``read:admin`` eines
+  Administrators; 403/404 = „darf nicht“, dann erst nach einer Stunde wieder) und in den Listen der
+  Repositories (#145). Zugeordnet wird über UUID bzw. Name aus der ``.runner``-Datei (Fund der Erkennung),
+  sonst über den Namen aus der Konfiguration bzw. der Unit – nie über die Monitor-ID allein.
 * Läufe: ``/repos/{o}/{r}/actions/runs`` – Forgejo ``status: running|waiting|blocked|success|…``,
   Gitea wie GitHub (``in_progress``, ``queued`` …).
 * Jobs eines Laufs: Forgejo eine Liste ohne Runner und ohne Schritte – welcher Runner den Job hat,
@@ -49,6 +54,10 @@ MAX_LOGKOPF = 4096            # vom Job-Log nur der Anfang (wer hat den Job?)
 SEITE = 50                    # Forgejo und Gitea liefern höchstens 50 Einträge je Seite (Vorgabe)
 MAX_SEITEN = 20               # höchstens 1000 Repositories bzw. Runner
 MAX_LETZTE = 5
+SUCHE_TAKT = 600              # Runner nicht in der eigenen Liste: Admin- und Repository-Listen höchstens alle 10 Min.
+ADMIN_ERNEUT = 3600           # /admin/actions/runners nach 403/404 erst nach einer Stunde wieder versuchen
+MAX_REPO_SUCHE = 10           # so viele Repositories (zuletzt geändert zuerst) je Suche
+SUCHE_MIN_REST = 12.0         # die erweiterte Suche nur, wenn von der Runde noch so viele Sekunden übrig sind
 LAEUFT = {"running", "in_progress"}
 WARTET = {"waiting", "queued", "pending", "requested", "blocked"}
 ERLEDIGT = {"success", "failure", "cancelled", "canceled", "skipped", "completed"}
@@ -107,6 +116,10 @@ class Klient:
             oeffner = (urllib.request.build_opener(_OhneWeiterleitung, urllib.request.ProxyHandler({}))
                        if adresse.startswith("http://") else urllib.request.build_opener(_OhneWeiterleitung))
         self._oeffner = oeffner
+
+    def rest(self) -> float:
+        """Sekunden, die von der Runde noch übrig sind."""
+        return self._ende - time.monotonic()
 
     def hole(self, pfad: str, parameter: dict | None = None, *, text: bool = False) -> Antwort:
         """Eine GET-Anfrage mit **harter Frist**: Sie läuft in einem eigenen Daemon-Faden; ist er nach
@@ -306,24 +319,123 @@ def wer_aus_log(kopf: str) -> str | None:
     return treffer.group("wer") if treffer else None
 
 
-def runner_beim_dienst(klient: Klient, org: str, besitzer: str, name: str) -> tuple[dict, dict | None]:
-    """Online-Status (optional, braucht Besitzerrechte an der Organisation). ``(Ergebnis, Rohdaten)``."""
-    pfad = f"/orgs/{q(org)}/actions/runners" if besitzer == "org" else "/user/actions/runners"
-    gefunden: dict | None = None
-    try:
-        for seite in range(1, MAX_SEITEN + 1):
-            daten = klient.hole(pfad, {"visible": "true", "page": seite, "limit": SEITE}).daten
-            liste = liste_aus(daten, "runners")
-            gefunden = next((r for r in liste if not name or r.get("name") == name), None)
-            if gefunden or len(liste) < SEITE:
+@dataclass(frozen=True)
+class Kennung:
+    """Wer „dieser Runner“ beim Dienst ist (#145): ``uuid`` und ``name_aus_datei`` aus der ``.runner``-Datei
+    (Fund der Erkennung), ``namen`` = dieser Name und Ersatznamen (Name aus der Konfiguration, Unit ohne
+    ``.service``) in dieser Reihenfolge."""
+
+    namen: tuple[str, ...] = ()
+    uuid: str | None = None
+    name_aus_datei: str | None = None
+
+    @classmethod
+    def aus(cls, wert: "Kennung | str | None") -> "Kennung":
+        if isinstance(wert, Kennung):
+            return wert
+        return cls(namen=(wert,) if isinstance(wert, str) and wert else ())
+
+
+GRUND_NICHT_LESBAR = "Runner-Liste nicht lesbar (Besitzerrechte an der Organisation nötig)"
+GRUND_NICHT_SICHTBAR = "Runner beim Dienst nicht sichtbar (globaler Runner? Token-Rechte)"
+
+
+def passt(r: dict, kennung: Kennung) -> int | None:
+    """Rang eines Eintrags der Runner-Liste (0 = UUID, 1 … = Name in der Reihenfolge der Kennung) oder None.
+    Kennt der Monitor die UUID und nennt der Dienst eine, zählt nur sie – ein gleichnamiger, neu
+    registrierter Runner ist ein anderer."""
+    ruuid = erkennung.pruefe_uuid(r.get("uuid"))
+    if kennung.uuid and ruuid:
+        return 0 if ruuid == kennung.uuid else None
+    name = r.get("name")
+    return 1 + kennung.namen.index(name) if isinstance(name, str) and name in kennung.namen else None
+
+
+def bester(liste: list[dict], kennung: Kennung) -> dict | None:
+    raenge = [(rang, i) for i, r in enumerate(liste) if (rang := passt(r, kennung)) is not None]
+    return liste[min(raenge)[1]] if raenge else None
+
+
+def _durchsuche(klient: Klient, pfad: str, kennung: Kennung) -> dict | None:
+    for seite in range(1, MAX_SEITEN + 1):
+        liste = liste_aus(klient.hole(pfad, {"visible": "true", "page": seite, "limit": SEITE}).daten, "runners")
+        treffer = bester(liste, kennung)
+        if treffer or len(liste) < SEITE:
+            return treffer
+    return None
+
+
+def _rest(klient: object) -> float:
+    rest = getattr(klient, "rest", None)
+    return rest() if callable(rest) else math.inf
+
+
+def runner_beim_dienst(klient: Klient, org: str, besitzer: str, kennung: "Kennung | str", speicher: dict | None = None,
+                       repos: list[dict] | None = None, jetzt: float | None = None) -> tuple[dict, dict | None]:
+    """Online-Status beim Dienst (optional). ``(Ergebnis, Rohdaten)``; nicht gefunden → ``zustand: unbekannt``
+    mit ``grund`` und ``ursache`` (``nicht-lesbar``: keine Liste lesbar, ``nicht-gefunden``: in keiner
+    lesbaren Liste). Nur lesend; 403/404 einer Liste heißt „darf nicht“ und ist kein Fehler der Runde.
+
+    Reihenfolge: der Ort des letzten Funds, die eigene Liste (Organisation bzw. Benutzer), dann – fehlt der
+    Runner dort, höchstens alle ``SUCHE_TAKT`` Sekunden und nur mit genug Zeit in der Runde – die Liste der
+    Instanz (``/admin``, nach 403/404 erst nach ``ADMIN_ERNEUT`` wieder) und die der zuletzt geänderten
+    Repositories."""
+    kennung = Kennung.aus(kennung)
+    speicher = {} if speicher is None else speicher
+    jetzt = time.time() if jetzt is None else jetzt
+    eigen = f"/orgs/{q(org)}/actions/runners" if besitzer == "org" else "/user/actions/runners"
+    repo_namen = [r["name"] for r in sorted(repos or [], key=lambda r: -(r.get("geaendert") or 0))]
+
+    def pfad_fuer(ort: str) -> str | None:
+        if ort == "eigen":
+            return eigen
+        if ort == "admin":
+            return "/admin/actions/runners"
+        name = ort[5:] if ort.startswith("repo:") else ""
+        return f"/repos/{q(org)}/{q(name)}/actions/runners" if name in repo_namen else None
+
+    gelesen = False
+
+    def versuche(ort: str) -> dict | None:
+        nonlocal gelesen
+        pfad = pfad_fuer(ort)
+        if not pfad:
+            return None
+        try:
+            treffer = _durchsuche(klient, pfad, kennung)
+        except ForgejoFehler as fehler:
+            # die eigene Liste wie bisher; die zusätzlichen Listen sind freiwillig – ein älterer Server ohne
+            # den Pfad (400/405) kostet dort nicht die ganze Runde, „nicht erreichbar“ aber schon
+            if fehler.art not in ("keine-rechte", "fehlt") and (ort == "eigen" or fehler.art != "fehler"):
+                raise
+            if ort == "admin":
+                speicher["adminAb"] = jetzt + ADMIN_ERNEUT  # Token ohne read:admin oder kein Administrator
+            return None
+        gelesen = True
+        if treffer:
+            speicher["runnerOrt"] = ort
+        return treffer
+
+    orte = list(dict.fromkeys([speicher.get("runnerOrt") or "eigen", "eigen"]))
+    gefunden = next((t for ort in orte if (t := versuche(ort))), None)
+    if not gefunden and jetzt >= (speicher.get("sucheAb") or 0) and _rest(klient) >= SUCHE_MIN_REST:
+        speicher["sucheAb"] = jetzt + SUCHE_TAKT
+        weitere = (["admin"] if jetzt >= (speicher.get("adminAb") or 0) else []) \
+            + [f"repo:{n}" for n in repo_namen[:MAX_REPO_SUCHE]]
+        for ort in weitere:
+            if ort in orte:
+                continue
+            if _rest(klient) < SUCHE_MIN_REST / 2:
+                break  # Läufe und Jobs der Runde gehen vor
+            if (gefunden := versuche(ort)):
                 break
-    except ForgejoFehler as fehler:
-        if fehler.art not in ("keine-rechte", "fehlt"):
-            raise
-        return {"zustand": "unbekannt", "grund": "Runner-Liste nicht lesbar (Besitzerrechte an der Organisation nötig)"}, None
-    if not gefunden:
-        return {"zustand": "unbekannt", "grund": "Runner nicht in der Liste der Organisation"}, None
-    return runner_eintrag(gefunden), gefunden
+        speicher["gelesen"] = gelesen
+    if gefunden:
+        return runner_eintrag(gefunden), gefunden
+    speicher.pop("runnerOrt", None)
+    if gelesen or speicher.get("gelesen"):
+        return {"zustand": "unbekannt", "grund": GRUND_NICHT_SICHTBAR, "ursache": "nicht-gefunden"}, None
+    return {"zustand": "unbekannt", "grund": GRUND_NICHT_LESBAR, "ursache": "nicht-lesbar"}, None
 
 
 def job_details(klient: Klient, org: str, repo: str, job: dict) -> tuple[list[dict] | None, dict]:
@@ -410,9 +522,11 @@ def _besitzer(klient: Klient, org: str, speicher: dict) -> str:
     return besitzer
 
 
-def abfrage(klient: Klient, org: str, runner_name: str, speicher: dict, letzter_erfolg: float | None = None) -> dict:
-    """Eine Runde: Version, Runner beim Dienst, Läufe je Repository, aktueller Job, letzte Jobs."""
+def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: dict, letzter_erfolg: float | None = None) -> dict:
+    """Eine Runde: Version, Repositories, Runner beim Dienst, Läufe je Repository, aktueller Job, letzte Jobs.
+    ``runner_name``: :class:`Kennung` (UUID und Namen) oder nur ein Name."""
     jetzt = time.time()
+    kennung = Kennung.aus(runner_name)
     ergebnis: dict = {
         "org": org, "abfrage": "ok", "abgefragt": jetzt, "letzterErfolg": letzter_erfolg, "tokenAblauf": None,
         "kontingent": {}, "art": None, "serverVersion": None, "repos": [], "runner": {"zustand": "unbekannt"},
@@ -439,10 +553,13 @@ def abfrage(klient: Klient, org: str, runner_name: str, speicher: dict, letzter_
         ergebnis["art"] = art_aus_version(roh)
         ergebnis["serverVersion"] = erkennung.pruefe_version(roh.split("+")[0]) if isinstance(roh, str) else None
         besitzer = _besitzer(klient, org, speicher)
-        ergebnis["runner"], mein = runner_beim_dienst(klient, org, besitzer, runner_name)
-        ich = {w for w in ((mein or {}).get("uuid"), runner_name) if isinstance(w, str) and w}
-
         repos = _repos(klient, org, besitzer)
+        ergebnis["runner"], mein = runner_beim_dienst(klient, org, besitzer, kennung, speicher, repos, jetzt)
+        # Wer hat einen Job? Forgejo Runner schreibt die UUID ins Log, act_runner/Gitea den Namen. Ist der Runner
+        # in einer Liste gefunden, zählt sein Name dort; sonst der aus .runner bzw. die Ersatznamen (#145).
+        namen = [mein.get("name")] if mein else [kennung.name_aus_datei] if kennung.name_aus_datei else list(kennung.namen)
+        ich = {_wer(w) for w in ((mein or {}).get("uuid"), kennung.uuid, *namen) if isinstance(w, str) and w}
+
         ruhige = speicher.setdefault("ruhig", {})
         laufend: list[tuple[dict, dict]] = []
         for repo in repos:
@@ -492,6 +609,11 @@ def abfrage(klient: Klient, org: str, runner_name: str, speicher: dict, letzter_
     return ergebnis
 
 
+def _wer(wert: str) -> str:
+    """UUIDs ohne Rücksicht auf Groß-/Kleinschreibung vergleichen, Namen genau."""
+    return erkennung.pruefe_uuid(wert) or wert
+
+
 def _meine_jobs(klient: Klient, org: str, laufend: list[tuple[dict, dict]], ich: set[str], speicher: dict) -> list[dict]:
     """Laufende Jobs dieses Runners. Gitea nennt ``runner_name``; bei Forgejo steht der Runner nur in der
     ersten Log-Zeile – je Job (und Versuch) einmal gelesen und gemerkt."""
@@ -515,7 +637,7 @@ def _meine_jobs(klient: Klient, org: str, laufend: list[tuple[dict, dict]], ich:
                     wer = wer_aus_log(kopf if isinstance(kopf, str) else "") or ""
                     if wer:  # leer = Log noch nicht da: in der nächsten Runde erneut
                         wer_je_job[schluessel] = wer
-            if wer not in ich:
+            if _wer(wer) not in ich:
                 continue
             schritte, job = job_details(klient, org, repo["name"], job)
             meine.append(job_fuer(lauf, repo, job, schritte))
@@ -578,6 +700,8 @@ def _letzte_jobs(klient: Klient, org: str, meine: list[dict], speicher: dict, je
 
 # ---------------------------------------------------------------- Adapter
 
+VERALTET = 600  # so alt darf eine erfolgreiche Abfrage sein, damit „Dienst aktiv“ statt „unbekannt“ gilt (wie runner.js)
+
 # Job, den der Dienst meldet („beschäftigt“), den der Monitor aber keinem Repository zuordnen kann
 JOB_UNBEKANNT = {"repo": "", "privat": False, "workflow": "", "name": "", "ref": None, "schritte": [], "schritt": None,
                  "start": None, "url": "", "zuordenbar": False}
@@ -606,14 +730,26 @@ class Forgejo(Anbieter):
                 klient: Klient | None = None) -> dict:
         tok = self.token() if token is None else token
         return abfrage(klient or Klient(self.k.server or "", tok, zeitlimit=ZEITLIMIT, http_erlaubt=self.k.http_erlaubt),
-                       self.k.org, self.k.name, speicher, letzter_erfolg)
+                       self.k.org, self.kennung(), speicher, letzter_erfolg)
+
+    def kennung(self) -> Kennung:
+        """Name und UUID beim Dienst aus ``.runner`` (#145), dann Name aus der Konfiguration und Unit-Name."""
+        unit = (self.k.unit or "").removesuffix(".service")
+        namen = [self.k.name_beim_dienst, self.k.name, erkennung.pruefe_name(unit)]
+        return Kennung(namen=tuple(dict.fromkeys(n for n in namen if n)), uuid=erkennung.pruefe_uuid(self.k.uuid),
+                       name_aus_datei=self.k.name_beim_dienst)
 
     # ------------------------------------------------------------ Monitor
 
     def beim_dienst(self, ergebnis: dict | None) -> dict | None:
         erg = ergebnis or {}
         zustand = (erg.get("runner") or {}).get("zustand", "unbekannt") if erg.get("abfrage") == "ok" else "unbekannt"
-        return {"zustand": zustand if zustand in ("online", "offline") else "unbekannt", "seit": None}
+        if zustand in ("online", "offline"):
+            return {"zustand": zustand, "seit": None}
+        if erg.get("abfrage") == "ok":
+            # Abfrage gelungen, nur dieser Runner fehlt in den lesbaren Listen (#145): „nicht sichtbar“
+            return {"zustand": "unbekannt", "seit": None, "sichtbar": False}
+        return {"zustand": "unbekannt", "seit": None}
 
     def jobs_je_repository(self, ergebnis: dict | None) -> dict | None:
         return gh_adapter.workflows_aus({"org": self.k.org, **(ergebnis or {})})
@@ -633,11 +769,19 @@ class Forgejo(Anbieter):
         e = super().eintrag(ergebnis=erg, **rest)
         st = e["status"]
         if e["faehig"]["jobs"] and st["zustand"] == "bereit":
+            beim = st.get("beimDienst") or {}
+            abgefragt = erg.get("abgefragt")
+            aktuell = isinstance(abgefragt, (int, float)) and not isinstance(abgefragt, bool) \
+                and time.time() - abgefragt < VERALTET
             if erg.get("abfrage") == "ok" and runner_erg.get("beschaeftigt") is True:
                 # beim Dienst beschäftigt, Job aber nicht gefunden (anderes Repository, fehlende Rechte)
                 st["zustand"] = "job"
                 e["job"] = dict(JOB_UNBEKANNT)
-            elif (st.get("beimDienst") or {}).get("zustand") == "unbekannt" or erg.get("laeufeNichtLesbar"):
+            elif beim.get("sichtbar") is False and aktuell and not erg.get("laeufeNichtLesbar"):
+                # Abfrage gelungen und aktuell, nur der Runner fehlt in den Listen (#145): beim lokalen Stand
+                # bleiben („Dienst aktiv“) statt „unbekannt“ – „bereit“ wäre nicht belegt
+                st["zustand"] = "aktiv"
+            elif beim.get("zustand") == "unbekannt" or erg.get("laeufeNichtLesbar"):
                 st["zustand"] = "unbekannt"  # Runner-Liste oder Läufe nicht lesbar: nie „bereit“ behaupten
         return e
 

@@ -502,7 +502,7 @@ class Sammler:
         """Abfrage beim Dienst mit dem Token des Runners. Bei Fehlern bleibt wie bei GitHub der letzte gute
         Stand (Repositories, Runner, Job) stehen. Den Speicher eines Runners nutzt nur sein Faden."""
         token = a.token()
-        schluessel = (a.k.server, a.k.org, a.k.name, token)
+        schluessel = (a.k.server, a.k.org, a.k.name, a.k.name_beim_dienst, a.k.uuid, token)  # neue Registrierung: neu anfangen
         ziel = self._ziel(a)
         with self._anbieter_sperre:
             if a.k.id not in self._anbieter_ids:
