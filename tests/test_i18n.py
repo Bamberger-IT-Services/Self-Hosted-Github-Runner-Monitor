@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / "web"
-SEITEN = ["gemeinsam.js", "dashboard.js", "dashboard.html", "anmelden.js", "anmelden.html", "einrichtung.js", "einrichtung.html"]
+SEITEN = ["gemeinsam.js", "dashboard.js", "mail.js", "info.js", "dashboard.html", "anmelden.js", "anmelden.html", "einrichtung.js", "einrichtung.html"]
 WURZEL = WEB.parent
 
 
@@ -46,6 +46,12 @@ def server_meldungen() -> list[str]:
     texte += re.findall(r'meldung\("([^"]+)"', s)
     texte += re.findall(r'"(?:fehler|text)": "([^"]+)"', s)
     texte += re.findall(r'"(?:falsch|abgelaufen|fehlt)": "([^"]+)"', s)
+    texte += re.findall(r'^ABGELAUFEN = "([^"]+)"', s, re.M)
+    # Runner-Schritte der Einrichtung (#96): Prüfergebnisse und Eingabefehler
+    e = (WURZEL / "runner_monitor" / "einrichtung.py").read_text(encoding="utf-8")
+    texte += re.findall(r'meldung\("([^"]+)"', e)
+    texte += re.findall(r'"text": "([^"]+)"', e)
+    texte += re.findall(r'EingabeFehler\("([^"]+)"\)', e)
     z = (WURZEL / "runner_monitor" / "zugang.py").read_text(encoding="utf-8")
     texte += re.findall(r'ZugangFehler\("([^"]+)"\)', z)
     texte += re.findall(r'return "(Dieses[^"]+)"', z)
@@ -86,3 +92,27 @@ class I18nTest(unittest.TestCase):
         for seite in ("dashboard.html", "anmelden.html", "einrichtung.html"):
             s = (WEB / seite).read_text(encoding="utf-8")
             self.assertLess(s.index("/static/i18n.js"), s.index("/static/gemeinsam.js"), seite)
+
+    def test_englisch_nicht_leer(self):
+        for de, en in englisch().items():
+            self.assertTrue(en.strip(), de)
+
+    def test_sprachwahl_im_info_blatt(self):
+        """#90: Segment Automatisch | Deutsch | English mit Hinweis; Speicherort und Altlast."""
+        d = (WEB / "dashboard.js").read_text(encoding="utf-8")
+        self.assertIn("['auto', t('Automatisch')", d)
+        self.assertIn("['de', 'Deutsch'", d)
+        self.assertIn("['en', 'English'", d)
+        hinweis = "„Automatisch“ folgt der Sprache des Systems. Andere Sprachen als Deutsch zeigen Englisch. Die Wahl gilt nur für diesen Browser."
+        self.assertIn(f"t('{hinweis}')", d)
+        self.assertIn(hinweis, englisch())
+        i = (WEB / "i18n.js").read_text(encoding="utf-8")
+        self.assertIn("'runner-monitor.sprache'", i)
+        for datei in WEB.glob("*.js"):
+            if datei.name != "i18n.js":
+                self.assertNotIn("rm-sprache", datei.read_text(encoding="utf-8"), datei.name)
+
+    def test_automatisch_folgt_systemsprache(self):
+        i = (WEB / "i18n.js").read_text(encoding="utf-8")
+        self.assertIn("navigator.languages", i)
+        self.assertIn("(?:$|[-_])", i)   # de, de-DE, de_AT – nicht „deu“; Logik: tests/js/i18n.test.mjs

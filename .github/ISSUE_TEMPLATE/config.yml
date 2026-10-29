@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Fehler oder Idee per E-Mail
+    url: mailto:info@bamberger-it-services.de
+    about: Fehler und Wünsche bitte per E-Mail melden (im Dashboard unter Info › Fehler gefunden oder Idee? mit Vorlage), nicht als öffentliches Issue.
   - name: Sicherheitslücke melden (nicht öffentlich)
     url: https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/security/advisories/new
     about: Lücken bitte vertraulich melden, nicht als Issue.

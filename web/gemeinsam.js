@@ -50,7 +50,7 @@ const RM = (() => {
     sonne: (s = 14) => svg(s, `<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/>`, 'stroke-width="1.5"'),
     mond: (s = 14) => svg(s, `<path d="M13.5 9.6A5.8 5.8 0 016.4 2.5a5.8 5.8 0 107.1 7.1z"/>`, 'stroke-width="1.5"'),
     auto: (s = 14) => svg(s, `<circle cx="8" cy="8" r="6"/><path d="M8 2a6 6 0 010 12z" fill="currentColor" stroke="none"/>`, 'stroke-width="1.5"'),
-    kaefer: (s = 14) => svg(s, `<ellipse cx="8" cy="9" rx="3.6" ry="4.4"/><path d="M8 4.6V13.4M4.4 9H1.8M14.2 9h-2.6M4.9 6.2L2.8 4.6M11.1 6.2l2.1-1.6M4.9 11.8l-2.1 1.6M11.1 11.8l2.1 1.6M6 4.8a2 2 0 014 0"/>`, 'stroke-width="1.5"'),
+    brief: (s = 14) => svg(s, `<rect x="2" y="3.5" width="12" height="9" rx="1"/><path d="M2.5 4.5L8 9l5.5-4.5"/>`, 'stroke-width="1.5"'),
     server: (s = 18) => svg(s, `<rect x="2" y="2.5" width="12" height="4.5" rx="1"/><rect x="2" y="9" width="12" height="4.5" rx="1"/><path d="M4.5 4.75h.01M4.5 11.25h.01M8 4.75h3.5M8 11.25h3.5"/>`, 'stroke-width="1.5"'),
   };
 
@@ -92,7 +92,7 @@ const RM = (() => {
     const andere = I18N.sprache() === 'de' ? 'en' : 'de';
     el.textContent = andere === 'en' ? 'English' : 'Deutsch';
     el.lang = andere;
-    el.addEventListener('click', () => { I18N.setzeSprache(andere); location.reload(); });
+    el.addEventListener('click', () => { if (I18N.setzeSprache(andere)) location.reload(); });
   }
 
   return { p2, ms, zahl, zeit, hm, tm, datum, wt, dauer, vor, seit, esc, mehrzahl, $, IC, thema, setzeThema, sende, t, serverText, sprachKnopf };

@@ -1,6 +1,6 @@
 # Runbooks
 
-**Stand: 25.10.2026 · Version 0.7.0**
+**Stand: 29.10.2026 · Version 0.8.0**
 
 Schritt-für-Schritt-Anleitungen für Störungen (Anweisung 07). Kurzfassungen stehen auch im
 Monitor unter Info › „Was tun, wenn …“.
@@ -13,6 +13,7 @@ Monitor unter Info › „Was tun, wenn …“.
 | [update-fehlgeschlagen](update-fehlgeschlagen.md) | Meldung „Update fehlgeschlagen“ oder Monitor nach Update kaputt (Rückfall) |
 | [zugang-gesperrt](zugang-gesperrt.md) | Passwort vergessen, Anmeldung gesperrt |
 | [github-nicht-erreichbar](github-nicht-erreichbar.md) | Workflows zeigen alten Stand, Token ungültig oder abgelaufen |
+| [gitlab-nicht-erreichbar](gitlab-nicht-erreichbar.md) | GitLab-Runner: Abfrage schlägt fehl, Token ungültig oder ohne Rechte |
 | [live-log-leer](live-log-leer.md) | Job läuft, aber das Live-Log zeigt keine neuen Zeilen |
 
 Zeichnet sich eine Störung ab, die länger dauert: Bericht nach

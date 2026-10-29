@@ -21,9 +21,11 @@ from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
-from . import VERSION, github, zugang
+from . import VERSION, einrichtung, github, zugang
+from .anbieter import token as zugangsdaten
+from .einrichtung import meldung  # noqa: F401 – Texte für die Oberfläche (#81), hier weiter als server.meldung
 from .konfig import Konfig
 from .zustand import ENDE, Zustand, lies_json
 
@@ -46,6 +48,9 @@ SICHERHEITS_KOPF = {
     "Cache-Control": "no-store",
 }
 STATISCH = re.compile(r"^[a-z0-9-]+\.(css|js|svg)$")
+RUNNER_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # /events?journal=<runner-id> (#95)
+# Einrichtungscode abgelaufen, Zugang schon angelegt (#96): Zugangsdaten nur noch auf der VM (E-22)
+ABGELAUFEN = "Die Einrichtung im Browser ist abgelaufen. Zugangsdaten jetzt auf der VM eintragen: sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner> (GitHub auch: einrichten.sh token)."
 
 
 class App:
@@ -98,13 +103,6 @@ class App:
             return bool(token) and self.einrichtung.get(token or "", 0) > time.time()
 
 
-
-def meldung(vorlage: str, **werte: object) -> dict:
-    """Text für die Oberfläche: ``text`` (deutsch, eingesetzt) und – mit Platzhaltern – ``vorlage``
-    und ``werte``. Die Oberfläche übersetzt über web/i18n.js; der deutsche Text ist der Schlüssel (#81)."""
-    if not werte:
-        return {"text": vorlage}
-    return {"text": vorlage.format(**werte), "vorlage": vorlage, "werte": {k: str(v) for k, v in werte.items()}}
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "runner-monitor"
@@ -252,6 +250,14 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")
             return
+        if pfad == "/api/einrichtung/runner":
+            # Funde für Schritt „Runner“ (#96) – auch nach angelegtem Zugang, solange die Einrichtung
+            # offen ist, und für angemeldete Nutzer (Info › Runner, #97).
+            if self._runner_erlaubt():
+                self._json(HTTPStatus.OK, self._runner_daten())
+            else:
+                self._fehler(HTTPStatus.UNAUTHORIZED, "Bitte zuerst den Einrichtungscode eingeben.")
+            return
         eingerichtet = app.k.entwicklung or app.zugang.eingerichtet()
         if pfad == "/einrichtung":
             if eingerichtet:
@@ -284,15 +290,61 @@ class Handler(BaseHTTPRequestHandler):
         elif pfad == "/api/sitzung":
             # Das Dashboard fragt hiermit nach einem Verbindungsfehler, ob es noch angemeldet ist (sonst 401).
             self._json(HTTPStatus.OK, {"ok": True})
+        elif pfad == "/api/zustand":
+            # Momentaufnahme ohne Live-Log (#92, E-19): bisherige Bereiche + vm, runner[], meldungen[].
+            self._json(HTTPStatus.OK, app.zustand.zustand_api())
         else:
             self._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")
 
     def _einrichtung_get(self, pfad: str) -> None:
         if pfad == "/api/einrichtung/status":
             pruefung = lies_json(self.app.k.daten_verz / "systempruefung.json", {}) or {}
-            self._json(HTTPStatus.OK, {"pruefung": pruefung, "codeGueltig": self.app.einrichtung_gueltig(self._cookie(COOKIE_EINRICHTUNG))})
+            # Zahl der Funde für Schritt 1 („3 Runner gefunden – Auswahl im Schritt „Runner““); die
+            # Funde selbst erst nach dem Code (/api/einrichtung/runner).
+            roh = lies_json(self.app.k.lauf_verz / "erkennung.json", None)
+            anzahl = None
+            if isinstance(roh, dict) and isinstance(roh.get("runner"), list):
+                anzahl = sum(1 for f in roh["runner"] if isinstance(f, dict) and f.get("stand") != "ignoriert")
+            self._json(HTTPStatus.OK, {"pruefung": pruefung, "runnerAnzahl": anzahl,
+                                       "codeGueltig": self.app.einrichtung_gueltig(self._cookie(COOKIE_EINRICHTUNG))})
         else:
             self._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")
+
+    # ------------------------------------------------------------ Runner in der Einrichtung (#96)
+
+    def _runner_erlaubt(self) -> bool:
+        """Einrichtungscode gültig (Einrichtung offen) oder angemeldet."""
+        app = self.app
+        if app.einrichtung_gueltig(self._cookie(COOKIE_EINRICHTUNG)):
+            return True
+        return (app.k.entwicklung or app.zugang.eingerichtet()) and self._angemeldet()
+
+    def _github_id(self) -> str | None:
+        try:
+            return zugangsdaten.github_id(self.app.k.runner_verz)
+        except OSError:
+            return None
+
+    def _runner_daten(self) -> dict:
+        k = self.app.k
+        daten = einrichtung.funde(k.lauf_verz, k.zuordnung_datei, k.auftraege_verz, self._github_id(), k.zugang_verz)
+        # Ergebnis „Verbindung prüfen“ der angebundenen Forgejo-/Gitea-Runner aus anbieter.json (#93), ohne Token
+        weitere = (lies_json(k.lauf_verz / "anbieter.json", {}) or {})
+        weitere = weitere.get("runner") if isinstance(weitere, dict) and isinstance(weitere.get("runner"), dict) else {}
+        daten["anbieter"] = {f["id"]: {"abgefragt": (weitere.get(f["id"]) or {}).get("abgefragt"),
+                                       "pruefung": einrichtung.verbindung_anbieter(weitere[f["id"]], dienst=f.get("dienst")) if isinstance(weitere.get(f["id"]), dict) else None}
+                             for f in daten["runner"] if f.get("anbindung") == "angebunden"}
+        gh = lies_json(k.lauf_verz / "github.json", {}) or {}
+        einst = lies_json(k.einstellungen_datei, {}) or {}
+        gh = gh if isinstance(gh, dict) else {}
+        daten["github"] = {
+            "id": self._github_id(), "org": (einst.get("org") if isinstance(einst, dict) else "") or k.org or None,
+            "abfrage": gh.get("abfrage"), "abgefragt": gh.get("abgefragt"),
+            "pruefung": einrichtung.verbindung_aus(gh) if gh.get("abfrage") else None,
+            "auftrag": (k.auftraege_verz / einrichtung.AUFTRAG_PRUEFEN).exists(),
+        }
+        daten["vm"] = k.vm_name or socket.gethostname()
+        return daten
 
     def _ereignisse(self) -> None:
         """Server-Sent Events: erst der aktuelle Stand, dann jede Änderung."""
@@ -306,15 +358,44 @@ class Handler(BaseHTTPRequestHandler):
         finally:
             self.app.strom_ab(sitzung)
 
+    def _journal_wunsch(self) -> str | None:
+        """``/events?journal=<runner-id>``: Runner, dessen Journal dieses Fenster im Live-Log zeigt (#95).
+        Nur die ID kommt aus der Anfrage; welche Unit gelesen wird, bestimmt allein ``runner[]`` des Servers."""
+        try:
+            werte = parse_qs(urlsplit(self.path).query, max_num_fields=4).get("journal") or [""]
+        except ValueError:  # mehr als 4 Felder
+            return None
+        wunsch = werte[0]
+        return wunsch if RUNNER_ID.fullmatch(wunsch) else None
+
     def _strom(self) -> None:
         self._kopf(HTTPStatus.OK, "text/event-stream; charset=utf-8", None, {"X-Accel-Buffering": "no", "Connection": "close"})
         z = self.app.zustand
         # Hängt der Browser (Rechner schläft, WLAN weg), blockiert write() sonst ewig und der Thread bleibt liegen.
         self.connection.settimeout(SSE_SCHREIB_FRIST)
         q = z.verteiler.anmelden()
+        wunsch = self._journal_wunsch()
+        journal = {"folger": None, "unit": None}
+
+        def journal_abgleich() -> None:
+            # Unit aus runner[]; ändert sie sich (Runner neu erkannt, Unit weg), wird umgehängt.
+            unit = z.journal_unit(wunsch) if wunsch else None
+            if unit == journal["unit"] and (unit is None or journal["folger"] is not None):
+                return
+            z.journale.abmelden(journal["folger"], q)
+            journal["folger"], journal["unit"] = None, unit
+            if unit:
+                journal["folger"] = z.journale.anmelden(unit, q)
+                if journal["folger"] is None:  # schon MAX_FOLGER Units offen
+                    self._sse("journal", json.dumps({"unit": unit, "neu": True, "zeilen": [], "ereignisse": [], "hinweis": "grenze"}))
+            elif wunsch:
+                self._sse("journal", json.dumps({"unit": None, "neu": True, "zeilen": [], "ereignisse": []}))
+
         try:
             for bereich, daten in z.momentaufnahme():
                 self._sse(bereich, json.dumps(daten, ensure_ascii=False, separators=(",", ":")))
+            if wunsch:
+                journal_abgleich()
             while True:
                 try:
                     bereich, text = q.get(timeout=15)
@@ -327,10 +408,13 @@ class Handler(BaseHTTPRequestHandler):
                     LOG.info("Live-Verbindung beendet: Browser kam nicht hinterher, er verbindet sich neu")
                     return
                 self._sse(bereich, text)
+                if wunsch and bereich == "runner":
+                    journal_abgleich()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
             z.verteiler.abmelden(q)
+            z.journale.abmelden(journal["folger"], q)
 
     def _sse(self, bereich: str, text: str) -> None:
         self.wfile.write(f"event: {bereich}\ndata: {text}\n\n".encode("utf-8"))
@@ -352,6 +436,9 @@ class Handler(BaseHTTPRequestHandler):
         app = self.app
         if pfad.startswith(("/api/einrichtung/github/", "/api/einrichtung/fertig")):
             _github_routen(self, pfad, daten)
+            return
+        if pfad.startswith("/api/einrichtung/runner/"):
+            self._runner_post(pfad, daten)
             return
         if pfad.startswith("/api/einrichtung/"):
             if app.zugang.eingerichtet():
@@ -426,6 +513,52 @@ class Handler(BaseHTTPRequestHandler):
         zugang._schreibe(app.k.auftraege_verz / "update", {"version": neueste, "zeit": time.time()})  # noqa: SLF001
         self._json(HTTPStatus.ACCEPTED, {"ok": True, "version": neueste})
 
+    def _runner_post(self, pfad: str, daten: dict) -> None:
+        """Zuordnung/Ignorieren, „Neu erkennen“, „Verbindung prüfen“ (#96, E-22). Nur Aufträge an den
+        root-Sammler – der Webserver schreibt /etc/runner-monitor nie selbst."""
+        app = self.app
+        if pfad not in ("/api/einrichtung/runner/zuordnung", "/api/einrichtung/runner/erkennen", "/api/einrichtung/runner/pruefen"):
+            self._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")
+            return
+        if not self._runner_erlaubt():
+            if pfad == "/api/einrichtung/runner/pruefen":
+                self._fehler(HTTPStatus.UNAUTHORIZED, ABGELAUFEN)
+            else:
+                self._fehler(HTTPStatus.UNAUTHORIZED, "Bitte zuerst den Einrichtungscode eingeben.")
+            return
+        if pfad == "/api/einrichtung/runner/zuordnung":
+            try:
+                eintraege = einrichtung.pruefe_units(einrichtung.pruefe_liste(daten.get("runner")),
+                                                     einrichtung.bekannte_units(app.k.lauf_verz))
+                with app.sperre:
+                    einrichtung.lege_auftrag(app.k.auftraege_verz, eintraege)
+            except einrichtung.EingabeFehler as fehler:
+                self._fehler(HTTPStatus.BAD_REQUEST, str(fehler))
+                return
+            self._json(HTTPStatus.ACCEPTED, {"ok": True, "runner": len(eintraege)})
+        elif pfad == "/api/einrichtung/runner/erkennen":
+            seit = einrichtung.lege_auftrag_einfach(app.k.auftraege_verz, einrichtung.AUFTRAG_ERKENNUNG)
+            self._json(HTTPStatus.ACCEPTED, {"ok": True, "seit": seit})
+        else:
+            rid = einrichtung.pruefe_id(daten.get("id"))
+            if not rid:
+                self._fehler(HTTPStatus.BAD_REQUEST, "Ungültige Runner-ID.")
+                return
+            if rid != self._github_id():
+                k = app.k
+                fund = next((f for f in einrichtung.funde(k.lauf_verz, k.zuordnung_datei, k.auftraege_verz, None, k.zugang_verz)["runner"]
+                             if f["id"] == rid), None)
+                art = (fund or {}).get("anbindung")
+                if art == "ohne-server":
+                    self._json(HTTPStatus.OK, einrichtung.ohne_server((fund or {}).get("dienst")))
+                    return
+                if art != "angebunden":
+                    # Diesen Runner fragt der Sammler nicht ab: ehrlich sagen statt grün zeigen.
+                    self._json(HTTPStatus.OK, einrichtung.ohne_abfrage())
+                    return
+            seit = einrichtung.lege_auftrag_einfach(app.k.auftraege_verz, einrichtung.AUFTRAG_PRUEFEN, {"id": rid})
+            self._json(HTTPStatus.ACCEPTED, {"ok": True, "fertig": False, "seit": seit})
+
     # ------------------------------------------------------------ Einrichtung
 
     def _einrichtung_post(self, pfad: str, daten: dict) -> None:
@@ -495,14 +628,20 @@ def github_pruefen(org: str, token: str) -> dict:
 
 
 def _github_routen(handler: Handler, pfad: str, daten: dict) -> bool:
-    """GitHub-Schritt der Einrichtung (auch nach angelegtem Zugang, solange die Einrichtung offen ist)."""
+    """GitHub im Schritt „Anbinden“ (auch nach angelegtem Zugang, solange die Einrichtung offen ist).
+
+    Ein Token nimmt die Oberfläche nur in der Einrichtung an (gültiger Einrichtungscode), nicht mit
+    einer Anmeldung – danach nur noch auf der VM mit ``einrichten.sh zugang <runner>`` (#96, E-22)."""
     app = handler.app
-    erlaubt = app.einrichtung_gueltig(handler._cookie(COOKIE_EINRICHTUNG)) or handler._angemeldet()  # noqa: SLF001
+    code_ok = app.einrichtung_gueltig(handler._cookie(COOKIE_EINRICHTUNG))  # noqa: SLF001
+    erlaubt = code_ok or (pfad == "/api/einrichtung/fertig" and handler._angemeldet())  # noqa: SLF001
     if pfad not in ("/api/einrichtung/github/pruefen", "/api/einrichtung/github/speichern", "/api/einrichtung/fertig"):
         handler._fehler(HTTPStatus.NOT_FOUND, "Nicht gefunden")  # noqa: SLF001
         return True
     if not erlaubt:
-        handler._fehler(HTTPStatus.UNAUTHORIZED, "Bitte zuerst den Einrichtungscode eingeben.")  # noqa: SLF001
+        # Zugang schon angelegt, Code abgelaufen: der Weg führt jetzt nur noch über die VM (E-22)
+        text = ABGELAUFEN if pfad != "/api/einrichtung/fertig" and app.zugang.eingerichtet() else "Bitte zuerst den Einrichtungscode eingeben."
+        handler._fehler(HTTPStatus.UNAUTHORIZED, text)  # noqa: SLF001
         return True
     if pfad == "/api/einrichtung/fertig":
         app.k.einrichtungscode_datei.unlink(missing_ok=True)

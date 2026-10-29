@@ -1,0 +1,25 @@
+{
+  "_hinweis": "Nach der OpenAPI-Beschreibung von Gitea (swagger.v1.json der Entwicklungsversion, 29.10.2026) nachgebaut – nicht gegen eine laufende Gitea-Instanz aufgezeichnet. Neutrale Beispieldaten: git.example.org, beispiel-org, runner-vm-04.",
+  "/version": {"version": "1.24.6"},
+  "/orgs/beispiel-org": {"id": 7, "name": "beispiel-org", "username": "beispiel-org", "visibility": "public"},
+  "/orgs/beispiel-org/actions/runners": {"runners": [
+    {"id": 5, "name": "runner-vm-04", "status": "online", "busy": true, "disabled": false, "ephemeral": false, "labels": [{"id": 1, "name": "ubuntu-latest", "type": "custom"}, {"id": 2, "name": "self-hosted", "type": "system"}]},
+    {"id": 6, "name": "runner-vm-05", "status": "offline", "busy": false, "disabled": false, "ephemeral": false, "labels": []}
+  ], "total_count": 2},
+  "/orgs/beispiel-org/repos": [
+    {"id": 1, "name": "web-portal", "full_name": "beispiel-org/web-portal", "private": true, "archived": false, "has_actions": true, "updated_at": "2026-10-29T09:58:00Z"}
+  ],
+  "/repos/beispiel-org/web-portal/actions/runs": {"workflow_runs": [
+    {"id": 21, "run_number": 4, "run_attempt": 1, "status": "in_progress", "conclusion": "", "event": "pull_request", "head_branch": "feature/anmeldung", "head_sha": "0000000000000000000000000000000000000021", "display_title": "Anmeldung überarbeiten", "path": ".gitea/workflows/ci.yml@refs/pull/7/head", "pull_requests": [{"id": 70, "number": 7}], "started_at": "2026-10-29T09:00:00Z", "html_url": "https://git.example.org/beispiel-org/web-portal/actions/runs/4", "repository_id": 1},
+    {"id": 20, "run_number": 3, "status": "queued", "conclusion": "", "event": "push", "head_branch": "main", "display_title": "Merge", "path": ".gitea/workflows/ci.yml@refs/heads/main", "pull_requests": [], "repository_id": 1}
+  ], "total_count": 2},
+  "/repos/beispiel-org/web-portal/actions/runs/21/jobs": {"jobs": [
+    {"id": 31, "run_id": 21, "run_attempt": 1, "name": "test", "status": "in_progress", "conclusion": "", "runner_id": 5, "runner_name": "runner-vm-04", "labels": ["ubuntu-latest"], "head_branch": "feature/anmeldung", "started_at": "2026-10-29T09:00:05Z", "completed_at": null, "html_url": "https://git.example.org/beispiel-org/web-portal/actions/runs/4/jobs/0", "steps": [
+      {"number": 1, "name": "Set up job", "status": "completed", "conclusion": "success", "started_at": "2026-10-29T09:00:05Z", "completed_at": "2026-10-29T09:00:07Z"},
+      {"number": 2, "name": "Tests", "status": "in_progress", "conclusion": "", "started_at": "2026-10-29T09:00:07Z", "completed_at": null},
+      {"number": 3, "name": "Complete job", "status": "queued", "conclusion": "", "started_at": null, "completed_at": null}
+    ]},
+    {"id": 32, "run_id": 21, "name": "lint", "status": "in_progress", "runner_id": 6, "runner_name": "runner-vm-05", "steps": []}
+  ], "total_count": 2},
+  "/repos/beispiel-org/web-portal/actions/jobs/31": {"id": 31, "run_id": 21, "name": "test", "status": "completed", "conclusion": "failure", "runner_name": "runner-vm-04", "started_at": "2026-10-29T09:00:05Z", "completed_at": "2026-10-29T09:04:05Z", "steps": []}
+}

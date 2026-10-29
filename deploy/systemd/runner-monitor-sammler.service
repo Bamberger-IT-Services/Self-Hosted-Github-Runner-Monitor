@@ -1,5 +1,6 @@
 # Runner-Monitor – Sammler (root). Fragt GitHub (Token nur für root lesbar) und Docker ab,
-# prüft alle 6 Stunden auf neue Releases und übernimmt Token-Aufträge aus der Einrichtung.
+# prüft alle 6 Stunden auf neue Releases, erkennt beim Start und alle 6 Stunden die Runner auf
+# der VM (runner_monitor.erkennung) und übernimmt Token-Aufträge aus der Einrichtung.
 # Ergebnisse landen als JSON in /run/runner-monitor (0644), die Oberfläche liest sie nur.
 [Unit]
 Description=Runner-Monitor (Sammler für GitHub und Docker)

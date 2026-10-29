@@ -4,6 +4,10 @@ Ein Hintergrund-Thread misst die Systemwerte (jede Sekunde), liest die Dateien d
 Sammlers und baut daraus die Bereiche ``status``, ``system``, ``prozesse``, ``platten``,
 ``container``, ``workflows``, ``update`` und ``log``. Jeder Bereich geht als
 Server-Sent Event an alle verbundenen Fenster (Format: ``docs/FUNKTIONSWEISE.md``).
+
+Seit #92 (E-19, additiv) kommen ``runner`` (je Runner ein Eintrag über seinen Anbieter-Adapter) und
+``meldungen`` (mit Runner-ID) dazu; ``GET /api/zustand`` liefert alles als eine Momentaufnahme,
+zusätzlich mit ``vm``. Die bisherigen Bereiche bleiben unverändert, bis #94 die Oberfläche umstellt.
 """
 
 from __future__ import annotations
@@ -20,7 +24,8 @@ import time
 from collections import deque
 from pathlib import Path
 
-from . import VERSION, runner, system
+from . import VERSION, anbieter, erkennung, journal, runner, system
+from .anbieter import github as gh_adapter
 from .konfig import Konfig
 
 LOG = logging.getLogger("runner_monitor")
@@ -30,6 +35,12 @@ VERLAUF = 600  # 10 Minuten bei 1 Wert je Sekunde
 VERLAUF_SICHERN = 10  # Sekunden zwischen zwei Sicherungen nach verlauf.json
 VERLAUF_LUECKE = 60  # größere Lücke (Monitor länger aus) → gesicherten Verlauf verwerfen
 GH_START_TOLERANZ = 120  # Sekunden: so viel früher darf GitHubs started_at vor dem lokalen Jobstart liegen
+MAX_RUNNER = 20  # höchstens so viele Runner in runner[] (die Erkennung liefert bis zu 200 Funde)
+GRUND_TAKT = 10  # Sekunden: so lange gilt der Dienststatus eines Runners in Grundüberwachung
+TOKEN_WARNUNG_TAGE = 14  # Meldung „Token läuft ab“ wie im Dashboard
+STUFEN = {"fehler": 0, "warn": 1, "neutral": 2}
+STAND_ANGEBUNDEN = ("ok", "nicht-erreichbar", "kontingent")  # Abfrage-Ergebnisse, bei denen ein Runner „angebunden“ ist
+FORMAT = 2  # /api/zustand: 2 = Bereiche wie bisher + vm, runner[], meldungen[] (E-19, additiv)
 
 
 def lies_json(pfad: Path, vorgabe=None):
@@ -105,6 +116,11 @@ class Zustand:
         self.job_zuordnung: dict[str, dict] = {}  # Jobname → {repo, workflow} aus der GitHub-Abfrage
         self.offline_seit: float | None = None
         self._dateistand: dict[Path, float] = {}
+        self._github_unit = ""  # Unit des GitHub-Runners aus dem letzten _status()
+        self._funde: list[dict] = []  # erkennung.json (geprüft), neu gelesen bei Änderung
+        self._zuordnung: dict[str, dict] = {}  # runner.json (Log-Pfade, E-18), neu gelesen bei Änderung
+        self._grund_status: dict[str, tuple[float, dict]] = {}  # Unit → (Zeit, Dienststatus)
+        self.journale = journal.Journale()  # Journal je Unit fürs Live-Log, nur solange jemand zusieht (#95)
         self.messer: system.SystemMesser | None = None
         try:
             self.messer = system.SystemMesser(schwelle_frei_gb=konfig.schwelle_frei_gb)
@@ -316,7 +332,9 @@ class Zustand:
 
     def _status(self) -> dict:
         reg = runner.lies_registrierung(self.k.runner_verz)
-        dienst = runner.dienst_status(runner.finde_unit()) if reg else {"zustand": "fehlt", "seit": None}
+        unit = runner.finde_unit() if reg else ""
+        self._github_unit = unit
+        dienst = runner.dienst_status(unit) if reg else {"zustand": "fehlt", "seit": None}
         gh = lies_json(self.k.lauf_verz / "github.json", {}) or {}
         gh_runner = gh.get("runner") or {}
         gh_zustand = gh_runner.get("zustand", "unbekannt") if gh.get("abfrage") == "ok" else "unbekannt"
@@ -353,19 +371,183 @@ class Zustand:
         }
 
     def _workflows(self, gh: dict) -> dict:
-        abgefragt = gh.get("abgefragt") or 0
-        return {
-            "org": gh.get("org", ""),
-            "abfrage": gh.get("abfrage", "kein-token"),
-            "abgefragt": gh.get("letzterErfolg") or abgefragt,
-            "versucht": abgefragt,
-            "naechste": abgefragt + 30 if abgefragt else None,
-            "tokenAblauf": gh.get("tokenAblauf"),
-            "kontingent": gh.get("kontingent") or {},
-            "repos": gh.get("repos") or [],
-            "fehler": gh.get("fehler", ""),
-            "runnerGrund": (gh.get("runner") or {}).get("grund", ""),
+        return gh_adapter.workflows_aus(gh)  # seit #92 im GitHub-Adapter, Format unverändert
+
+    # ------------------------------------------------------------ runner[] und meldungen[] (#92, E-19)
+
+    def _lies_funde(self) -> None:
+        """``erkennung.json`` (vom root-Sammler geprüft) hier noch einmal prüfen – nur bei Änderung."""
+        pfad = self.k.lauf_verz / "erkennung.json"
+        if not self._geaendert(pfad):
+            return
+        roh = erkennung.Quelle("/").lies(str(pfad.absolute()), erkennung.MAX_ERGEBNIS)
+        daten = erkennung.pruefe_ergebnis(roh)
+        self._funde = list(daten["runner"]) if daten else []
+
+    def _lies_zuordnung(self) -> None:
+        pfad = self.k.zuordnung_datei
+        if self._geaendert(pfad):
+            self._zuordnung = erkennung.lies_zuordnung(pfad)
+
+    def _dienst_grund(self, a: anbieter.Anbieter, jetzt: float) -> dict:
+        """Dienststatus eines Runners in Grundüberwachung, höchstens alle GRUND_TAKT Sekunden neu."""
+        unit = a.k.unit or ""
+        alt = self._grund_status.get(unit)
+        if alt and 0 <= jetzt - alt[0] < GRUND_TAKT:
+            return alt[1]
+        st = a.dienst_status()
+        self._grund_status[unit] = (jetzt, st)
+        return st
+
+    def _runner_liste(self, status: dict, jetzt: float | None = None) -> list[dict]:
+        """Ein Eintrag je Runner über seinen Adapter (Format: FUNKTIONSWEISE.md › Anbieter-Adapter).
+
+        Der GitHub-Runner aus ``MONITOR_RUNNER_VERZ`` bekommt den GitHub-Adapter und dieselben Werte
+        wie der Bereich ``status`` (unverändert). Forgejo- und Gitea-Runner mit Server und Organisation
+        in ``runner.json`` und GitLab-Runner mit Server (#115) bekommen ihren Adapter und das Ergebnis des
+        Sammlers (``anbieter.json``, #93); alle anderen laufen in der Grundüberwachung (Dienst und Journal).
+        Ignorierte Funde fehlen. Server und Log-Pfad kommen nie aus dem Fund (E-18): GitHub fest,
+        sonst nur aus ``runner.json``."""
+        jetzt = time.time() if jetzt is None else jetzt
+        self._lies_funde()
+        self._lies_zuordnung()
+        gh = self.bereiche.get("_github")
+        gh = gh if isinstance(gh, dict) else {}
+        weitere = self.bereiche.get("_anbieter")
+        weitere = weitere if isinstance(weitere, dict) else {}
+        liste: list[dict] = []
+        primaer: str | None = None
+        if status.get("eingerichtet"):
+            name = str(status.get("runner") or "")
+            rid = erkennung.als_id(erkennung.pruefe_name(name) or "github")
+            diag = f"{self.k.runner_verz}/_diag"
+            fund = next((f for f in self._funde if f.get("dienst") == "github" and f.get("unit") and f.get("log") == diag), None) \
+                or next((f for f in self._funde if f.get("dienst") == "github" and f.get("id") == rid), None)
+            primaer = fund["id"] if fund else None
+            a = gh_adapter.GitHub(gh_adapter.konfig_fuer(name, rid, self._github_unit, gh.get("org") or self.k.org,
+                                                         self.k.runner_verz, self.k.zugang_verz, self.k.token_datei))
+            # „angebunden“ nur, wenn der Sammler wirklich mit gültigem Token fragt (ok) oder nur der
+            # Dienst gerade nicht antwortet; ohne Token, mit ungültigem Token, ohne Rechte oder ohne
+            # Organisation ist der Runner „offen“ (Review #111). grund/ignoriert aus runner.json bleiben.
+            stand = (fund or {}).get("stand") or "angebunden"
+            if stand == "angebunden" and gh.get("abfrage") not in STAND_ANGEBUNDEN:
+                stand = "offen"
+            liste.append(a.eintrag(dienst=status.get("dienst"), job=status.get("job"), letzte_jobs=status.get("letzteJobs"),
+                                   ergebnis=gh, online=status.get("github"), fund=fund, stand=stand,
+                                   labels=status.get("labels"), version=status.get("version") or None))
+        for f in self._funde:
+            if len(liste) >= MAX_RUNNER:
+                break
+            if f.get("id") == primaer or f.get("stand") == "ignoriert" or any(r["id"] == f.get("id") for r in liste):
+                continue
+            k = anbieter.konfig_aus(f, self._zuordnung.get(f["id"]), self.k.zugang_verz)  # Server, Log nur aus runner.json
+            if anbieter.angebunden(k, f.get("stand")):
+                a = anbieter.adapter(k)
+                # noch keine Runde (Sammler eben gestartet, Runner neu angebunden): „ausstehend“ statt „Kein Token“ (E-25)
+                erg = weitere.get(f["id"]) if isinstance(weitere.get(f["id"]), dict) else {"abfrage": "ausstehend"}
+                ziel = erg.get("ziel")
+                if isinstance(ziel, dict) and (ziel.get("server"), ziel.get("org") or "") != (k.server, k.org or ""):
+                    erg = {"abfrage": "ausstehend"}  # Ergebnis eines früheren Servers (runner.json geändert, Review #121)
+                # „angebunden“ wie beim GitHub-Runner nur mit gültigem Token (Review #111)
+                stand = "angebunden" if erg.get("abfrage") in STAND_ANGEBUNDEN else "offen"
+                dienst_st = self._dienst_grund(a, jetzt) if a.faehig()["status"] else None
+                liste.append(a.eintrag(dienst=dienst_st, fund=f, ergebnis=erg, stand=stand))
+                continue
+            a = anbieter.Grundueberwachung(k)  # ohne Adapter oder ohne Anbindung: Dienst und Journal
+            dienst_st = self._dienst_grund(a, jetzt) if a.faehig()["status"] else None
+            liste.append(a.eintrag(dienst=dienst_st, fund=f))
+        return liste
+
+    def _meldungen(self, liste: list[dict]) -> list[dict]:
+        """Meldungen mit Runner-ID (``runner: null`` = betrifft die VM), nach Schwere sortiert.
+
+        Die Texte entstehen im Browser (wie bisher); hier stehen nur Art und Werte. Meldungen zur
+        Verbindung und zu Updates des Monitors bleiben bis #94 allein im Browser."""
+        m: list[dict] = []
+        if not liste:
+            m.append({"id": "fehlt", "stufe": "warn", "runner": None, "dienst": None, "daten": {}})
+        for r in liste:
+            basis = {"runner": r["id"], "dienst": r["dienst"]}
+            dienst = (r.get("status") or {}).get("dienst") or {}
+            online = (r.get("status") or {}).get("beimDienst") or {}
+            if r["faehig"]["status"] and dienst.get("zustand") == "gestoppt":
+                m.append({"id": "gestoppt", "stufe": "fehler", **basis, "daten": {"seit": dienst.get("seit"), "grund": dienst.get("grund")}})
+            if r["faehig"]["status"] and dienst.get("zustand") == "fehlt":
+                m.append({"id": "fehlt", "stufe": "warn", **basis, "daten": {}})
+            if online.get("zustand") == "offline" and dienst.get("zustand") == "aktiv":
+                if online.get("pausiert"):  # GitLab: bewusst pausiert, kein Ausfall (Review #121)
+                    m.append({"id": "pausiert", "stufe": "warn", **basis, "daten": {"job": bool(r.get("job"))}})
+                else:
+                    m.append({"id": "offline", "stufe": "fehler", **basis, "daten": {"seit": online.get("seit")}})
+            j = r.get("jobsJeRepository") or {}
+            abfrage = j.get("abfrage")
+            if abfrage in ("nicht-erreichbar", "kontingent", "fehler"):
+                m.append({"id": "abfrage", "stufe": "warn", **basis,
+                          "daten": {"abfrage": abfrage, "abgefragt": j.get("abgefragt"), "naechste": j.get("naechste")}})
+            elif abfrage in ("token-ungueltig", "keine-rechte"):
+                m.append({"id": "token", "stufe": "fehler", **basis, "daten": {"abfrage": abfrage}})
+            elif abfrage == "kein-token":
+                m.append({"id": "token", "stufe": "neutral", **basis, "daten": {"abfrage": abfrage}})
+            ablauf = j.get("tokenAblauf")
+            if isinstance(ablauf, (int, float)) and 0 < ablauf - time.time() <= TOKEN_WARNUNG_TAGE * 86400:
+                m.append({"id": "token", "stufe": "warn", **basis, "daten": {"tokenAblauf": ablauf}})
+        for p in self.bereiche.get("platten") or []:
+            if isinstance(p, dict) and p.get("schwelleFrei") and p.get("frei", 0) < p["schwelleFrei"]:
+                m.append({"id": "platte", "stufe": "warn", "runner": None, "dienst": None,
+                          "daten": {"pfad": p.get("pfad"), "frei": p.get("frei"), "schwelleFrei": p.get("schwelleFrei")}})
+        m.sort(key=lambda x: STUFEN.get(x["stufe"], 9))
+        return m
+
+    def _setze_wenn_neu(self, bereich: str, daten: object) -> None:
+        with self._sperre:
+            if bereich in self.bereiche and self.bereiche[bereich] == daten:
+                return
+        self._setze(bereich, daten)
+
+    def _runner_bereiche(self, status: dict) -> None:
+        liste = self._runner_liste(status)
+        self._setze_wenn_neu("runner", liste)
+        self._setze_wenn_neu("meldungen", self._meldungen(liste))
+
+    def journal_unit(self, runner_id: object) -> str | None:
+        """Unit, deren Journal das Live-Log des Runners zeigt – nur aus ``runner[]`` (Server), nie aus der
+        Anfrage: der Runner braucht die Fähigkeit ``logs`` und die Log-Quelle ``journal`` mit geprüfter Unit
+        (E-17/E-18: Units kommen aus den root-eigenen systemd-Verzeichnissen)."""
+        if not isinstance(runner_id, str) or not runner_id:
+            return None
+        with self._sperre:
+            liste = self.bereiche.get("runner")
+        for r in liste if isinstance(liste, list) else []:
+            if isinstance(r, dict) and r.get("id") == runner_id:
+                log = r.get("log") or {}
+                if (r.get("faehig") or {}).get("logs") and log.get("art") == "journal":
+                    return erkennung.pruefe_unit(log.get("unit"))
+                return None
+        return None
+
+    def zustand_api(self) -> dict:
+        """``GET /api/zustand``: alle bisherigen Bereiche (ohne Live-Log) plus ``vm``, ``runner[]`` und
+        ``meldungen[]`` (E-19, additiv). Enthält nie Geheimnisse – dieselben Daten wie ``/events``."""
+        with self._sperre:
+            bereiche = {k: v for k, v in self.bereiche.items() if not k.startswith("_")}
+            verlauf = {"cpu": list(self.cpu_verlauf), "ram": list(self.ram_verlauf), "netz": list(self.netz_verlauf),
+                       "start": self._start_des_verlaufs()}
+        auslastung = bereiche.get("system")
+        if isinstance(auslastung, dict):
+            bereiche["system"] = {**auslastung, "verlauf": verlauf}
+        status = bereiche.get("status") if isinstance(bereiche.get("status"), dict) else {}
+        vm = {
+            "name": status.get("vm") or self.k.vm_name or socket.gethostname(),
+            "system": status.get("system") or system.beschreibung(),
+            "monitorVersion": VERSION,
+            "auslastung": auslastung,
+            "verlauf": verlauf,
+            "prozesse": bereiche.get("prozesse"),
+            "platten": bereiche.get("platten"),
+            "container": bereiche.get("container"),
         }
+        return {**bereiche, "format": FORMAT, "vm": vm, "runner": bereiche.get("runner", []),
+                "meldungen": bereiche.get("meldungen", [])}
 
     def _update(self) -> dict:
         release = lies_json(self.k.lauf_verz / "release.json", {}) or {}
@@ -389,6 +571,12 @@ class Zustand:
                     j = gh["job"]
                     self.job_zuordnung[j.get("name", "")] = {"repo": j.get("repo", ""), "workflow": j.get("workflow", "")}
             self._setze("workflows", self._workflows(gh))
+        pfad = self.k.lauf_verz / "anbieter.json"  # Forgejo/Gitea (#93), GitLab (#115), ohne Geheimnisse
+        if self._geaendert(pfad):
+            daten = lies_json(pfad, {}) or {}
+            weitere = daten.get("runner") if isinstance(daten, dict) else None
+            with self._sperre:
+                self.bereiche["_anbieter"] = weitere if isinstance(weitere, dict) else {}
         pfad = self.k.lauf_verz / "docker.json"
         if self._geaendert(pfad):
             self._setze("container", (lies_json(pfad, {}) or {}).get("container", []))
@@ -403,7 +591,7 @@ class Zustand:
     def starte(self) -> None:
         if self.messer is not None:
             self.lade_verlauf()
-            runner.JournalFolger(self.bei_journal).start()
+            runner.JournalFolger(self.bei_journal, unit=lambda: self._github_unit).start()
             runner.SeitenFolger(self.k.runner_verz / "_diag" / "pages", self.bei_seite).start()
         threading.Thread(target=self._schleife, name="messen", daemon=True).start()
 
@@ -436,4 +624,6 @@ class Zustand:
                 self._setze("platten", self.messer.platten())
         self._github_dateien()
         if takt % 2 == 0:
-            self._setze("status", self._status())
+            status = self._status()
+            self._setze("status", status)
+            self._runner_bereiche(status)

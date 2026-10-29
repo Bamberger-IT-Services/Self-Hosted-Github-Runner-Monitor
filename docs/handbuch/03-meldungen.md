@@ -1,10 +1,12 @@
 # 3 Meldungen und „Was tun?“
 
-**Stand: 25.10.2026 · Version 0.7.0**
+**Stand: 29.10.2026 · Version 0.8.0**
 
 Probleme erscheinen oben in der Mitte der Kopfzeile. Es steht immer nur die wichtigste da,
 „+n weitere“ zeigt, dass es mehr gibt. **„Was tun?“** öffnet Info & Hilfe genau bei der
 passenden Anleitung; Anleitungen, die gerade zutreffen, tragen dort „jetzt aktiv“.
+
+Bei mehreren Runnern nennt die Meldung den Runner („runner-vm-02: Dienst gestoppt“). Betrifft sie einen anderen als den gewählten, wechselt der Knopf **Anzeigen** zu ihm. Meldungen zum Dienst nennen ihn im Titel („Forgejo nicht erreichbar“); die Anleitung dazu passt zum Dienst. Einige Texte sagen unten „GitHub“, gelten aber sinngemäß für Forgejo, Gitea und GitLab.
 
 ![Was tun bei gestopptem Dienst](bilder/was-tun-gestoppt.png)
 

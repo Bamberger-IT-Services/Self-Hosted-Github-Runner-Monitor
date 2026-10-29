@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+html,body{margin:0;height:100%}
+body{background:#e2e6e9;-webkit-font-smoothing:antialiased}
+a{color:#0e628f}
+a:hover{color:#13212b}
+button:focus-visible,select:focus-visible{outline:2px solid #0e628f;outline-offset:2px}
+</style>
+</helmet>
+<div style="display: grid; grid-template-columns: 300px minmax(0, 1fr); height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', system-ui, sans-serif; color: #13212b; font-size: 13px; line-height: 18px; font-variant-numeric: tabular-nums">
+
+  <aside style="display: flex; flex-direction: column; min-height: 0; background: #f6f6f6; border-right: 1px solid #d9dee2">
+    <header style="display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-bottom: 1px solid #d9dee2">
+      <span style="width: 32px; height: 32px; border-radius: 4px; background: #0e628f; color: #ffffff; display: grid; place-items: center; flex: none"><svg viewBox="0 0 16 16" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><rect x="2" y="2.5" width="12" height="4.5" rx="1"></rect><rect x="2" y="9" width="12" height="4.5" rx="1"></rect><path d="M4.5 4.75h.01M4.5 11.25h.01M8 4.75h3.5M8 11.25h3.5"></path></svg></span>
+      <div style="min-width: 0">
+        <div style="font-size: 15px; line-height: 19px; font-weight: 650; letter-spacing: -0.012em">Runner-Monitor</div>
+        <div style="font-size: 12px; line-height: 16px; color: #4f5d67">Design v0.8.0</div>
+      </div>
+    </header>
+
+    <nav style="flex: 1; min-height: 0; overflow: auto; padding: 4px 10px 14px" aria-label="Bildschirme">
+      <sc-for list="{{gruppen}}" as="g" hint-placeholder-count="7">
+        <div style="padding: 14px 8px 4px; font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: #4f5d67">{{g.titel}}</div>
+        <sc-for list="{{g.items}}" as="it" hint-placeholder-count="4">
+          <button type="button" onClick="{{it.waehle}}" aria-current="{{it.aria}}" style="display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 5px 8px; border: 0; border-radius: 2px; background: {{it.bg}}; color: {{it.fg}}; font: inherit; font-weight: {{it.fw}}; text-align: left; cursor: pointer" style-hover="background: #ffffff">
+            <span style="width: 20px; flex: none; font-size: 11px; color: #4f5d67; text-align: right; font-weight: 400">{{it.nr}}</span>
+            <span style="flex: 1; min-width: 0">{{it.t}}</span>
+            <sc-if value="{{it.neu}}" hint-placeholder-val="{{false}}"><span style="flex: none; font-size: 10.5px; line-height: 16px; padding: 0 5px; border-radius: 2px; background: color-mix(in srgb, #0e628f 11%, #ffffff); color: #0e628f; font-weight: 600">neu</span></sc-if>
+          </button>
+        </sc-for>
+      </sc-for>
+    </nav>
+
+    <section style="flex: none; max-height: 48%; overflow: auto; border-top: 1px solid #d9dee2; padding: 12px 18px 16px; display: flex; flex-direction: column; gap: 8px; background: #f6f6f6" aria-label="Optionen">
+      <div style="display: flex; align-items: baseline; justify-content: space-between"><span style="font-size: 11px; line-height: 14px; font-weight: 650; letter-spacing: 0.04em; text-transform: uppercase; color: #4f5d67">Optionen</span><button type="button" onClick="{{zuruecksetzen}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 12px; color: #0e628f; cursor: pointer">Zurücksetzen</button></div>
+
+      <sc-if value="{{zeigeThema}}" hint-placeholder-val="{{true}}">
+        <div style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Thema</span>
+          <div role="group" aria-label="Thema" style="display: flex; border: 1px solid #d9dee2; border-radius: 2px; overflow: hidden; background: #ffffff"><sc-for list="{{segThema}}" as="sg" hint-placeholder-count="3"><button type="button" onClick="{{sg.waehle}}" aria-pressed="{{sg.p}}" style="flex: 1; height: 24px; padding: 0 6px; border: 0; background: {{sg.bg}}; color: {{sg.fg}}; font: inherit; font-size: 12px; font-weight: {{sg.fw}}; cursor: pointer">{{sg.text}}</button></sc-for></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{zeigeThema}}" hint-placeholder-val="{{true}}">
+        <div style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Sprache</span>
+          <div role="group" aria-label="Sprache" title="Auto = Sprache des Systems; nicht Deutsch → Englisch" style="display: flex; border: 1px solid #d9dee2; border-radius: 2px; overflow: hidden; background: #ffffff"><sc-for list="{{segSprache}}" as="sg" hint-placeholder-count="3"><button type="button" onClick="{{sg.waehle}}" aria-pressed="{{sg.p}}" style="flex: 1; height: 24px; padding: 0 6px; border: 0; background: {{sg.bg}}; color: {{sg.fg}}; font: inherit; font-size: 12px; font-weight: {{sg.fw}}; cursor: pointer">{{sg.text}}</button></sc-for></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{zeigeNetz}}" hint-placeholder-val="{{true}}">
+        <div style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Netzwerk</span>
+          <div role="group" aria-label="Netzwerk-Variante" style="display: flex; border: 1px solid #d9dee2; border-radius: 2px; overflow: hidden; background: #ffffff"><sc-for list="{{segNetz}}" as="sg" hint-placeholder-count="3"><button type="button" onClick="{{sg.waehle}}" aria-pressed="{{sg.p}}" title="{{sg.titel}}" style="flex: 1; height: 24px; padding: 0 6px; border: 0; background: {{sg.bg}}; color: {{sg.fg}}; font: inherit; font-size: 12px; font-weight: {{sg.fw}}; cursor: pointer">{{sg.text}}</button></sc-for></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{zeigeMain}}" hint-placeholder-val="{{true}}">
+        <div style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Kerne</span>
+          <div role="group" aria-label="Kerne" style="display: flex; border: 1px solid #d9dee2; border-radius: 2px; overflow: hidden; background: #ffffff"><sc-for list="{{segKerne}}" as="sg" hint-placeholder-count="4"><button type="button" onClick="{{sg.waehle}}" aria-pressed="{{sg.p}}" style="flex: 1; height: 24px; padding: 0 6px; border: 0; background: {{sg.bg}}; color: {{sg.fg}}; font: inherit; font-size: 12px; font-weight: {{sg.fw}}; cursor: pointer">{{sg.text}}</button></sc-for></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Runner</span>
+          <div role="group" aria-label="Anzahl Runner" style="display: flex; border: 1px solid #d9dee2; border-radius: 2px; overflow: hidden; background: #ffffff"><sc-for list="{{segRunner}}" as="sg" hint-placeholder-count="3"><button type="button" onClick="{{sg.waehle}}" aria-pressed="{{sg.p}}" style="flex: 1; height: 24px; padding: 0 6px; border: 0; background: {{sg.bg}}; color: {{sg.fg}}; font: inherit; font-size: 12px; font-weight: {{sg.fw}}; cursor: pointer">{{sg.text}}</button></sc-for></div>
+        </div>
+        <div style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Gewählt</span>
+          <div role="group" aria-label="Gewählter Runner" style="display: flex; border: 1px solid #d9dee2; border-radius: 2px; overflow: hidden; background: #ffffff"><sc-for list="{{segGew}}" as="sg" hint-placeholder-count="3"><button type="button" onClick="{{sg.waehle}}" aria-pressed="{{sg.p}}" title="{{sg.titel}}" style="flex: 1; height: 24px; padding: 0 4px; border: 0; background: {{sg.bg}}; color: {{sg.fg}}; font: inherit; font-size: 11.5px; font-weight: {{sg.fw}}; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{sg.text}}</button></sc-for></div>
+        </div>
+        <label style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Zustand</span>
+          <select value="{{o.zustand}}" onChange="{{setZustand}}" style="width: 100%; height: 26px; padding: 0 6px; border: 1px solid #d9dee2; border-radius: 2px; background: #ffffff; font: inherit; font-size: 12px; color: #13212b"><option value="volllast">Volllast</option><option value="job">Job läuft</option><option value="leerlauf">Leerlauf</option><option value="gestoppt">Dienst gestoppt</option><option value="offline">Offline beim Dienst</option><option value="platte">Platte knapp</option><option value="getrennt">Verbindung unterbrochen</option></select>
+        </label>
+        <label style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67" title="gilt für runner-vm-01">GitHub</span>
+          <select value="{{o.github}}" onChange="{{setGithub}}" style="width: 100%; height: 26px; padding: 0 6px; border: 1px solid #d9dee2; border-radius: 2px; background: #ffffff; font: inherit; font-size: 12px; color: #13212b"><option value="ok">Verbunden</option><option value="kein-token">Kein Token</option><option value="nicht-erreichbar">Nicht erreichbar</option><option value="token-ablauf">Token läuft ab</option></select>
+        </label>
+        <label style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Live-Log</span>
+          <select value="{{o.log}}" onChange="{{setLog}}" style="width: 100%; height: 26px; padding: 0 6px; border: 1px solid #d9dee2; border-radius: 2px; background: #ffffff; font: inherit; font-size: 12px; color: #13212b"><option value="mitlaufen">Läuft mit</option><option value="hochgescrollt">Hochgescrollt</option><option value="angehalten">Angehalten</option></select>
+        </label>
+        <label style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Update</span>
+          <select value="{{o.update}}" onChange="{{setUpdate}}" style="width: 100%; height: 26px; padding: 0 6px; border: 1px solid #d9dee2; border-radius: 2px; background: #ffffff; font: inherit; font-size: 12px; color: #13212b"><option value="aktuell">0.8.0 ist aktuell</option><option value="verfuegbar">0.8.1 verfügbar</option><option value="laeuft">Update läuft</option><option value="erfolg">Update erfolgreich</option><option value="fehler">Update fehlgeschlagen</option></select>
+        </label>
+        <label style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Prüfen ergibt</span>
+          <select value="{{ergebnis}}" onChange="{{setErgebnis}}" title="Ergebnis beim Klick auf „Jetzt prüfen“" style="width: 100%; height: 26px; padding: 0 6px; border: 1px solid #d9dee2; border-radius: 2px; background: #ffffff; font: inherit; font-size: 12px; color: #13212b"><option value="neu">Version 0.8.1 verfügbar</option><option value="aktuell">Auf dem neuesten Stand</option><option value="github-fehler">GitHub nicht erreichbar</option><option value="sammler-fehler">Sammler antwortet nicht</option></select>
+        </label>
+        <label style="display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: center; gap: 8px; font-size: 12px"><span style="color: #4f5d67">Info-Blatt</span>
+          <select value="{{infoWahl}}" onChange="{{setInfo}}" style="width: 100%; height: 26px; padding: 0 6px; border: 1px solid #d9dee2; border-radius: 2px; background: #ffffff; font: inherit; font-size: 12px; color: #13212b"><option value="zu">geschlossen</option><option value="updates">Updates</option><option value="github">Verbindungen</option><option value="token">Anleitung Zugangsdaten</option></select>
+        </label>
+      </sc-if>
+    </section>
+  </aside>
+
+  <main style="display: flex; flex-direction: column; min-width: 0; min-height: 0">
+    <div style="display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: #ffffff; border-bottom: 1px solid #d9dee2">
+      <div style="flex: 1; min-width: 0">
+        <div style="display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap"><span style="font-size: 15px; line-height: 20px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0">{{cur.t}}</span><span style="font-size: 12px; line-height: 20px; color: #4f5d67; white-space: nowrap">{{cur.gruppe}} · {{cur.mass}}</span></div>
+        <div style="font-size: 12.5px; line-height: 17px; color: #4f5d67; text-wrap: pretty">{{cur.d}}</div>
+      </div>
+      <span style="font-size: 12px; color: #4f5d67; white-space: nowrap">{{pos}}</span>
+      <div style="display: flex; gap: 6px">
+        <button type="button" onClick="{{zurueck}}" aria-label="Vorheriger Bildschirm" style="height: 28px; padding: 0 10px; border: 1px solid #d9dee2; border-radius: 2px; background: #ffffff; font: inherit; font-size: 12px; font-weight: 550; color: #13212b; cursor: pointer" style-active="transform: scale(0.97)">‹ Zurück</button>
+        <button type="button" onClick="{{vor}}" aria-label="Nächster Bildschirm" style="height: 28px; padding: 0 10px; border: 1px solid #d9dee2; border-radius: 2px; background: #ffffff; font: inherit; font-size: 12px; font-weight: 550; color: #13212b; cursor: pointer" style-active="transform: scale(0.97)">Weiter ›</button>
+      </div>
+    </div>
+
+    <div ref="{{stageRef}}" style="flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; padding: 24px">
+      <div style="position: relative; width: {{boxW}}px; height: {{boxH}}px">
+        <div style="position: absolute; left: 0; top: 0; width: {{W}}px; height: {{H}}px; transform: scale({{skala}}); transform-origin: 0 0; background: #ffffff; overflow: hidden; box-shadow: 0 1px 2px rgba(19,33,43,.08), 0 8px 24px rgba(19,33,43,.10)">
+
+          <sc-if value="{{isNotiz}}" hint-placeholder-val="{{false}}">
+            <div style="width: 1440px; height: 900px; box-sizing: border-box; padding: 56px 72px; display: flex; flex-direction: column; gap: 24px; background: #ffffff; color: #13212b">
+              <div>
+                <div style="font-size: 12px; line-height: 16px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; color: #0e628f">Notiz</div>
+                <h1 style="margin: 6px 0 0; font-size: 34px; line-height: 40px; font-weight: 650; letter-spacing: -0.024em">Design 0.8.0 · anbieterunabhängig</h1>
+                <p style="margin: 8px 0 0; max-width: 900px; font-size: 15px; line-height: 22px; color: #4f5d67; text-wrap: pretty">Der Monitor erkennt selbst, welche Runner auf der VM laufen (GitHub, Forgejo, Gitea, GitLab, unbekannte), zeigt, wie sicher er ist, und sagt je Fund, was zu tun ist. Grundlage ist 0.4.0; alles, was dort festgelegt ist, bleibt. Links wählen, mit ‹ › oder den Pfeiltasten blättern.</p>
+              </div>
+              <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 500px; gap: 56px">
+                <div style="border-top: 1px solid #d9dee2">
+                  <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid #d9dee2"><span style="font-size: 13px; color: #0e628f; font-weight: 650">1</span><div><div style="font-size: 14.5px; line-height: 19px; font-weight: 600">Einrichtung: neuer Schritt „Runner“</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67; text-wrap: pretty">Code → Zugang → Runner → Anbinden → Fertig. Je Fund Dienst, Server, Version, Sicherheitsgrad, aufklappbare Begründung und eine klare Handlung.</div></div><button type="button" onClick="{{geh.web3}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #0e628f; cursor: pointer; white-space: nowrap">Ansehen ›</button></div>
+                  <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid #d9dee2"><span style="font-size: 13px; color: #0e628f; font-weight: 650">2</span><div><div style="font-size: 14.5px; line-height: 19px; font-weight: 600">Anbinden je Dienst</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67; text-wrap: pretty">Ein Block je übernommenem Runner mit den Zugangsdaten, die dieser Dienst braucht, „Verbindung prüfen“ und „Überspringen“. Bei einem Runner so schlicht wie bisher.</div></div><button type="button" onClick="{{geh.web4}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #0e628f; cursor: pointer; white-space: nowrap">Ansehen ›</button></div>
+                  <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid #d9dee2"><span style="font-size: 13px; color: #0e628f; font-weight: 650">3</span><div><div style="font-size: 14.5px; line-height: 19px; font-weight: 600">Mehrere Runner: Reiter an der Runner-Spalte</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67; text-wrap: pretty">Variante C. Auslastung gehört zur VM, Runner-Status, Jobs und Live-Log zum gewählten Runner. Ein Runner: keine Reiter. Wahl je Browser gemerkt.</div></div><button type="button" onClick="{{geh.main}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #0e628f; cursor: pointer; white-space: nowrap">Ansehen ›</button></div>
+                  <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid #d9dee2"><span style="font-size: 13px; color: #0e628f; font-weight: 650">4</span><div><div style="font-size: 14.5px; line-height: 19px; font-weight: 600">„Nicht verfügbar“ ehrlich zeigen</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67; text-wrap: pretty">Grundüberwachung: Dienst, Neustarts, Journal statt Schritte. Teilweise: „Schritte nicht verfügbar“, Job und Laufzeit bleiben.</div></div><button type="button" onClick="{{geh.grund}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #0e628f; cursor: pointer; white-space: nowrap">Ansehen ›</button></div>
+                  <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid #d9dee2"><span style="font-size: 13px; color: #0e628f; font-weight: 650">5</span><div><div style="font-size: 14.5px; line-height: 19px; font-weight: 600">Info › Runner und Verbindungen</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67; text-wrap: pretty">Neuer Abschnitt ganz oben: Zuordnung ändern, Ignorieren, Zugangsdaten (Befehl auf der VM), „Neu erkennen“. „GitHub-Verbindung“ wird „Verbindungen“.</div></div><button type="button" onClick="{{geh.infoRunner}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #0e628f; cursor: pointer; white-space: nowrap">Ansehen ›</button></div>
+                  <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid #d9dee2"><span style="font-size: 13px; color: #0e628f; font-weight: 650">6</span><div><div style="font-size: 14.5px; line-height: 19px; font-weight: 600">Setup-Skript zeigt die Erkennung</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67; text-wrap: pretty">Tabelle „Runner auf dieser VM“, 80 Zeichen breit, ohne Farben lesbar. Auch „kein Runner gefunden“.</div></div><button type="button" onClick="{{geh.skript}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #0e628f; cursor: pointer; white-space: nowrap">Ansehen ›</button></div>
+                  <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid #d9dee2"><span style="font-size: 13px; color: #0e628f; font-weight: 650">7</span><div><div style="font-size: 14.5px; line-height: 19px; font-weight: 600">Neutrale Begriffe</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67; text-wrap: pretty">„Jobs je Repository“ statt „Workflows“, „Zugangsdaten einrichten oder erneuern“, „Runner offline beim Dienst“. GitHub nur, wo es um GitHub geht.</div></div><button type="button" onClick="{{geh.anleitung}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #0e628f; cursor: pointer; white-space: nowrap">Ansehen ›</button></div>
+                  <div style="display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 11px 0; border-bottom: 1px solid #d9dee2"><span style="font-size: 13px; color: #0e628f; font-weight: 650">8</span><div><div style="font-size: 14.5px; line-height: 19px; font-weight: 600">Sprache: Deutsch und Englisch</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67; text-wrap: pretty">Info › Darstellung › Sprache: Automatisch (Systemsprache, sonst Englisch), Deutsch, English. Alle Bildschirme übersetzt, Wörterbuch in i18n-0.8.0.js.</div></div><button type="button" onClick="{{geh.mainEn}}" style="border: 0; background: none; padding: 0; font: inherit; font-size: 13px; font-weight: 600; color: #0e628f; cursor: pointer; white-space: nowrap">Ansehen ›</button></div>
+                </div>
+                <div>
+                  <div style="font-size: 15px; line-height: 20px; font-weight: 650">Fähigkeiten je Anbieter</div>
+                  <div style="margin-top: 2px; font-size: 12.5px; line-height: 18px; color: #4f5d67">Nach der API-Prüfung (#93, 29.10.2026): Forgejo 17.0.1 geprüft, Gitea nach OpenAPI. Einzelheiten: docs/FUNKTIONSWEISE.md.</div>
+                  <div style="margin-top: 14px; display: grid; grid-template-columns: 92px repeat(4, minmax(0, 1fr))">
+                    <span style="border-bottom: 1px solid #13212b"></span><span style="height: 40px; display: grid; place-items: center; border-bottom: 1px solid #13212b; font-size: 12px; font-weight: 650; text-align: center; line-height: 15px">GitHub</span><span style="height: 40px; display: grid; place-items: center; border-bottom: 1px solid #13212b; font-size: 12px; font-weight: 650; text-align: center; line-height: 15px">Forgejo /<br>Gitea</span><span style="height: 40px; display: grid; place-items: center; border-bottom: 1px solid #13212b; font-size: 12px; font-weight: 650; text-align: center; line-height: 15px">GitLab</span><span style="height: 40px; display: grid; place-items: center; border-bottom: 1px solid #13212b; font-size: 12px; font-weight: 650; text-align: center; line-height: 15px">Grund&shy;überwachung</span>
+                    <span style="height: 34px; display: flex; align-items: center; border-bottom: 1px solid #d9dee2; font-size: 13px; font-weight: 600">Status</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">Online</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">Online</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #8a96a0">offen (#99)</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">Dienst</span><span style="height: 34px; display: flex; align-items: center; border-bottom: 1px solid #d9dee2; font-size: 13px; font-weight: 600">Jobs</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">ja</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">ja</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #8a96a0">offen (#99)</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">–</span><span style="height: 34px; display: flex; align-items: center; border-bottom: 1px solid #d9dee2; font-size: 13px; font-weight: 600">Schritte</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">ja</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">ab Forgejo 17</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #8a96a0">offen (#99)</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">–</span><span style="height: 34px; display: flex; align-items: center; border-bottom: 1px solid #d9dee2; font-size: 13px; font-weight: 600">Logs</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">je Schritt</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">Journal</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #8a96a0">offen (#99)</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">Journal</span><span style="height: 34px; display: flex; align-items: center; border-bottom: 1px solid #d9dee2; font-size: 13px; font-weight: 600">Updates</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">–</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">–</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #8a96a0">offen (#99)</span><span style="height: 34px; display: grid; place-items: center; border-bottom: 1px solid #d9dee2; font-size: 12.5px; color: #13212b; font-weight: 550">–</span>
+                  </div>
+                  <div style="margin-top: 22px; font-size: 13px; line-height: 19px; color: #4f5d67; text-wrap: pretty">Varianten A · B · C für mehrere Runner stehen weiter in <a href="Dashboard-Varianten 0.8.0.dc.html">Dashboard-Varianten 0.8.0</a>. Gewählt: C.</div>
+                </div>
+              </div>
+              <p style="margin: 0; font-size: 12.5px; line-height: 18px; color: #4f5d67">Beispieldaten: VM runner-vm mit runner-vm-01 (GitHub, beispiel-org), runner-vm-02 (Forgejo, git.example.org), buildagent (unbekannt); Woodpecker-Agent als „noch nicht unterstützt“. Adressen aus 192.0.2.0/24.</p>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isMain}}" hint-placeholder-val="{{true}}">
+            <dc-import name="Main 0.8.0" sprache="{{o.sprache}}" runner="{{o.runner}}" gewaehlt="{{o.gewaehlt}}" auswahl="C" faehig="{{o.faehig}}" info-runner="{{o.infoRunner}}" zustand="{{o.zustand}}" github="{{o.github}}" thema="{{o.thema}}" kerne="{{o.kerne}}" update="{{o.update}}" info="{{o.info}}" info-ziel="{{o.infoZiel}}" pruefung="{{o.pruefung}}" pruef-ergebnis="{{ergebnis}}" log="{{o.log}}" verlauf="{{o.verlauf}}" schritte="{{o.schritte}}" netz="{{netz}}" on-abmelden="{{zuLogin}}" hint-size="1440px,900px"></dc-import>
+          </sc-if>
+
+          <sc-if value="{{isVergleich}}" hint-placeholder-val="{{false}}">
+            <div style="width: 1976px; height: 840px; box-sizing: border-box; padding: 32px; display: grid; grid-template-columns: 88px repeat(3, 584px); grid-template-rows: 64px 336px 336px; gap: 24px; background: {{vgBg}}; color: {{vgInk}}">
+              <span></span>
+              <div><div style="font-size: 15px; line-height: 20px; font-weight: 650">A · Eigener Block in der RAM-Spalte</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 17px; color: {{vgMut}}">Werte in der Kopfzeile, ein Verlauf mit zwei Reihen. RAM-Verlauf flacher und ohne eigene Achse.</div></div>
+              <div><div style="font-size: 15px; line-height: 20px; font-weight: 650">B · Band über beide Spalten</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 17px; color: {{vgMut}}">Netz links, Last rechts, je mit Mini-Verlauf. CPU und RAM behalten ihre Achsen.</div></div>
+              <div><div style="font-size: 15px; line-height: 20px; font-weight: 650">C · Messzeilen wie RAM und Swap</div><div style="margin-top: 2px; font-size: 12.5px; line-height: 17px; color: {{vgMut}}">↓ und ↑ als eigene Zeilen mit Mini-Verlauf statt Balken, gemeinsame Skala.</div></div>
+              <div style="font-size: 13px; font-weight: 650; padding-top: 14px">Leerlauf</div>
+              <div style="position: relative; overflow: hidden; border-radius: 4px"><div style="position: absolute; left: -428px; top: -72px; width: 1440px; height: 900px"><dc-import name="Main 0.8.0" runner="1" zustand="leerlauf" kerne="8" thema="{{o.thema}}" netz="A" hint-size="1440px,900px"></dc-import></div></div>
+              <div style="position: relative; overflow: hidden; border-radius: 4px"><div style="position: absolute; left: -428px; top: -72px; width: 1440px; height: 900px"><dc-import name="Main 0.8.0" runner="1" zustand="leerlauf" kerne="8" thema="{{o.thema}}" netz="B" hint-size="1440px,900px"></dc-import></div></div>
+              <div style="position: relative; overflow: hidden; border-radius: 4px"><div style="position: absolute; left: -428px; top: -72px; width: 1440px; height: 900px"><dc-import name="Main 0.8.0" runner="1" zustand="leerlauf" kerne="8" thema="{{o.thema}}" netz="C" hint-size="1440px,900px"></dc-import></div></div>
+              <div style="font-size: 13px; font-weight: 650; padding-top: 14px">Volllast</div>
+              <div style="position: relative; overflow: hidden; border-radius: 4px"><div style="position: absolute; left: -428px; top: -72px; width: 1440px; height: 900px"><dc-import name="Main 0.8.0" runner="1" zustand="volllast" kerne="8" thema="{{o.thema}}" netz="A" hint-size="1440px,900px"></dc-import></div></div>
+              <div style="position: relative; overflow: hidden; border-radius: 4px"><div style="position: absolute; left: -428px; top: -72px; width: 1440px; height: 900px"><dc-import name="Main 0.8.0" runner="1" zustand="volllast" kerne="8" thema="{{o.thema}}" netz="B" hint-size="1440px,900px"></dc-import></div></div>
+              <div style="position: relative; overflow: hidden; border-radius: 4px"><div style="position: absolute; left: -428px; top: -72px; width: 1440px; height: 900px"><dc-import name="Main 0.8.0" runner="1" zustand="volllast" kerne="8" thema="{{o.thema}}" netz="C" hint-size="1440px,900px"></dc-import></div></div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{isSkript}}" hint-placeholder-val="{{false}}"><dc-import name="Setup-Skript 0.8.0" runner="{{sk}}" thema="{{o.thema}}" hint-size="1440px,900px"></dc-import></sc-if>
+          <sc-if value="{{isWeb}}" hint-placeholder-val="{{false}}"><dc-import name="Setup-Web 0.8.0" schritt="{{web.schritt}}" funde="{{web.funde}}" offen="{{web.offen}}" zuordnen="{{web.zuordnen}}" erkennen="{{web.erkennen}}" anbinden="{{web.anbinden}}" sprache="{{webSprache}}" breite="{{web.breite}}" thema="{{o.thema}}" on-fertig="{{zuLogin}}" hint-size="1440px,900px"></dc-import></sc-if>
+          <sc-if value="{{isLogin}}" hint-placeholder-val="{{false}}"><dc-import name="Login 0.8.0" sprache="{{o.sprache}}" fehler="{{false}}" thema="{{o.thema}}" on-angemeldet="{{zuMain}}" hint-size="1440px,900px"></dc-import></sc-if>
+          <sc-if value="{{isLoginFehler}}" hint-placeholder-val="{{false}}"><dc-import name="Login 0.8.0" sprache="{{o.sprache}}" fehler="{{true}}" thema="{{o.thema}}" on-angemeldet="{{zuMain}}" hint-size="1440px,900px"></dc-import></sc-if>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const BASE = { zustand: 'volllast', github: 'ok', thema: 'hell', kerne: 8, update: 'aktuell', info: false, infoZiel: 'updates', pruefung: 'ruhe', log: 'mitlaufen', verlauf: 600, schritte: 'github', runner: 3, gewaehlt: 1, faehig: 'voll', infoRunner: 'ruhe', sprache: 'auto' };
+const INFO = { info: true, zustand: 'job', infoZiel: 'updates' };
+
+class Component extends DCLogic {
+  state = { id: null, o: null, skala: 0.5, netz: 'A', ergebnis: 'neu' };
+  stageRef = React.createRef();
+
+  _liste() {
+    if (this._L) return this._L;
+    const g = (titel, items) => items.map((x) => Object.assign({ gruppe: titel, k: 'main' }, x));
+    this._L = [].concat(
+      g('Übersicht', [
+        { id: 'notiz', t: 'Design 0.8.0 · was ist neu', k: 'notiz', neu: true, d: 'Änderungen gegenüber 0.4.0 mit Sprung zum Bildschirm und Tabelle „Fähigkeiten je Anbieter“ (nach der API-Prüfung, #93).' }
+      ]),
+      g('Dashboard', [
+        { id: 'main', t: '3 Runner · runner-vm-01 Job läuft', neu: true, p: { zustand: 'job' }, d: 'Live-Prototyp. Reiter an der Runner-Spalte: Klick wählt den Runner, die Wahl merkt sich der Browser. Optionen: Anzahl Runner, gewählter Runner.' },
+        { id: 'main-forgejo', t: '3 Runner · runner-vm-02 (Forgejo) gewählt', neu: true, p: { zustand: 'job', gewaehlt: 2 }, d: 'Bereit. Auslastung bleibt die der VM, Runner-Status und Jobs zeigen runner-vm-02.' },
+        { id: 'main-fremd', t: 'Meldung von einem anderen Runner', neu: true, p: { zustand: 'gestoppt', gewaehlt: 2, kerne: 4 }, d: 'runner-vm-02 ist gewählt, runner-vm-01 ist gestoppt: Die Meldung nennt den Runner, „Anzeigen“ wechselt zu ihm. Der Reiter zeigt den Zustand rot.' },
+        { id: 'main-5', t: '5 Runner · Reiter mit „+2“', neu: true, p: { zustand: 'job', runner: 5 }, d: 'Ab 4 Runnern: drei Reiter (der gewählte bleibt sichtbar) und „+N“ mit den Zustandspunkten der übrigen. Klick öffnet die Liste.' },
+        { id: 'main-en', t: '3 Runner · English', neu: true, p: { zustand: 'job', sprache: 'en' }, d: 'Ganze Oberfläche auf Englisch. Umschalten in Info & Hilfe › Darstellung › Sprache oder hier unter „Optionen › Sprache“.' },
+        { id: 'main-1', t: '1 Runner · wie 0.4.0', p: { runner: 1, zustand: 'job' }, d: 'Keine Reiter, keine zusätzlichen Bedienelemente.' },
+        { id: 'volllast', t: 'Volllast · 8 Kerne', p: {}, d: 'Simulierte Daten, Werte jede Sekunde.' },
+        { id: 'leerlauf', t: 'Leerlauf · hell', p: { zustand: 'leerlauf', kerne: 4 }, d: 'Skala Netz mit Untergrenze 64 KB/s.' },
+        { id: 'volllast-dunkel', t: 'Volllast · dunkel, 16 Kerne', p: { thema: 'dunkel', kerne: 16 }, d: '16 Kerne in zwei Spalten.' },
+        { id: 'log-hoch', t: 'Live-Log hochgescrollt', p: { thema: 'dunkel', log: 'hochgescrollt' }, d: 'Hochscrollen hält das Mitlaufen an.' },
+        { id: 'neustart', t: 'Monitor gerade neu gestartet', p: { zustand: 'job', verlauf: 150 }, d: 'Verlauf nutzt die ganze Breite, links „seit hh:mm“.' },
+        { id: 'schritte-lokal', t: 'Job · Schrittliste fehlt noch', p: { zustand: 'job', schritte: 'lokal' }, d: '„3 von –“, gestrichelter Rest.' },
+        { id: 'netz-vergleich', t: 'Netzwerk: Varianten A · B · C', k: 'vergleich', w: 1976, h: 840, d: 'Aus 0.4.0. Gewählt A.' }
+      ]),
+      g('Nicht verfügbar', [
+        { id: 'grund', t: 'buildagent · Grundüberwachung', neu: true, p: { zustand: 'job', gewaehlt: 3 }, d: 'Dienst aktiv seit, Neustarts, letzter Stopp. Kein „Online bei …“. „Jobs je Repository“ ruhig leer mit Weg zur Zuordnung. Live-Log zeigt das Journal der Unit ohne Schritt-Trenner.' },
+        { id: 'grund-dunkel', t: 'Grundüberwachung · dunkel', neu: true, p: { zustand: 'job', gewaehlt: 3, thema: 'dunkel' }, d: 'Gleicher Zustand im dunklen Modus.' },
+        { id: 'teilweise', t: 'Teilweise · Job ohne Schritte', neu: true, p: { zustand: 'job', faehig: 'teilweise' }, d: 'Der Dienst liefert Jobs, aber keine Schritte: „Schritte nicht verfügbar“ statt Balken, Laufzeit und Job bleiben, im Log keine Trenner.' }
+      ]),
+      g('Zustände', [
+        { id: 'gestoppt', t: 'Runner-Dienst gestoppt', p: { zustand: 'gestoppt', kerne: 4 }, d: 'Meldung nennt den Runner: „runner-vm-01: Dienst gestoppt“.' },
+        { id: 'offline', t: 'Offline beim Dienst · dunkel', p: { zustand: 'offline', thema: 'dunkel', kerne: 4 }, d: 'Dienst läuft, der Server sieht den Runner nicht.' },
+        { id: 'platte', t: 'Platte knapp', p: { zustand: 'platte', kerne: 4 }, d: 'Unter 25 GB frei auf „/“.' },
+        { id: 'getrennt', t: 'Verbindung unterbrochen', p: { zustand: 'getrennt', kerne: 4 }, d: 'Letzter Stand, ausgegraut.' },
+        { id: 'kein-token', t: 'Kein GitHub-Token (runner-vm-01)', p: { zustand: 'leerlauf', github: 'kein-token', kerne: 4 }, d: 'Jobs und Online-Status für diesen Runner aus.' },
+        { id: 'gh-fehler', t: 'GitHub nicht erreichbar', p: { github: 'nicht-erreichbar', kerne: 4 }, d: 'Jobs zeigen den letzten Stand.' },
+        { id: 'token-ablauf', t: 'Token läuft ab · dunkel', p: { zustand: 'leerlauf', github: 'token-ablauf', thema: 'dunkel', kerne: 4 }, d: 'Hinweis 14 Tage vor Ablauf.' }
+      ]),
+      g('Info & Hilfe', [
+        { id: 'info-runner', t: 'Runner · Übersicht', neu: true, p: Object.assign({}, INFO), d: 'Ganz oben: alle erkannten Runner mit Dienst, Server, Einstufung, Sicherheitsgrad, Unit und letzter Erkennung.' },
+        { id: 'info-form', t: 'Runner · Zuordnung ändern', neu: true, p: Object.assign({ infoRunner: 'formular' }, INFO), d: 'Dasselbe kleine Formular wie in der Einrichtung: Dienst, Anzeigename, Unit, Log-Pfad.' },
+        { id: 'info-zugang', t: 'Runner · Zugangsdaten ändern', neu: true, p: Object.assign({ infoRunner: 'zugang' }, INFO), d: 'Nur auf der VM: Befehl zum Kopieren und Link zur Anleitung.' },
+        { id: 'info-erk', t: 'Runner · Neu erkennen läuft', neu: true, p: Object.assign({ infoRunner: 'laeuft' }, INFO), d: 'Knopf gesperrt, Drehsymbol, „Suche Runner …“.' },
+        { id: 'info-neu', t: 'Runner · 1 neuer Runner', neu: true, p: Object.assign({ infoRunner: 'neu' }, INFO), d: '„1 neuer Runner gefunden: runner-vm-03 (Gitea)“ mit „Übernehmen“. Klickbar.' },
+        { id: 'info-github', t: 'Verbindungen · GitHub und Forgejo', neu: true, p: Object.assign({}, INFO, { infoZiel: 'github' }), d: 'Je angebundenem Dienst die kv-Liste wie bisher.' },
+        { id: 'info-en', t: 'Info & Help · English', neu: true, p: Object.assign({ sprache: 'en' }, INFO), d: 'Runner-Abschnitt, Verbindungen, Anleitungen und Updates auf Englisch.' },
+        { id: 'info-token', t: 'Anleitung: Zugangsdaten', neu: true, p: Object.assign({}, INFO, { infoZiel: 'token' }), d: 'Anbieterneutraler Titel, Unterpunkte je Dienst.' },
+        { id: 'pruef-laeuft', t: 'Updates · Jetzt prüfen läuft', p: Object.assign({ pruefung: 'laeuft' }, INFO), d: 'Aus 0.4.0.' },
+        { id: 'pruef-neu', t: 'Updates · 0.8.1 verfügbar', p: Object.assign({ pruefung: 'neu', update: 'verfuegbar' }, INFO), d: 'Aus 0.4.0.' }
+      ]),
+      g('Updates', [
+        { id: 'upd-verf', t: 'Update verfügbar', p: { zustand: 'leerlauf', update: 'verfuegbar', kerne: 4 }, d: '„Was ist neu?“ › „Jetzt auf 0.8.1 aktualisieren“.' },
+        { id: 'upd-laeuft', t: 'Update läuft · dunkel', p: { zustand: 'leerlauf', update: 'laeuft', info: true, thema: 'dunkel', kerne: 4 }, d: '„Jetzt prüfen“ ist gesperrt.' },
+        { id: 'upd-fehler', t: 'Update fehlgeschlagen', p: { zustand: 'leerlauf', update: 'fehler', info: true, kerne: 4 }, d: '0.8.0 wurde wiederhergestellt.' }
+      ]),
+      g('Ersteinrichtung', [
+        { id: 'skript', t: 'Skript · mehrere Runner', neu: true, k: 'skript', sk: 'mehrere', d: '„Runner auf dieser VM“ im Abschnitt „System prüfen“.' },
+        { id: 'skript-ohne', t: 'Skript · kein Runner · dunkel', neu: true, k: 'skript', sk: 'keiner', p: { thema: 'dunkel' }, d: 'Wege: später einrichten, im Browser zuordnen oder nur die VM überwachen.' },
+        { id: 'web1', t: '1 · Einrichtungscode', k: 'web', web: { schritt: 1 }, d: 'Klickbar bis zum Ende.' },
+        { id: 'web2', t: '2 · Zugang schützen', k: 'web', web: { schritt: 2 }, d: 'Passwort ab 12 Zeichen.' },
+        { id: 'web3', t: '3 · Runner · drei Funde', neu: true, k: 'web', web: { schritt: 3, funde: 'drei', offen: '02' }, d: 'runner-vm-02 aufgeklappt. Je Fund eine Handlung: Übernehmen, Zuordnen oder Ignorieren. „Neu erkennen“ ist klickbar.' },
+        { id: 'web3-teil', t: '3 · Runner · noch nicht unterstützt', neu: true, k: 'web', web: { schritt: 3, funde: 'vier', offen: 'wp' }, d: 'Woodpecker-Agent: Hinweis „Nur Grundüberwachung“, Auswahl Grundüberwachung oder Ignorieren.' },
+        { id: 'web3-form', t: '3 · Runner · Zuordnen', neu: true, k: 'web', web: { schritt: 3, funde: 'drei', offen: 'ba', zuordnen: true }, d: 'Formular für buildagent: Dienst aus der Liste oder „anderer“, Anzeigename, Unit, Log-Pfad.' },
+        { id: 'web3-erk', t: '3 · Runner · Neu erkennen läuft', neu: true, k: 'web', web: { schritt: 3, funde: 'drei', offen: '-', erkennen: 'laeuft' }, d: 'Drehsymbol, „Suche Runner …“. Danach „Keine Änderung“.' },
+        { id: 'web3-leer', t: '3 · Runner · keiner gefunden', neu: true, k: 'web', web: { schritt: 3, funde: 'leer' }, d: 'Drei Wege: Runner einrichten (Befehl), von Hand zuordnen, ohne Runner fortfahren.' },
+        { id: 'web3-390', t: '3 · Runner · 390 px', neu: true, k: 'web', w: 390, h: 1640, web: { schritt: 3, funde: 'drei', offen: '02', breite: '390' }, d: 'Stepper zeigt nur den aktuellen Schritt, Karten untereinander.' },
+        { id: 'web3-en', t: '3 · Runners · English', neu: true, k: 'web', web: { schritt: 3, funde: 'drei', offen: 'ba', sprache: 'en' }, d: 'Info › Darstellung › Sprache. Englische Texte sind länger und brechen um.' },
+        { id: 'web4', t: '4 · Anbinden · GitHub und Forgejo', neu: true, k: 'web', web: { schritt: 4, anbinden: 'zwei' }, d: 'Ein Block je Runner mit Dienst-Plakette, Server, Feldern und Anleitung. Jeder einzeln überspringbar.' },
+        { id: 'web4-einer', t: '4 · Anbinden · nur ein Runner · dunkel', neu: true, k: 'web', p: { thema: 'dunkel' }, web: { schritt: 4, anbinden: 'einer' }, d: 'Wirkt wie bisher: kein Block-Rahmen, „Ohne Anbindung fortfahren“ unten.' },
+        { id: 'web4-en', t: '4 · Connect · English', neu: true, k: 'web', web: { schritt: 4, anbinden: 'zwei', sprache: 'en' }, d: 'Schritt 4 auf Englisch.' },
+        { id: 'web5', t: '5 · Fertig', neu: true, k: 'web', web: { schritt: 5 }, d: 'Jeder Runner mit Dienst und Stand: angebunden, Grundüberwachung, ignoriert.' }
+      ]),
+      g('Anmeldung', [
+        { id: 'login', t: 'Anmelden', k: 'login', d: 'Klickbar: Passwort ab 12 Zeichen führt zum Monitor.' },
+        { id: 'login-en', t: 'Sign in · English', neu: true, k: 'login', p: { sprache: 'en' }, d: 'Anmeldung auf Englisch.' },
+        { id: 'login-fehler', t: 'Falsches Passwort · dunkel', k: 'login-fehler', p: { thema: 'dunkel' }, d: 'Nach mehreren Fehlversuchen zählt eine Sperre herunter.' }
+      ])
+    );
+    return this._L;
+  }
+  _find(id) { return this._liste().find((s) => s.id === id); }
+  _waehle(id) {
+    const s = this._find(id); if (!s) return;
+    try { localStorage.setItem('rm-080-bildschirm', id); } catch (e) {}
+    this.setState({ id: id, o: Object.assign({}, BASE, s.p || {}) }, () => this._mess());
+  }
+  _schritt(d) { const L = this._liste(); const i = Math.max(0, L.findIndex((s) => s.id === (this.state.id || 'notiz'))); this._waehle(L[(i + d + L.length) % L.length].id); }
+  _mess() {
+    const el = this.stageRef.current; if (!el) return;
+    const s = this._find(this.state.id) || this._liste()[0];
+    const W = s.w || 1440, H = s.h || 900;
+    const k = Math.min(1, (el.clientWidth - 48) / W, (el.clientHeight - 48) / H);
+    const r = Math.max(0.15, Math.floor(k * 1000) / 1000);
+    if (r !== this.state.skala) this.setState({ skala: r });
+  }
+  componentDidMount() {
+    let id = null; try { id = localStorage.getItem('rm-080-bildschirm'); } catch (e) {}
+    this._waehle(id && this._find(id) ? id : 'notiz');
+    if (window.ResizeObserver && this.stageRef.current) { this._ro = new ResizeObserver(() => this._mess()); this._ro.observe(this.stageRef.current); }
+    this._taste = (e) => {
+      const t = e.target && e.target.tagName;
+      if (t === 'INPUT' || t === 'SELECT' || t === 'TEXTAREA' || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === 'ArrowRight') { e.preventDefault(); this._schritt(1); }
+      if (e.key === 'ArrowLeft') { e.preventDefault(); this._schritt(-1); }
+    };
+    window.addEventListener('keydown', this._taste);
+  }
+  componentWillUnmount() { if (this._ro) this._ro.disconnect(); window.removeEventListener('keydown', this._taste); }
+
+  renderVals() {
+    const L = this._liste();
+    const cur = this._find(this.state.id) || L[0];
+    const o = this.state.o || Object.assign({}, BASE, cur.p || {});
+    const idx = L.indexOf(cur);
+    const setO = (k, v) => this.setState({ o: Object.assign({}, o, { [k]: v }) });
+    const seg = (liste, wert, setze, titel) => liste.map((x) => ({ text: x[1], titel: (titel && titel[x[0]]) || '', p: String(wert) === String(x[0]) ? 'true' : 'false', bg: String(wert) === String(x[0]) ? '#e2e6e9' : 'transparent', fg: String(wert) === String(x[0]) ? '#13212b' : '#4f5d67', fw: String(wert) === String(x[0]) ? 600 : 400, waehle: () => setze(x[0]) }));
+    let nr = 0;
+    const gruppen = [];
+    L.forEach((s) => {
+      let gg = gruppen[gruppen.length - 1];
+      if (!gg || gg.titel !== s.gruppe) { gg = { titel: s.gruppe, items: [] }; gruppen.push(gg); }
+      const an = s.id === cur.id; nr++;
+      gg.items.push({ t: s.t, nr: nr, neu: !!s.neu, aria: an ? 'page' : 'false', bg: an ? '#ffffff' : 'transparent', fg: an ? '#0e628f' : '#13212b', fw: an ? 600 : 400, waehle: () => this._waehle(s.id) });
+    });
+    const W = cur.w || 1440, H = cur.h || 900, k = this.state.skala;
+    const dunkel = o.thema === 'dunkel';
+    const geh = (id) => () => this._waehle(id);
+    return {
+      gruppen: gruppen, o: o, netz: this.state.netz, ergebnis: this.state.ergebnis,
+      cur: { t: cur.t, d: cur.d || '', gruppe: cur.gruppe, mass: W + ' × ' + H },
+      pos: (idx + 1) + ' / ' + L.length,
+      vor: () => this._schritt(1), zurueck: () => this._schritt(-1),
+      stageRef: this.stageRef, W: W, H: H, skala: k, boxW: Math.round(W * k), boxH: Math.round(H * k),
+      isNotiz: cur.k === 'notiz', isMain: cur.k === 'main', isVergleich: cur.k === 'vergleich',
+      isSkript: cur.k === 'skript', sk: cur.sk || 'mehrere', isWeb: cur.k === 'web',
+      web: Object.assign({ schritt: 1, funde: 'drei', offen: '02', zuordnen: false, erkennen: 'ruhe', anbinden: 'zwei', breite: '1440' }, cur.web || {}),
+      webSprache: (cur.web && cur.web.sprache) || o.sprache,
+      segSprache: seg([['auto', 'Auto'], ['de', 'DE'], ['en', 'EN']], o.sprache, (v) => setO('sprache', v)),
+      isLogin: cur.k === 'login', isLoginFehler: cur.k === 'login-fehler',
+      zeigeThema: cur.k !== 'notiz', zeigeNetz: cur.k === 'main' || cur.k === 'vergleich', zeigeMain: cur.k === 'main',
+      vgBg: dunkel ? '#0c1a24' : '#ffffff', vgInk: dunkel ? '#eef2f5' : '#13212b', vgMut: dunkel ? '#a9b6c0' : '#4f5d67',
+      segThema: seg([['hell', 'Hell'], ['dunkel', 'Dunkel'], ['system', 'Auto']], o.thema, (v) => setO('thema', v)),
+      segNetz: seg([['A', 'A'], ['B', 'B'], ['C', 'C']], this.state.netz, (v) => this.setState({ netz: v }), { A: 'Eigener Block in der RAM-Spalte', B: 'Band über beide Spalten', C: 'Messzeilen wie RAM und Swap' }),
+      segRunner: seg([[1, '1'], [2, '2'], [3, '3'], [4, '4'], [5, '5']], o.runner, (v) => this.setState({ o: Object.assign({}, o, { runner: v, gewaehlt: Math.min(o.gewaehlt, v) }) })),
+      segGew: seg([[1, '01'], [2, '02'], [3, 'ba'], [4, '03'], [5, '04']].slice(0, o.runner), o.gewaehlt, (v) => setO('gewaehlt', v)),
+      segKerne: seg([[2, '2'], [4, '4'], [8, '8'], [16, '16']], o.kerne, (v) => setO('kerne', v)),
+      setZustand: (e) => setO('zustand', e.target.value), setGithub: (e) => setO('github', e.target.value),
+      setLog: (e) => setO('log', e.target.value), setUpdate: (e) => setO('update', e.target.value),
+      setErgebnis: (e) => this.setState({ ergebnis: e.target.value }),
+      infoWahl: o.info ? o.infoZiel : 'zu',
+      setInfo: (e) => { const v = e.target.value; this.setState({ o: Object.assign({}, o, v === 'zu' ? { info: false } : { info: true, infoZiel: v }) }); },
+      zuruecksetzen: () => { this.setState({ netz: 'A', ergebnis: 'neu' }); this._waehle(cur.id); },
+      zuLogin: () => this._waehle('login'), zuMain: () => this._waehle('main'),
+      geh: { web3: geh('web3'), web4: geh('web4'), grund: geh('grund'), infoRunner: geh('info-runner'), skript: geh('skript'), anleitung: geh('info-token'), web3en: geh('web3-en'), mainEn: geh('main-en'), netz: geh('netz-vergleich'), pruef: geh('pruef-laeuft'), github: geh('info-github'), token: geh('info-token'), log: geh('log-hoch'), main: geh('main'), login: geh('login'), neustart: geh('neustart'), schritte: geh('schritte-lokal') }
+    };
+  }
+}
+</script>
+</body>
+</html>

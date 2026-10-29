@@ -1,6 +1,6 @@
 # Runner-Monitor
 
-**Stand: 25.10.2026 · Version 0.7.0** (Design v0.4.0, auf der Runner-VM abgenommen)
+**Stand: 29.10.2026 · Version 0.8.0** (Design v0.8.0, noch nicht auf einer echten Runner-VM abgenommen)
 
 Live-Dashboard für einen **selbst gehosteten GitHub-Actions-Runner** auf einer Linux-VM.
 Ein Blick zeigt, ob der Runner bereit ist, welcher Job gerade läuft, wie ausgelastet die VM
@@ -32,8 +32,8 @@ schon laufen – oder das Skript richtet ihn mit ein.
 
 ```bash
 # 1. Neueste Version holen und entpacken (Release-Seite: Assets › runner-monitor-X.Y.Z.tar.gz)
-curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/latest/download/runner-monitor-0.7.0.tar.gz
-tar xzf runner-monitor-0.7.0.tar.gz && cd runner-monitor-0.7.0
+curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/latest/download/runner-monitor-0.8.0.tar.gz
+tar xzf runner-monitor-0.8.0.tar.gz && cd runner-monitor-0.8.0
 
 # 2. Einrichtungsskript: Dienste, Firewall (Port 8090 nur aus dem LAN), Runner-Suche
 sudo ./einrichten.sh
@@ -73,7 +73,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 | Runbooks für Störungen | [docs/runbooks/](docs/runbooks/README.md) |
 | Sicherheit, Datenschutz | [SECURITY.md](SECURITY.md) (Lücken melden), [docs/sicherheit/bericht.md](docs/sicherheit/bericht.md), [docs/DATENSCHUTZ.md](docs/DATENSCHUTZ.md) |
 | Architekturentscheidungen | [docs/adr/](docs/adr/) · [DECISIONS.md](DECISIONS.md) |
-| Design v0.3.0 und Abgleich mit dem Code | [docs/design/README.md](docs/design/README.md) |
+| Design v0.8.0 und Abgleich mit dem Code | [docs/design/README.md](docs/design/README.md) |
 | Änderungen | [CHANGELOG.md](CHANGELOG.md) · [docs/releases/](docs/releases/) |
 | Aufgaben | [Project „Self-Hosted-Github-Runner-Monitor Roadmap“](https://github.com/orgs/Bamberger-IT-Services/projects/5) (Issues dieses Repos) |
 | Entscheidungen, Verlauf | [entwickler-dashboard/index.html](entwickler-dashboard/index.html) |
@@ -82,6 +82,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 
 | Version | Datum | Handbuch | Release-Notiz |
 |---|---|---|---|
+| 0.8 | 29.10.2026 (0.8.0) | [v0.8.0/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.8.0/docs/handbuch) | [v0.8.0](docs/releases/v0.8.0.md) |
 | 0.7 | 25.10.2026 (0.7.0) | [v0.7.0/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.7.0/docs/handbuch) | [v0.7.0](docs/releases/v0.7.0.md) |
 | 0.6 | 25.10.2026 (0.6.1) | [v0.6.1/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.6.1/docs/handbuch) | [v0.6.1](docs/releases/v0.6.1.md), [v0.6.0](docs/releases/v0.6.0.md) |
 | 0.5 | 23.10.2026 (0.5.0) | [v0.5.0/docs/handbuch](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/tree/v0.5.0/docs/handbuch) | [v0.5.0](docs/releases/v0.5.0.md) |
@@ -104,8 +105,9 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 
 ## Mitmachen
 
-Fehler und Ideen als [Issue](https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/issues/new/choose) –
-**bitte ohne IP-Adressen, Rechnernamen, Tokens oder Passwörter**, das Repository ist öffentlich.
+Fehler und Ideen per E-Mail an [info@bamberger-it-services.de](mailto:info@bamberger-it-services.de) – im Dashboard unter
+*Info & Hilfe › Fehler gefunden oder Idee?* mit vorbereiteter Vorlage. **Bitte keine Tokens oder Passwörter mitschicken**,
+Log-Ausschnitte nur gekürzt.
 Sicherheitslücken vertraulich über *Security › Report a vulnerability*.
 
 Ein Projekt von [Bamberger IT Services](https://bamberger-it-services.de). © 2026 Bamberger IT Services, alle Rechte vorbehalten –

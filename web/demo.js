@@ -80,6 +80,161 @@ window.RM_DEMO = (() => {
     ];
   };
 
+  /* Seit #92 (E-19, additiv): zusätzlich runner[] und meldungen[] wie GET /api/zustand bzw. die
+     Ereignisse „runner“ und „meldungen“; die Oberfläche nutzt sie seit #94 (Reiter, Meldungen mit Runner).
+     ?runner=N (1 bis 5, Design 0.8.0): 2 = + Forgejo-Runner (Grundüberwachung), 3 = + unbekannter Runner
+     (Grundüberwachung, gestoppt bei ?zustand=gestoppt), 4 = + Gitea-Runner (bereit), 5 = + GitLab-Runner
+     (offline beim Server). Die Runner ab 4 zeigen vorweg, wie ein Dienst mit Jobs aussieht (Anbindung folgt mit #93/#99). */
+  let runnerAnzahl = 1;
+  const FAEHIG_VOLL = { status: true, jobs: true, schritte: true, logs: true, updates: false };
+  const FAEHIG_GRUND = { status: true, jobs: false, schritte: false, logs: true, updates: false };
+  // ?faehig=teilweise (Design 0.8.0 › „Teilweise · Job ohne Schritte“): runner-vm-01 liefert Jobs, aber keine Schritte
+  const FAEHIG_TEIL = { status: true, jobs: true, schritte: false, logs: true, updates: false };
+  let faehigWahl = 'voll';
+  // ?forgejo=angebunden (Design 0.8.0 › „Verbindungen · GitHub und Forgejo“): runner-vm-02 mit Jobs statt Grundüberwachung
+  let forgejoAngebunden = false;
+  // ?anbieter=kein-token|nicht-erreichbar|token-ungueltig (#123): Abfrage der Runner ab runner-vm-02 (Forgejo, Gitea, GitLab) mit Fehler;
+  // ?anbieteralter=N: Alter ihres letzten guten Stands in Sekunden (Standard 900 = veraltet; 200 = Hinweis mit Alter)
+  let anbieterAbfrage = 'ok', anbieterAlter = 900;
+  // Grundüberwachung (#95): Dienst mit NRestarts (neustarts) und InactiveEnterTimestamp (letzterStopp) wie runner.dienst_status
+  const grundRunner = (id, name, dienst, unit, einstufung, stand, dienstZustand, mehr = {}) => {
+    const t = jetzt(), aktiv = dienstZustand === 'aktiv';
+    const dienstSt = aktiv ? { zustand: 'aktiv', seit: mehr.seit || START + 7200, grund: null, neustarts: mehr.neustarts || 0, letzterStopp: mehr.letzterStopp || null }
+      : { zustand: 'gestoppt', seit: t - 760, grund: grund || null, neustarts: mehr.neustarts || 0, letzterStopp: t - 760 };
+    return {
+      id, name, dienst, server: null, org: null, unit, stand, einstufung, version: null, labels: [], faehig: FAEHIG_GRUND,
+      status: { zustand: aktiv ? 'aktiv' : 'gestoppt', dienst: dienstSt, beimDienst: null },
+      job: null, letzteJobs: null, jobsJeRepository: null, log: { art: 'journal', unit },
+    };
+  };
+  // Runner mit Jobs und Schritten, aber ohne laufenden Job (Zustand bereit oder offline beim Server)
+  const vollRunner = (id, dienst, unit, labels, offline) => {
+    const t = jetzt(), w = workflows();
+    return {
+      id, name: id, dienst, server: dienst === 'gitlab' ? 'https://gitlab.example.org' : 'https://git.example.org', org: dienst === 'gitlab' ? null : 'beispiel-org', unit, stand: 'angebunden', einstufung: 'voll',
+      version: dienst === 'gitea' ? 'act_runner 0.2.11' : dienst === 'forgejo' ? 'Forgejo Runner 9.1' : 'GitLab Runner 17.5', labels, faehig: FAEHIG_VOLL,
+      status: { zustand: offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst: offline ? { zustand: 'offline', seit: START + 86400 } : { zustand: 'online', seit: null } },
+      job: null, letzteJobs: [{ repo: 'datenimport', workflow: 'Import', name: 'nachts', ergebnis: 'erfolg', dauer: 128, ende: t - 720 }],
+      jobsJeRepository: { ...w, abfrage: anbieterAbfrage, abgefragt: anbieterAbfrage === 'ok' ? t - (takt % 30) : t - anbieterAlter, naechste: t + 30 - (takt % 30), tokenAblauf: null,  // Forgejo, Gitea und GitLab melden kein Ablaufdatum (E-18: nur, was der Dienst liefert)
+        kontingent: {}, repos: anbieterAbfrage === 'kein-token' ? [] : REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })) },
+      log: { art: 'journal', unit },
+    };
+  };
+  const runnerListeAlle = () => {
+    const st = status(), w = workflows();
+    const zust = st.dienst.zustand === 'gestoppt' ? 'gestoppt' : st.job ? 'job' : st.github.zustand === 'offline' ? 'offline' : 'bereit';
+    const unit = 'actions.runner.beispiel-org.runner-vm-01.service';
+    const teil = faehigWahl === 'teilweise';
+    // Wie der Server (anbieter.eintrag): ohne Fähigkeit „schritte“ kein Schritt und keine Schrittliste
+    const job = st.job && teil ? { ...st.job, schritt: null, schritte: [] } : st.job;
+    const liste = [{
+      id: 'runner-vm-01', name: st.runner, dienst: 'github', server: 'https://github.com', org: w.org, unit,
+      stand: gh === 'kein-token' ? 'offen' : 'angebunden', einstufung: 'voll', version: st.version, labels: st.labels, faehig: teil ? FAEHIG_TEIL : FAEHIG_VOLL,
+      status: { zustand: zust, dienst: st.dienst, beimDienst: st.github }, job, letzteJobs: st.letzteJobs, jobsJeRepository: w,
+      log: { art: 'seiten', unit },
+    }];
+    if (runnerAnzahl >= 2) liste.push(forgejoAngebunden ? vollRunner('runner-vm-02', 'forgejo', 'forgejo-runner.service', ['ubuntu-latest'], false)
+      : grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'voll', 'grund', 'aktiv', { neustarts: 2, letzterStopp: jetzt() - 26 * 3600 }));
+    if (runnerAnzahl >= 3) liste.push(grundRunner('buildagent', 'buildagent', 'unbekannt', 'buildagent.service', 'unbekannt', 'grund', zustand === 'gestoppt' ? 'gestoppt' : 'aktiv',
+      { seit: jetzt() - (6 * 86400 + 4 * 3600 + 900) }));
+    if (runnerAnzahl >= 4) liste.push(vollRunner('runner-vm-03', 'gitea', 'gitea-runner.service', ['linux', 'arm64'], false));
+    if (runnerAnzahl >= 5) liste.push(vollRunner('runner-vm-04', 'gitlab', 'gitlab-runner.service', ['docker', 'shell'], true));
+    if (neuGefunden) liste.push(grundRunner(NEU_ID(), NEU_ID(), 'gitea', 'act_runner-2.service', 'teil', 'offen', 'aktiv'));
+    return liste;
+  };
+  // Zuordnung aus der Oberfläche (Info › Runner): Namen und Dienst überschreiben, ignorierte Runner fehlen in runner[]
+  const runnerListe = () => runnerListeAlle().filter((r) => (zuordn[r.id] || {}).stand !== 'ignoriert').map((r) => {
+    const z = zuordn[r.id] || {};
+    return { ...r, ...(z.name ? { name: z.name } : {}), ...(z.dienst ? { dienst: z.dienst } : {}), ...(z.stand === 'grund' ? { stand: 'grund' } : {}) };
+  });
+
+  /* Info › Runner (#97): Funde wie GET /api/einrichtung/runner, im Speicher. „Neu erkennen“ findet beim ersten Mal
+     einen neuen Gitea-Runner (Design: „1 neuer Runner gefunden“), danach „Keine Änderung“. */
+  let neuGefunden = false, erkennungen = 0, erkZeit = jetzt() - 7 * 60;
+  const zuordn = {};
+  const NEU_ID = () => (runnerAnzahl >= 4 ? 'runner-vm-05' : 'runner-vm-03');
+  const GRAD = { 'runner-vm-01': 'sicher', 'runner-vm-02': 'sicher', buildagent: 'unklar', 'runner-vm-03': 'sicher', 'runner-vm-04': 'wahrscheinlich', 'runner-vm-05': 'sicher' };
+  const SERVER_FUND = { github: 'https://github.com/beispiel-org', forgejo: 'https://git.example.org', gitea: 'https://git.example.org:3000', gitlab: 'https://gitlab.example.org' };
+  function fundVon(r) {
+    const z = zuordn[r.id] || {}, primaer = r.id === 'runner-vm-01', mitAdapter = ['forgejo', 'gitea', 'gitlab'].includes(r.dienst);
+    return {
+      id: r.id, name: z.name || r.name, dienst: z.dienst || r.dienst, server: SERVER_FUND[r.dienst] || r.server || null, version: r.version, grad: GRAD[r.id] || 'unklar',
+      merkmale: [`systemd-Unit ${r.unit}`], einstufung: r.einstufung, stand: z.stand || r.stand, unit: r.unit, faehig: r.faehig, aktiv: true, grund: null,
+      zuordnung: { ...z }, primaer, anbindung: primaer ? 'github' : r.stand === 'angebunden' ? 'angebunden' : mitAdapter ? 'ohne-server' : 'ohne-adapter',
+    };
+  }
+  function funde() {
+    return JSON.parse(JSON.stringify({ zeit: erkZeit, runner: runnerListeAlle().map(fundVon), auftrag: { erkennung: false, zuordnung: false } }));
+  }
+  function erkennen() {
+    erkennungen++;
+    if (erkennungen === 1) neuGefunden = true;
+    return new Promise((ok) => setTimeout(() => { erkZeit = jetzt(); if (api) runnerSenden(); ok(); }, 1600));
+  }
+  function zuordnung(eintraege) {
+    for (const e of eintraege) {
+      const z = zuordn[e.id] || (zuordn[e.id] = {});
+      if ('stand' in e) { if (e.stand === null) delete z.stand; else z.stand = e.stand; }
+      for (const k of ['dienst', 'name', 'unit', 'log']) if (k in e) { if (e[k] === null) delete z[k]; else z[k] = e[k]; }
+    }
+    if (api) runnerSenden();
+  }
+  const meldungenListe = (liste) => {
+    const M = [];
+    for (const r of liste) {
+      const b = { runner: r.id, dienst: r.dienst }, d = r.status.dienst, j = r.jobsJeRepository;
+      if (d.zustand === 'gestoppt') M.push({ id: 'gestoppt', stufe: 'fehler', ...b, daten: { seit: d.seit, grund: d.grund } });
+      if (r.status.beimDienst && r.status.beimDienst.zustand === 'offline' && d.zustand === 'aktiv') M.push({ id: 'offline', stufe: 'fehler', ...b, daten: { seit: r.status.beimDienst.seit } });
+      if (j && j.abfrage === 'nicht-erreichbar') M.push({ id: 'abfrage', stufe: 'warn', ...b, daten: { abfrage: j.abfrage, abgefragt: j.abgefragt, naechste: j.naechste } });
+      if (j && j.abfrage === 'kein-token') M.push({ id: 'token', stufe: 'neutral', ...b, daten: { abfrage: j.abfrage } });
+      if (j && j.tokenAblauf && j.tokenAblauf - jetzt() <= 14 * 86400) M.push({ id: 'token', stufe: 'warn', ...b, daten: { tokenAblauf: j.tokenAblauf } });
+    }
+    for (const p of platten()) if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', stufe: 'warn', runner: null, dienst: null, daten: { pfad: p.pfad, frei: p.frei, schwelleFrei: p.schwelleFrei } });
+    const rang = { fehler: 0, warn: 1, neutral: 2 };
+    return M.sort((a, b) => rang[a.stufe] - rang[b.stufe]);
+  };
+  function runnerSenden() {
+    const liste = runnerListe();
+    api.empfange('runner', liste);
+    api.empfange('meldungen', meldungenListe(liste));
+  }
+
+  /* Journal je Unit (#95) wie /events?journal=<id>: erst der Stand („neu“), dann neue Zeilen. Zeilen von
+     systemd ohne Vorsatz, sonst „kennung[pid]: text“ wie runner_monitor/journal.py. Alle Werte erfunden. */
+  let journalId = null;
+  const JOURNAL = {
+    buildagent: { unit: 'buildagent.service', start: 'Started buildagent.service - Build Agent.', ende: 'Stopped buildagent.service - Build Agent.', zeilen: [
+      [252, 'buildagent[2187]: connected to 192.0.2.40:443'], [188, 'buildagent[2187]: task 8812 received'],
+      [187, 'buildagent[2187]: pulling registry.example.org/ci/node:22'], [171, 'buildagent[2187]: container 3f9a2c started'],
+      [96, 'buildagent[2187]: container 3f9a2c exited (0) after 1m15s'], [95, 'buildagent[2187]: task 8812 done'],
+      [40, 'buildagent[2187]: waiting for work'], [10, 'buildagent[2187]: heartbeat ok']], takt: 'buildagent[2187]: heartbeat ok' },
+    'runner-vm-02': { unit: 'forgejo-runner.service', start: 'Started forgejo-runner.service - Forgejo Runner.', ende: 'Stopped forgejo-runner.service - Forgejo Runner.', zeilen: [
+      [300, 'forgejo-runner[1432]: level=info msg="Starting runner daemon"'], [298, 'forgejo-runner[1432]: level=info msg="runner: runner-vm-02, with version: v9.1.0"'],
+      [297, 'forgejo-runner[1432]: level=info msg="[poller 0] launched"'], [60, 'forgejo-runner[1432]: level=info msg="task 214 repo is beispiel-org/werkzeuge"'],
+      [20, 'forgejo-runner[1432]: level=info msg="task 214 finished"']], takt: 'forgejo-runner[1432]: level=debug msg="[poller 0] fetch: no task"' },
+  };
+  function journal(id) {
+    journalId = id || null;
+    if (!api) return;
+    const j = JOURNAL[journalId], t = jetzt();
+    if (!journalId) {  // zurück zur Ausgabe der Schritte: wie ein neuer Strom mit Stand
+      api.empfange('log', { neu: true, ereignisse: job ? [{ art: 'start', zeit: job.start, repo: JOB.repo, workflow: JOB.workflow, name: JOB.name }] : [], zeilen: job ? [{ art: 'schritt', zeit: t - 5, ...schritt(schrittNr) }] : [] });
+      return;
+    }
+    if (!j) { api.empfange('journal', { unit: null, neu: true, zeilen: [], ereignisse: [] }); return; }
+    // gestoppt (?zustand=gestoppt): seit 760 s still, davor wie sonst
+    const gestoppt = journalId === 'buildagent' && zustand === 'gestoppt', vorher = gestoppt ? 770 : 0;
+    const zeilen = [{ zeit: t - 310 - vorher, text: j.start }, ...j.zeilen.map(([vorS, text]) => ({ zeit: t - vorS - vorher, text }))];
+    const ereignisse = [{ art: 'dienst-gestartet', zeit: t - 310 - vorher }];
+    if (gestoppt) { zeilen.push({ zeit: t - 760, text: j.ende }); ereignisse.push({ art: 'dienst-gestoppt', zeit: t - 760 }); }
+    api.empfange('journal', { unit: j.unit, neu: true, zeilen, ereignisse });
+  }
+  function journalTakt() {
+    const j = JOURNAL[journalId];
+    if (!j || (journalId === 'buildagent' && zustand === 'gestoppt')) return;
+    api.empfange('journal', { unit: j.unit, zeilen: [{ zeit: jetzt(), text: j.takt }], ereignisse: [] });
+  }
+
   function system(erst) {
     const ziel = zustand === 'gestoppt' || zustand === 'offline' ? 4 : zustand === 'volllast' ? 96 : job ? 58 : 6;
     cpuSchnitt += (ziel - cpuSchnitt) * 0.25 + zufall(-4, 4);
@@ -131,12 +286,12 @@ window.RM_DEMO = (() => {
     }
     schrittNr++; zeilenImSchritt = 0;
     api.empfange('log', { zeilen: [{ art: 'schritt', zeit: jetzt(), ...schritt(schrittNr) }] });
-    api.empfange('status', status());
+    api.empfange('status', status()); runnerSenden();
   }
   function neuerJob() {
     job = { start: jetzt() - 95 }; schrittNr = 3; zeilenImSchritt = 0;
     api.empfange('log', { neu: true, ereignisse: [{ art: 'start', zeit: jetzt() - 95, repo: JOB.repo, workflow: JOB.workflow, name: JOB.name }], zeilen: [{ art: 'schritt', zeit: jetzt() - 60, ...schritt(3) }] });
-    api.empfange('status', status());
+    api.empfange('status', status()); runnerSenden();
   }
 
   function alles(erst) {
@@ -146,6 +301,7 @@ window.RM_DEMO = (() => {
     api.empfange('platten', platten());
     api.empfange('workflows', workflows());
     api.empfange('update', update());
+    runnerSenden();
   }
 
   function leiste() {
@@ -178,11 +334,19 @@ window.RM_DEMO = (() => {
     const p = new URLSearchParams(location.search);
     zustand = p.get('zustand') || zustand; grund = p.get('grund') || ''; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
+    const rn = parseInt(p.get('runner'), 10); if (rn >= 1 && rn <= 5) runnerAnzahl = rn;
+    if (p.get('faehig') === 'teilweise') faehigWahl = 'teilweise';
+    forgejoAngebunden = p.get('forgejo') === 'angebunden';
+    if (['kein-token', 'nicht-erreichbar', 'token-ungueltig'].includes(p.get('anbieter'))) anbieterAbfrage = p.get('anbieter');
+    if (parseInt(p.get('anbieteralter'), 10) > 0) anbieterAlter = parseInt(p.get('anbieteralter'), 10);
     schritteLokal = p.get('schritte') === 'lokal';
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();
     if (['job', 'platte', 'volllast'].includes(zustand)) neuerJob();
     alles(true);
+    // ?gewaehlt=N (1 bis 5, wie im Design): Runner N wählen, z. B. ?runner=3&gewaehlt=3 = buildagent (Grundüberwachung)
+    const gw = parseInt(p.get('gewaehlt'), 10);
+    if (gw >= 1 && gw <= runnerAnzahl && api.waehleRunner) api.waehleRunner(runnerListe()[gw - 1].id);
     if (zustand === 'getrennt') { api.setzeVerbindung('getrennt'); }
     setInterval(() => {
       if (zustand === 'getrennt') return;
@@ -190,10 +354,12 @@ window.RM_DEMO = (() => {
       api.empfange('system', system(false));
       if (takt % 2 === 0) api.empfange('prozesse', prozesse());
       if (takt % 2 === 0) logTakt();
+      if (takt % 2 === 0) runnerSenden();
+      if (takt % 10 === 0) journalTakt();
       if (takt % 5 === 0) { api.empfange('workflows', workflows()); api.empfange('platten', platten()); }
       if (upd === 'laeuft') { updSchritt++; if (updSchritt > 22) upd = 'erfolg-demo'; api.empfange('update', upd === 'erfolg-demo' ? { installiert: NEU, neueste: { version: NEU, geprueft: jetzt() }, status: { zustand: 'erfolg', zeit: jetzt() }, auto: false } : update()); }
     }, 1000);
   }
 
-  return { start, updateStarten: () => { upd = 'laeuft'; updSchritt = 0; api.empfange('update', update()); }, pruefen: () => setTimeout(() => { const d = update(); d.neueste = { ...d.neueste, geprueft: jetzt() }; api.empfange('update', d); }, 1500) };
+  return { start, journal, funde, erkennen, zuordnung, updateStarten: () => { upd = 'laeuft'; updSchritt = 0; api.empfange('update', update()); }, pruefen: () => setTimeout(() => { const d = update(); d.neueste = { ...d.neueste, geprueft: jetzt() }; api.empfange('update', d); }, 1500) };
 })();

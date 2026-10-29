@@ -9,6 +9,11 @@
 <link rel="stylesheet" href="/static/stil.css">
 <script src="/static/i18n.js" defer></script>
 <script src="/static/gemeinsam.js" defer></script>
+<script src="/static/verlauf.js" defer></script>
+<script src="/static/mail.js" defer></script>
+<script src="/static/runner.js" defer></script>
+<script src="/static/einrichtung-runner.js" defer></script>
+<script src="/static/info.js" defer></script>
 <script src="/static/dashboard.js" defer></script>
 </head>
 <body class="dashboard">
@@ -32,17 +37,21 @@
 
   <main class="raster" id="raster">
     <div class="spalte a">
+      <div class="rw-tabs" id="rw-tabs" hidden></div>
+      <div class="rw-pop" id="rw-pop" role="listbox" aria-label="Weitere Runner" data-t-aria hidden></div>
       <section class="karte status" id="status" aria-label="Runner-Status" data-t-aria></section>
-      <section class="karte wf" id="workflows" aria-label="Workflows je Repository" data-t-aria></section>
+      <section class="karte wf" id="workflows" aria-label="Jobs je Repository" data-t-aria></section>
     </div>
 
     <section class="karte ausl" aria-label="Auslastung" data-t-aria>
-      <div class="karte-kopf"><span class="karte-titel" data-t>Auslastung</span><span class="karte-meta" id="sys-meta"></span></div>
+      <div class="karte-kopf"><span class="karte-titel" data-t>Auslastung</span><span class="karte-meta" id="sys-meta"></span>
+        <div class="segment zeitraum" id="zeitraum" role="group" aria-label="Zeitraum des Verlaufs" data-t-aria title="Zeitraum für CPU-, RAM- und Netzwerk-Verlauf" data-t-title><button type="button" class="seg-knopf" data-aktion="zeitraum" data-zeitraum="30" aria-pressed="false" data-t>30 s</button><button type="button" class="seg-knopf" data-aktion="zeitraum" data-zeitraum="120" aria-pressed="false" data-t>2 Min.</button><button type="button" class="seg-knopf" data-aktion="zeitraum" data-zeitraum="300" aria-pressed="false" data-t>5 Min.</button><button type="button" class="seg-knopf" data-aktion="zeitraum" data-zeitraum="600" aria-pressed="true" data-t>10 Min.</button></div>
+      </div>
       <div class="ausl-raster">
         <div class="ausl-spalte">
           <div class="gross-zeile"><span class="mess-label" data-t>CPU gesamt</span><span class="gross-wert"><span id="cpu">–</span><span class="einheit">%</span></span></div>
           <div class="spark spark-cpu">
-            <div class="spark-flaeche-box"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="CPU-Verlauf der letzten 10 Minuten" data-t-aria><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="cpu-flaeche"/><path class="spark-linie" id="cpu-linie"/></svg></div>
+            <div class="spark-flaeche-box"><svg id="cpu-svg" viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="CPU-Verlauf der letzten 10 Minuten" data-t-aria><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="cpu-flaeche"/><path class="spark-linie" id="cpu-linie"/></svg></div>
             <div class="spark-achse"><span class="achse-von">vor 10 Min.</span><span>50 %</span><span data-t>jetzt</span></div>
           </div>
           <div class="kerne" id="kerne"></div>
@@ -50,13 +59,13 @@
         <div class="ausl-spalte">
           <div class="gross-zeile"><span class="mess-label" data-t>Arbeitsspeicher</span><span class="gross-wert"><span id="ram">–</span><span class="einheit einheit-ram" id="ram-gesamt"></span></span></div>
           <div class="spark spark-ram">
-            <div class="spark-flaeche-box"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="RAM-Verlauf der letzten 10 Minuten" data-t-aria><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="ram-flaeche"/><path class="spark-linie" id="ram-linie"/></svg></div>
+            <div class="spark-flaeche-box"><svg id="ram-svg" viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="RAM-Verlauf der letzten 10 Minuten" data-t-aria><line class="spark-raster" x1="0" y1="23" x2="300" y2="23"/><path class="spark-flaeche" id="ram-flaeche"/><path class="spark-linie" id="ram-linie"/></svg></div>
           </div>
           <div class="meter"><span class="m-l">RAM</span><span class="balken"><span class="fuell" id="ram-fuell"></span></span><span class="m-w" id="ram-pct"></span></div>
           <div class="meter"><span class="m-l">Swap</span><span class="balken"><span class="fuell gedimmt" id="swap-fuell"></span></span><span class="m-w" id="swap"></span></div>
           <div class="netz" role="group" aria-label="Netzwerk" data-t-aria title="Summe aller echten Netzwerkschnittstellen, ohne Docker und VPN" data-t-title>
             <div class="netz-kopf"><span class="mess-label" data-t>Netzwerk</span><span class="nw" title="empfangen" data-t-title><span class="pf-rx" aria-label="empfangen" data-t-aria>↓</span><span id="netz-rx">–</span><i id="netz-rx-e"></i></span><span class="nw" title="gesendet" data-t-title><span class="pf-tx" aria-label="gesendet" data-t-aria>↑</span><span id="netz-tx">–</span><i id="netz-tx-e"></i></span></div>
-            <div class="netz-verlauf"><svg viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="Netzwerk-Verlauf der letzten 10 Minuten, empfangen und gesendet" data-t-aria><line class="spark-raster" x1="0" y1="2" x2="300" y2="2"/><path class="spark-flaeche" id="netz-rx-flaeche"/><path class="spark-linie" id="netz-rx-linie"/><path class="spark-tx" id="netz-tx-linie"/></svg></div>
+            <div class="netz-verlauf"><svg id="netz-svg" viewBox="0 0 300 46" preserveAspectRatio="none" role="img" aria-label="Netzwerk-Verlauf der letzten 10 Minuten, empfangen und gesendet" data-t-aria><line class="spark-raster" x1="0" y1="2" x2="300" y2="2"/><path class="spark-flaeche" id="netz-rx-flaeche"/><path class="spark-linie" id="netz-rx-linie"/><path class="spark-tx" id="netz-tx-linie"/></svg></div>
             <div class="spark-achse"><span class="achse-von">vor 10 Min.</span><span id="netz-spitze">Spitze –</span><span data-t>jetzt</span></div>
           </div>
           <div class="last"><span class="m-l" data-t>Last</span><span class="last-werte"><span><b id="l1">–</b><i data-t>1 Min.</i></span><span><b id="l5">–</b><i data-t>5 Min.</i></span><span><b id="l15">–</b><i data-t>15 Min.</i></span><span><b class="mut" id="kerne-n">–</b><i data-t>Kerne</i></span></span></div>
@@ -67,6 +76,7 @@
     <section class="karte log" aria-label="Live-Log" data-t-aria>
       <div class="karte-kopf">
         <span class="karte-titel" data-t>Live-Log</span>
+        <span class="log-runner" id="log-runner" hidden></span>
         <span class="schritt-chip" id="schritt-chip" hidden></span>
         <span class="luecke"></span>
         <div class="segment" role="group" aria-label="Lange Zeilen" data-t-aria>
