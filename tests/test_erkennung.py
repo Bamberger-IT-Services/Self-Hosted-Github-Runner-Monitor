@@ -272,10 +272,11 @@ class ForgejoGiteaTest(Basis):
         self.assertEqual(f["server"], "https://git.example.org")
         self.assertEqual(f["version"], "13.0 / Runner 9.1")
         self.assertEqual(f["grad"], "sicher")
-        self.assertEqual(f["einstufung"], "teil")
+        self.assertEqual(f["einstufung"], "voll")  # seit dem Adapter (#93)
         self.assertEqual(f["unit"], "forgejo-runner.service")
         self.assertIsNone(f["log"])
-        self.assertFalse(f["faehig"]["jobs"])
+        self.assertTrue(f["faehig"]["jobs"])
+        self.assertTrue(f["faehig"]["schritte"])
         self.assertTrue(f["faehig"]["logs"])
         self.assertEqual(f["merkmale"], ["systemd-Unit forgejo-runner.service", "Prozess forgejo-runner daemon",
                                          "/var/lib/forgejo-runner/.runner mit address https://git.example.org",

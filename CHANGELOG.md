@@ -38,6 +38,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Einrichtung › „GitLab anbinden“ und im Runbook `gitlab-nicht-erreichbar`; der Sammler ruft den Adapter
   mit #94/#96 auf, bis dahin bleibt GitLab in der Grundüberwachung. Das Token geht nur über `https://`
   (`http://` nur mit `"http_erlaubt": true` in `runner.json`) (#99, E-20, E-21).
+- Forgejo- und Gitea-Runner anbinden: Mit Server und Organisation in `/etc/runner-monitor/runner.json`
+  und einem Token mit Leserechten (`read:repository`, `read:organization`) zeigt der Monitor, ob der
+  Runner beim Server online ist, Jobs je Repository, den laufenden Job mit Schritten (Forgejo ab 17,
+  Gitea) und die letzten Jobs; ohne Anbindung bleibt es bei Dienst und Journal. Die API-Prüfung steht
+  als Tabelle „Fähigkeiten je Anbieter“ in `docs/FUNKTIONSWEISE.md`, die Anleitung in
+  `docs/EINRICHTUNG.md`. Der Sammler fragt nur lesend, folgt keiner Weiterleitung und schreibt das
+  Ergebnis ohne Token nach `/run/runner-monitor/anbieter.json` (#93, E-20). Gitea ist nach der
+  OpenAPI-Beschreibung umgesetzt und noch nicht an einer laufenden Instanz geprüft.
 
 ### Behoben
 - Dashboard lud nicht (Syntaxfehler in `web/dashboard.js` seit dem Review zu #90: ein Zeilenkommentar

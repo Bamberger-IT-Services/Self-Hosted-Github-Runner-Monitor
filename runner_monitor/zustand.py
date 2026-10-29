@@ -402,14 +402,18 @@ class Zustand:
         """Ein Eintrag je Runner über seinen Adapter (Format: FUNKTIONSWEISE.md › Anbieter-Adapter).
 
         Der GitHub-Runner aus ``MONITOR_RUNNER_VERZ`` bekommt den GitHub-Adapter und dieselben Werte
-        wie der Bereich ``status`` (unverändert). Weitere erkannte Runner laufen bis #93/#94 in der
-        Grundüberwachung (Dienst und Journal). Ignorierte Funde fehlen. Server und Log-Pfad kommen nie
-        aus dem Fund (E-18): GitHub fest, Log-Datei nur aus ``runner.json``."""
+        wie der Bereich ``status`` (unverändert). Forgejo- und Gitea-Runner mit Server und Organisation
+        in ``runner.json`` bekommen ihren Adapter und das Ergebnis des Sammlers (``anbieter.json``, #93);
+        alle anderen laufen in der Grundüberwachung (Dienst und Journal), GitLab bis #115.
+        Ignorierte Funde fehlen. Server und Log-Pfad kommen nie aus dem Fund (E-18): GitHub fest,
+        sonst nur aus ``runner.json``."""
         jetzt = time.time() if jetzt is None else jetzt
         self._lies_funde()
         self._lies_zuordnung()
         gh = self.bereiche.get("_github")
         gh = gh if isinstance(gh, dict) else {}
+        weitere = self.bereiche.get("_anbieter")
+        weitere = weitere if isinstance(weitere, dict) else {}
         liste: list[dict] = []
         primaer: str | None = None
         if status.get("eingerichtet"):
@@ -435,11 +439,16 @@ class Zustand:
                 break
             if f.get("id") == primaer or f.get("stand") == "ignoriert" or any(r["id"] == f.get("id") for r in liste):
                 continue
-            dienst = f.get("dienst") if f.get("dienst") in anbieter.DIENSTE else "unbekannt"
-            k = anbieter.RunnerKonfig(id=f["id"], name=erkennung.pruefe_name(f.get("name")) or f["id"], dienst=dienst,
-                                      unit=erkennung.pruefe_unit(f.get("unit")),
-                                      log=(self._zuordnung.get(f["id"]) or {}).get("log"))  # nur aus runner.json
-            a = anbieter.Grundueberwachung(k)  # weitere Runner: noch ohne Abfrage beim Dienst
+            k = anbieter.konfig_aus(f, self._zuordnung.get(f["id"]), self.k.zugang_verz)  # Server, Log nur aus runner.json
+            if anbieter.angebunden(k, f.get("stand")):
+                a = anbieter.adapter(k)
+                erg = weitere.get(f["id"]) if isinstance(weitere.get(f["id"]), dict) else {}
+                # „angebunden“ wie beim GitHub-Runner nur mit gültigem Token (Review #111)
+                stand = "angebunden" if erg.get("abfrage") in STAND_ANGEBUNDEN else "offen"
+                dienst_st = self._dienst_grund(a, jetzt) if a.faehig()["status"] else None
+                liste.append(a.eintrag(dienst=dienst_st, fund=f, ergebnis=erg, stand=stand))
+                continue
+            a = anbieter.Grundueberwachung(k)  # ohne Adapter oder ohne Anbindung: Dienst und Journal
             dienst_st = self._dienst_grund(a, jetzt) if a.faehig()["status"] else None
             liste.append(a.eintrag(dienst=dienst_st, fund=f))
         return liste
@@ -538,6 +547,12 @@ class Zustand:
                     j = gh["job"]
                     self.job_zuordnung[j.get("name", "")] = {"repo": j.get("repo", ""), "workflow": j.get("workflow", "")}
             self._setze("workflows", self._workflows(gh))
+        pfad = self.k.lauf_verz / "anbieter.json"  # Forgejo/Gitea (#93), ohne Geheimnisse
+        if self._geaendert(pfad):
+            daten = lies_json(pfad, {}) or {}
+            weitere = daten.get("runner") if isinstance(daten, dict) else None
+            with self._sperre:
+                self.bereiche["_anbieter"] = weitere if isinstance(weitere, dict) else {}
         pfad = self.k.lauf_verz / "docker.json"
         if self._geaendert(pfad):
             self._setze("container", (lies_json(pfad, {}) or {}).get("container", []))

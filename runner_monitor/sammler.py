@@ -1,4 +1,5 @@
-"""Sammler (läuft als root): Docker-Status, GitHub-Abfrage, Update-Prüfung, Runner-Erkennung, Aufträge.
+"""Sammler (läuft als root): Docker-Status, GitHub-Abfrage, Abfrage weiterer Dienste (Forgejo/Gitea, #93),
+Update-Prüfung, Runner-Erkennung, Aufträge.
 
 Warum root? Wer Docker abfragen darf, ist praktisch root, und das GitHub-Token soll nur
 root lesen können. Deshalb macht der Weboberflächen-Dienst beides nicht selbst, sondern
@@ -24,7 +25,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import VERSION, erkennung, github, runner
+from . import VERSION, anbieter, erkennung, github, runner
 from .anbieter import github as gh_adapter
 from .anbieter import token as zugangsdaten
 from .konfig import Konfig, lade
@@ -32,6 +33,8 @@ from .konfig import Konfig, lade
 LOG = logging.getLogger("runner_monitor.sammler")
 TAKT_DOCKER = 2
 TAKT_GITHUB = 30
+TAKT_ANBIETER = 30        # weitere Dienste (Forgejo, Gitea): wie GitHub alle 30 s
+MAX_ANBINDUNGEN = 20      # höchstens so viele Runner fragt der Sammler beim Dienst ab (wie runner[] im Monitor)
 TAKT_RELEASE = 6 * 3600
 TAKT_ERKENNUNG = 6 * 3600  # Runner auf der VM erkennen: beim Start und alle 6 Stunden (#91)
 MAX_STDERR = 2000         # so viel Fehlerausgabe der Erkennung kommt ins Journal
@@ -116,6 +119,9 @@ class Sammler:
         self._gh_speicher: dict = {}  # ETags und ruhige Repositories über die Durchläufe (Issue #15)
         self._gh_speicher_token: tuple[str, str] = ("", "")
         self._token_migriert = False  # Übernahme des alten GitHub-Tokens nach zugang/ (#92), einmal je Start
+        self.naechste_anbieter = 0.0
+        self._anbieter_speicher: dict[str, tuple[tuple, dict]] = {}  # je Runner: (Schlüssel, Speicher der Abfrage)
+        self._anbieter_erfolg: dict[str, float] = {}
 
     def github_adapter(self) -> gh_adapter.GitHub:
         """Adapter des GitHub-Runners aus ``MONITOR_RUNNER_VERZ`` – Server, Organisation und Token aus
@@ -223,6 +229,52 @@ class Sammler:
                     ergebnis[schluessel] = alt.get(schluessel)
                 ergebnis["letzterErfolg"] = alt.get("letzterErfolg")
         schreibe_oeffentlich(self.k.lauf_verz / "github.json", ergebnis)
+
+    def anbindungen(self) -> list[anbieter.Anbieter]:
+        """Runner, die der Sammler außer dem GitHub-Runner beim Dienst abfragt (#93): erkannt (mit Unit),
+        Dienst mit Adapter (Forgejo, Gitea), Server und Organisation in ``runner.json``, nicht
+        „grund“/„ignoriert“. Server, Organisation und Token kommen nie aus dem Fund (E-18)."""
+        roh = erkennung.Quelle("/").lies(str((self.k.lauf_verz / "erkennung.json").absolute()), erkennung.MAX_ERGEBNIS)
+        daten = erkennung.pruefe_ergebnis(roh)
+        zuordnung = erkennung.lies_zuordnung(self.k.zuordnung_datei)
+        liste: list[anbieter.Anbieter] = []
+        for fund in (daten or {}).get("runner", []):
+            k = anbieter.konfig_aus(fund, zuordnung.get(fund["id"]), self.k.zugang_verz)
+            if anbieter.angebunden(k, fund.get("stand")) and len(liste) < MAX_ANBINDUNGEN:
+                liste.append(anbieter.adapter(k))
+        return liste
+
+    def anbieter_abfragen(self) -> None:
+        """Je angebundenem Runner eine Abfrage → ``/run/runner-monitor/anbieter.json`` (0644, ohne Token).
+
+        Bei Fehlern bleibt wie bei GitHub der letzte gute Stand (Repositories, Runner, Job) stehen."""
+        alt = (self._lies(self.k.lauf_verz / "anbieter.json") or {}).get("runner") or {}
+        neu: dict[str, dict] = {}
+        for a in self.anbindungen():
+            token = a.token()
+            schluessel = (a.k.server, a.k.org, a.k.name, token)
+            gemerkt = self._anbieter_speicher.get(a.k.id)
+            speicher = gemerkt[1] if gemerkt and gemerkt[0] == schluessel else {}  # neues Token/Ziel: neu anfangen
+            self._anbieter_speicher[a.k.id] = (schluessel, speicher)
+            try:
+                ergebnis = a.abfrage(speicher, self._anbieter_erfolg.get(a.k.id), token=token)
+            except Exception:  # noqa: BLE001 – ein Dienst darf die anderen nie aufhalten
+                LOG.exception("Abfrage von %s fehlgeschlagen", a.k.id)
+                continue
+            if ergebnis["abfrage"] == "ok":
+                self._anbieter_erfolg[a.k.id] = ergebnis["abgefragt"]
+            else:
+                vorher = alt.get(a.k.id) if isinstance(alt.get(a.k.id), dict) else {}
+                if vorher.get("repos") and ergebnis["abfrage"] != "kein-token":
+                    for feld in ("repos", "runner", "job", "letzteJobs", "art", "serverVersion"):
+                        ergebnis[feld] = vorher.get(feld)
+                    ergebnis["letzterErfolg"] = vorher.get("letzterErfolg")
+            neu[a.k.id] = ergebnis
+        for rid in set(self._anbieter_speicher) - set(neu):
+            self._anbieter_speicher.pop(rid, None)
+            self._anbieter_erfolg.pop(rid, None)
+        if neu or alt:
+            schreibe_oeffentlich(self.k.lauf_verz / "anbieter.json", {"zeit": time.time(), "runner": neu})
 
     def release(self) -> dict:
         klient = github.Klient(self.token())
@@ -380,6 +432,12 @@ class Sammler:
         if jetzt >= self.naechste_github:
             self.naechste_github = jetzt + TAKT_GITHUB
             self.github()
+        if jetzt >= self.naechste_anbieter:
+            self.naechste_anbieter = jetzt + TAKT_ANBIETER
+            try:
+                self.anbieter_abfragen()
+            except Exception:  # noqa: BLE001 – Forgejo/Gitea dürfen GitHub, Docker und Updates nie aufhalten
+                LOG.exception("Fehler bei der Abfrage weiterer Dienste")
         if jetzt >= self.naechste_release:
             self.naechste_release = jetzt + TAKT_RELEASE
             daten = self.release()

@@ -4,9 +4,12 @@ Die Oberfläche richtet sich nach den **Fähigkeiten** eines Runners, nicht nach
 Dienstes (README › „Nicht verfügbar“ ehrlich zeigen). Jeder Dienst hat einen Adapter:
 
 * ``github``     – :class:`runner_monitor.anbieter.github.GitHub` (voll: Status, Jobs, Schritte, Logs)
-* ``gitlab``     – :class:`runner_monitor.anbieter.gitlab.GitLab` (Status, Jobs, Log; ohne Schritte)
-* alle anderen   – :class:`Grundueberwachung` (nur Dienst und Journal), bis ihr Adapter kommt
-  (Forgejo/Gitea #93)
+* ``gitlab``     – :class:`runner_monitor.anbieter.gitlab.GitLab` (Status, Jobs, Log; ohne Schritte;
+  im Sammler ab #115)
+* ``forgejo``, ``gitea`` – :class:`runner_monitor.anbieter.forgejo.Forgejo` bzw. ``Gitea`` (#93: Status
+  beim Dienst, Jobs, Schritte; Log aus dem Journal der Unit) – nur, wenn ``runner.json`` Server und
+  Organisation nennt; sonst Grundüberwachung
+* alle anderen   – :class:`Grundueberwachung` (nur Dienst und Journal)
 
 Schnittstelle (je Runner eine Instanz, gebaut aus :class:`RunnerKonfig`):
 
@@ -65,6 +68,10 @@ class Anbieter:
 
     dienst: ClassVar[str] = "unbekannt"
     FAEHIG: ClassVar[dict[str, bool]] = {"status": True, "jobs": False, "schritte": False, "logs": True, "updates": False}
+    # Fragt der Adapter den Dienst mit Token ab (Sammler)? Dann braucht er Server und Organisation aus
+    # runner.json (E-18); ohne sie gilt für den Runner die Grundüberwachung.
+    ANBINDUNG: ClassVar[bool] = False
+    BRAUCHT_ORG: ClassVar[bool] = False  # Forgejo/Gitea: ohne Organisation keine Abfrage; GitLab braucht keine
 
     def __init__(self, konfig: RunnerKonfig) -> None:
         self.k = konfig
@@ -79,6 +86,12 @@ class Anbieter:
         return f
 
     # ------------------------------------------------------------ Sammler (root)
+
+    def token(self) -> str:
+        """Token aus ``zugang/<id>.token`` (nur im Sammler, root); leer ohne Datei."""
+        from .token import lies  # spät: das Untermodul wird erst nach diesem Paket geladen
+
+        return lies(self.k.token_datei)
 
     def abfrage(self, speicher: dict, letzter_erfolg: float | None = None) -> dict | None:  # noqa: ARG002
         """Abfrage beim Dienst (nur im Sammler). Grundüberwachung: keine."""
@@ -170,7 +183,8 @@ class Anbieter:
 
 
 class Grundueberwachung(Anbieter):
-    """Für Dienste ohne eigenen Adapter (Forgejo, Gitea bis #93, unbekannte Runner)."""
+    """Für Dienste ohne eigenen Adapter (unbekannte Runner) und für Runner, die nicht angebunden sind
+    (Forgejo/Gitea ohne Server und Organisation in runner.json, „grund“; GitLab bis #115)."""
 
     dienst = "unbekannt"
 
@@ -199,6 +213,35 @@ def adapter(konfig: RunnerKonfig) -> Anbieter:
     return klasse_fuer(konfig.dienst)(konfig)
 
 
+def konfig_aus(fund: dict, eintrag: dict | None, zugang_verz: Path | None) -> RunnerKonfig:
+    """Konfiguration eines erkannten Runners (E-18): Anzeige (ID, Name, Dienst, Unit) aus dem geprüften
+    Fund, **Server, Organisation und Log-Pfad nur aus** ``runner.json`` (``eintrag``, schon geprüft von
+    ``erkennung.lies_zuordnung``), Token-Datei ``zugang/<id>.token``. Der vom Fund gemeldete Server
+    wird nie übernommen – er ist nur ein Vorschlag für die Einrichtung."""
+    from .token import pruefe_id, token_pfad  # spät: token importiert erkennung und runner
+
+    eintrag = eintrag or {}
+    rid = str(fund.get("id") or "")
+    dienst = fund.get("dienst") if fund.get("dienst") in DIENSTE else "unbekannt"
+    return RunnerKonfig(
+        id=rid, name=erkennung.pruefe_name(fund.get("name")) or rid, dienst=dienst,
+        unit=erkennung.pruefe_unit(fund.get("unit")), log=eintrag.get("log"),
+        server=erkennung.pruefe_url(eintrag.get("server")), org=erkennung.pruefe_org(eintrag.get("org")) or "",
+        token_datei=token_pfad(zugang_verz, rid) if zugang_verz and pruefe_id(rid) else None,
+        http_erlaubt=eintrag.get("http_erlaubt") is True)  # E-21: nur ein ausdrückliches true zählt
+
+
+def angebunden(k: RunnerKonfig, stand: str | None = None) -> bool:
+    """Soll der Sammler diesen Runner beim Dienst abfragen? Nur mit Adapter (``ANBINDUNG``), Unit (E-18:
+    ein Fund ohne Unit ist nie angebunden), Server aus runner.json – ``http://`` nur mit ``http_erlaubt``
+    (E-21) –, Organisation, wenn der Adapter sie braucht, und nicht „grund“/„ignoriert“. Der GitHub-Runner
+    aus ``MONITOR_RUNNER_VERZ`` hat seinen eigenen Weg (``anbieter.github``)."""
+    klasse = klasse_fuer(k.dienst)
+    server_ok = bool(k.server) and (k.server.startswith("https://") or k.http_erlaubt is True)
+    return (klasse.ANBINDUNG and k.dienst != "github" and bool(k.unit) and server_ok
+            and (bool(k.org) or not klasse.BRAUCHT_ORG) and stand not in ("grund", "ignoriert"))
+
+
 def faehigkeiten_tabelle() -> dict[str, dict[str, bool]]:
     """Was die Adapter können. Ausgeliefert wird ``erkennung.FAEHIG``; sie darf weniger versprechen
     (ein Adapter ist da, aber noch nicht angebunden, E-20), aber nie mehr (Test)."""
@@ -207,5 +250,6 @@ def faehigkeiten_tabelle() -> dict[str, dict[str, bool]]:
 
 registriere(Grundueberwachung)
 
+from . import forgejo as _forgejo  # noqa: E402,F401 – registriert Forgejo und Gitea (#93)
 from . import github as _github  # noqa: E402,F401 – registriert den GitHub-Adapter
 from . import gitlab as _gitlab  # noqa: E402,F401 – registriert den GitLab-Adapter

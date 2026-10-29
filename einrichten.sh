@@ -287,8 +287,8 @@ zugang() {
   if [ "$id" = "$gid" ]; then
     echo "GitHub: Fine-grained Token mit Read-only für Actions und Metadata (optional: Self-hosted runners)."
   else
-    echo "Token mit Leserechten beim Dienst dieses Runners."
-    hin "Genutzt, sobald der Monitor diesen Dienst abfragen kann (Forgejo/Gitea #93, GitLab #99)."
+    echo "Token mit Leserechten beim Dienst dieses Runners (Forgejo/Gitea: read:repository und read:organization)."
+    hin "Forgejo/Gitea: genutzt, sobald $ETC/runner.json Server und Organisation nennt (docs/EINRICHTUNG.md); GitLab folgt (#99)."
   fi
   read -r -s -p "  Token für $id (Eingabe bleibt unsichtbar): " t </dev/tty; echo
   if [ "$id" = "$gid" ]; then
