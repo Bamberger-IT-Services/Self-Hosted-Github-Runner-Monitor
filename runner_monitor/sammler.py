@@ -6,7 +6,8 @@ liest nur die Ergebnisse aus ``/run/runner-monitor/*.json`` (ADR-0001, Sicherhei
 
 Aufträge der Oberfläche liegen als Dateien in ``/var/lib/runner-monitor/auftraege/``:
 
-* ``github-token`` – neues Token aus der Einrichtung → nach ``/etc/runner-monitor/github-token``
+* ``github-token`` – neues Token aus der Einrichtung → nach ``/etc/runner-monitor/github-token`` und
+  ``/etc/runner-monitor/zugang/<runner>.token`` (#92, E-19)
 * ``update``       – wird vom systemd-Pfad ``runner-monitor-update.path`` verarbeitet, nicht hier
 """
 
@@ -24,6 +25,8 @@ from datetime import datetime
 from pathlib import Path
 
 from . import VERSION, erkennung, github, runner
+from .anbieter import github as gh_adapter
+from .anbieter import token as zugangsdaten
 from .konfig import Konfig, lade
 
 LOG = logging.getLogger("runner_monitor.sammler")
@@ -112,12 +115,48 @@ class Sammler:
         self.letzte_manuelle_pruefung = 0.0
         self._gh_speicher: dict = {}  # ETags und ruhige Repositories über die Durchläufe (Issue #15)
         self._gh_speicher_token: tuple[str, str] = ("", "")
+        self._token_migriert = False  # Übernahme des alten GitHub-Tokens nach zugang/ (#92), einmal je Start
+
+    def github_adapter(self) -> gh_adapter.GitHub:
+        """Adapter des GitHub-Runners aus ``MONITOR_RUNNER_VERZ`` – Server, Organisation und Token aus
+        der Konfiguration, nie aus der Erkennung (E-18)."""
+        reg = runner.lies_registrierung(self.k.runner_verz)
+        name = reg.get("name", "")
+        rid = zugangsdaten.github_id(self.k.runner_verz) or ""
+        return gh_adapter.GitHub(gh_adapter.konfig_fuer(name, rid, None, self.org(), self.k.runner_verz,
+                                                        self.k.zugang_verz, self.k.token_datei))
 
     def token(self) -> str:
+        """GitHub-Token: ``zugang/<runner>.token``, sonst der alte Ort (Rückfall bis #94/#96)."""
+        return self.github_adapter().token()
+
+    def migriere_token(self) -> None:
+        """Bestehendes GitHub-Token nach ``zugang/<runner>.token`` kopieren (E-19), einmal je Start.
+
+        Fehlt die Kopie, wird sie angelegt; ist der alte Ort neuer und anders, wird sie ersetzt.
+        Der alte Ort bleibt (Rückfall, Update-Hilfsdienst, ältere Versionen). Gibt es noch keinen
+        registrierten Runner, versucht der Sammler es im nächsten Takt erneut."""
+        if self._token_migriert:
+            return
+        rid = zugangsdaten.github_id(self.k.runner_verz)
+        if not rid:
+            return
+        self._token_migriert = True
+        ziel = zugangsdaten.token_pfad(self.k.zugang_verz, rid)
         try:
-            return self.k.token_datei.read_text(encoding="utf-8").strip()
+            if zugangsdaten.migriere(self.k.token_datei, self.k.zugang_verz, rid):
+                LOG.info("GitHub-Token nach %s übernommen (alter Ort bleibt)", ziel)
+        except (zugangsdaten.TokenFehler, OSError) as fehler:
+            self._zugang_verwerfen(rid, f"GitHub-Token nicht nach {ziel} übernommen: {type(fehler).__name__}")
+
+    def _zugang_verwerfen(self, rid: str, grund: str) -> None:
+        """Nach einem Schreibfehler die (dann veraltete) Kopie entfernen – es gilt der alte Ort."""
+        try:
+            entfernt = zugangsdaten.entferne(self.k.zugang_verz, rid)
         except OSError:
-            return ""
+            entfernt = False
+        LOG.warning("%s – %s; es gilt %s", grund, "veraltete Kopie entfernt" if entfernt else "keine Kopie vorhanden",
+                    self.k.token_datei)
 
     def org(self) -> str:
         try:
@@ -145,6 +184,13 @@ class Sammler:
             f.write(token + "\n")
         os.chmod(tmp, 0o600)
         os.replace(tmp, self.k.token_datei)
+        # Auch je Runner ablegen (E-19): sonst gälte eine ältere Kopie in zugang/ weiter.
+        rid = zugangsdaten.github_id(self.k.runner_verz)
+        if rid:
+            try:
+                zugangsdaten.schreibe(self.k.zugang_verz, rid, token)
+            except (zugangsdaten.TokenFehler, OSError) as fehler:
+                self._zugang_verwerfen(rid, f"Neues GitHub-Token nicht nach zugang/ geschrieben: {type(fehler).__name__}")
         LOG.info("Neues GitHub-Token übernommen")
         self.naechste_github = 0
 
@@ -162,11 +208,11 @@ class Sammler:
         LOG.info("Update-Prüfung von Hand angestoßen")
 
     def github(self) -> None:
-        reg = runner.lies_registrierung(self.k.runner_verz)
-        token, org = self.token(), self.org()
+        adapter = self.github_adapter()
+        token, org = adapter.token(), adapter.k.org
         if (token, org) != self._gh_speicher_token:  # neues Token oder andere Organisation: neu anfangen
             self._gh_speicher, self._gh_speicher_token = {}, (token, org)
-        ergebnis = github.abfrage(github.Klient(token, speicher=self._gh_speicher), org, reg.get("name", ""), self.letzter_erfolg)
+        ergebnis = adapter.abfrage(self._gh_speicher, self.letzter_erfolg, token=token)
         if ergebnis["abfrage"] == "ok":
             self.letzter_erfolg = ergebnis["abgefragt"]
         else:
@@ -321,6 +367,10 @@ class Sammler:
             return None
 
     def ein_takt(self, jetzt: float, mono: float | None = None) -> None:
+        try:
+            self.migriere_token()
+        except Exception:  # noqa: BLE001 – die Übernahme darf den Sammler nie aufhalten
+            LOG.exception("Übernahme des GitHub-Tokens fehlgeschlagen")
         self.auftraege()
         schreibe_oeffentlich(self.k.lauf_verz / "docker.json", docker_container())
         try:

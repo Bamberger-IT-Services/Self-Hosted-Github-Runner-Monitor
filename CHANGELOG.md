@@ -16,6 +16,23 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   ohne Zugangsdaten, mit Grad sicher/wahrscheinlich/unklar und Begründung. `einrichten.sh` zeigt
   sie in „System prüfen“ › „Runner auf dieser VM“; der Sammler sucht beim Start und alle 6 Stunden
   (`/run/runner-monitor/erkennung.json`). Das Dashboard bleibt vorerst beim GitHub-Runner (#91).
+- Anbieter-Adapter: Status, Jobs je Repository, aktueller Job mit Schritten und Log-Quelle kommen
+  über eine gemeinsame Schnittstelle mit Fähigkeiten (`status`, `jobs`, `schritte`, `logs`, `updates`);
+  GitHub ist der erste Adapter, unverändert im Verhalten, andere Dienste laufen in der Grundüberwachung.
+  `GET /api/zustand` liefert die Momentaufnahme mit den bisherigen Bereichen und zusätzlich `vm`,
+  `runner[]` und `meldungen[]` (mit Runner-ID); `/events` schickt zusätzlich `runner` und `meldungen`.
+  Die Oberfläche nutzt die neuen Felder ab #94 (#92, E-19, ADR-0006).
+- Zugangsdaten je Runner in `/etc/runner-monitor/zugang/<runner>.token` (nur root), gesetzt mit
+  `sudo /opt/runner-monitor/aktuell/einrichten.sh zugang <runner>` (#92).
+
+### Behoben
+- Dashboard lud nicht (Syntaxfehler in `web/dashboard.js` seit dem Review zu #90: ein Zeilenkommentar
+  schluckte eine schließende Klammer; Hotfix #112). Ein neuer Test prüft alle Skripte in `web/` (`tests/js/demo.test.mjs`).
+
+### Einmalig nach dem Update
+- Nichts zu tun: Das bestehende GitHub-Token wird beim Start nach dem Update nach
+  `/etc/runner-monitor/zugang/<runner>.token` kopiert; `/etc/runner-monitor/github-token` bleibt als
+  Rückfall bestehen (#92).
 
 ### Geändert
 - Runner-Erkennung nachgeschärft (#109): Takt und Frist des Sammlers mit `time.monotonic()`; die

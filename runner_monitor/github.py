@@ -1,8 +1,11 @@
-"""Abfrage der GitHub-API (nur lesend) – läuft im Sammler als root.
+"""GitHub-REST-Klient (nur lesend) und Releases – läuft im Sammler als root.
 
+Runner-Status, Jobs je Repository und Schritte wertet seit #92 der Adapter
+``runner_monitor/anbieter/github.py`` aus; hier bleiben Klient, Fehlerarten, Releases und Versionen.
 Das Token (Fine-grained, nur lesend: Actions + Metadata, optional Self-hosted runners) liegt
-in ``/etc/runner-monitor/github-token`` und verlässt den Sammler nie. Die Oberfläche bekommt
-nur das Ergebnis als JSON-Datei.
+in ``/etc/runner-monitor/zugang/<runner>.token`` (Rückfall ``/etc/runner-monitor/github-token``,
+siehe ``anbieter/token.py``) und verlässt den Sammler nie. Die Oberfläche bekommt nur das
+Ergebnis als JSON-Datei.
 """
 
 from __future__ import annotations
@@ -17,13 +20,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 API = "https://api.github.com"
-# Kontingent schonen (Issue #15): bedingte Anfragen mit ETag (304 zählt nicht gegen das Kontingent)
-# und ruhige Repositories seltener abfragen.
+# Kontingent schonen (Issue #15): bedingte Anfragen mit ETag (304 zählt nicht gegen das Kontingent);
+# ruhige Repositories fragt der Adapter seltener ab (anbieter/github.py).
 SPEICHER_MAX = 2000          # höchstens so viele ETags merken
-RUHIG_AB = 3600              # Repository gilt als ruhig, wenn der letzte Push länger her ist …
-RUHIG_TAKT = 300             # … und nichts läuft oder wartet: Läufe dann nur alle 5 Minuten abfragen
-LAEUFT = {"in_progress"}
-WARTET = {"queued", "waiting", "pending", "requested"}
 
 
 class GitHubFehler(Exception):
@@ -124,130 +123,19 @@ class Klient:
             return {}
 
 
-# ---------------------------------------------------------------- Auswertung (testbar ohne Netz)
+# ---------------------------------------------------------------- Runner-Auswertung (seit #92 im Adapter)
+
+# Die Auswertung für den Runner (Läufe zählen, Job und Schritte, eine Abfrage-Runde) liegt seit #92
+# im GitHub-Adapter ``runner_monitor/anbieter/github.py``. Die alten Namen bleiben hier erreichbar,
+# bis das Altformat von /api/zustand entfällt (E-19).
+_IM_ADAPTER = ("zaehle_laeufe", "ref_aus_lauf", "job_fuer_runner", "abfrage", "LAEUFT", "WARTET", "RUHIG_AB", "RUHIG_TAKT")
 
 
-def zaehle_laeufe(runs: list[dict]) -> tuple[int, int]:
-    laeuft = sum(1 for r in runs if r.get("status") in LAEUFT)
-    wartet = sum(1 for r in runs if r.get("status") in WARTET)
-    return laeuft, wartet
-
-
-def ref_aus_lauf(lauf: dict) -> dict:
-    prs = lauf.get("pull_requests") or []
-    titel = lauf.get("display_title", "") or ""
-    if lauf.get("event") == "pull_request" and prs:
-        return {"art": "PR", "name": f"#{prs[0].get('number')}", "titel": titel}
-    zweig = lauf.get("head_branch") or ""
-    if lauf.get("event") in ("release", "push") and re.fullmatch(r"v\d+\.\d+\.\d+.*", zweig):
-        return {"art": "Tag", "name": zweig, "titel": titel}
-    return {"art": "Branch", "name": zweig, "titel": titel}
-
-
-def job_fuer_runner(lauf: dict, jobs: list[dict], runner_name: str) -> dict | None:
-    for job in jobs:
-        if job.get("status") != "in_progress":
-            continue
-        if runner_name and job.get("runner_name") != runner_name:
-            continue
-        schritte = [s.get("name", "") for s in job.get("steps") or []]
-        aktuell = 0
-        for i, schritt in enumerate(job.get("steps") or []):
-            if schritt.get("status") == "in_progress":
-                aktuell = i
-                break
-            if schritt.get("status") == "completed":
-                aktuell = i + 1
-        return {
-            "repo": lauf.get("repository", {}).get("name", ""),
-            "privat": bool(lauf.get("repository", {}).get("private")),
-            "workflow": lauf.get("name", ""),
-            "name": job.get("name", ""),
-            "ref": ref_aus_lauf(lauf),
-            "schritte": schritte,
-            "schritt": min(aktuell + 1, max(1, len(schritte))),
-            "start": iso_zu_unix(job.get("started_at")),
-            "url": job.get("html_url", ""),
-        }
-    return None
-
-
-def abfrage(klient: Klient, org: str, runner_name: str, letzter_erfolg: float | None = None) -> dict:
-    """Ein Durchlauf: Repos der Organisation, Läufe je Repo, Runner-Status, aktueller Job."""
-    jetzt = time.time()
-    ergebnis: dict = {
-        "org": org, "abfrage": "ok", "abgefragt": jetzt, "letzterErfolg": letzter_erfolg,
-        "tokenAblauf": None, "kontingent": {}, "repos": [], "runner": {"zustand": "unbekannt"},
-        "job": None, "fehler": "",
-    }
-    if not klient.token:
-        ergebnis["abfrage"] = "kein-token"
-        return ergebnis
-    if not org:
-        ergebnis.update(abfrage="fehler", fehler="MONITOR_ORG ist nicht gesetzt")
-        return ergebnis
-    try:
-        repos: list[dict] = []
-        seite = 1
-        while seite <= 10:  # höchstens 1000 Repos
-            antwort = klient.hole(f"/orgs/{org}/repos", {"per_page": 100, "page": seite, "sort": "pushed"})
-            if seite == 1:
-                ergebnis["tokenAblauf"] = token_ablauf(antwort.kopf.get("github-authentication-token-expiration"))
-            daten = antwort.daten if isinstance(antwort.daten, list) else []
-            repos.extend(r for r in daten if not r.get("archived"))
-            if len(daten) < 100:
-                break
-            seite += 1
-
-        ruhige = klient.speicher.setdefault("ruhig", {})  # Repo → {"zeit", "laeuft", "wartet"} der letzten Abfrage
-        for repo in repos:
-            name = repo.get("name", "")
-            alt = ruhige.get(name)
-            gepusht = iso_zu_unix(repo.get("pushed_at")) or 0
-            if alt and not alt["laeuft"] and not alt["wartet"] and jetzt - gepusht > RUHIG_AB and jetzt - alt["zeit"] < RUHIG_TAKT:
-                # ruhig: letzten Stand übernehmen, erst nach RUHIG_TAKT wieder fragen
-                ergebnis["repos"].append({"name": name, "privat": bool(repo.get("private")), "laeuft": 0, "wartet": 0})
-                continue
-            laeufe = klient.hole(f"/repos/{org}/{name}/actions/runs", {"per_page": 30}).daten
-            runs = laeufe.get("workflow_runs", []) if isinstance(laeufe, dict) else []
-            laeuft, wartet = zaehle_laeufe(runs)
-            ruhige[name] = {"zeit": jetzt, "laeuft": laeuft, "wartet": wartet}
-            ergebnis["repos"].append({"name": name, "privat": bool(repo.get("private")), "laeuft": laeuft, "wartet": wartet})
-            if ergebnis["job"] is None and laeuft:
-                for lauf in runs:
-                    if lauf.get("status") not in LAEUFT:
-                        continue
-                    jobs = klient.hole(f"/repos/{org}/{name}/actions/runs/{lauf['id']}/jobs", {"filter": "latest"}).daten
-                    gefunden = job_fuer_runner(lauf, jobs.get("jobs", []) if isinstance(jobs, dict) else [], runner_name)
-                    if gefunden:
-                        ergebnis["job"] = gefunden
-                        break
-
-        # Online-Status des Runners: braucht das Recht „Self-hosted runners: read“ (optional).
-        try:
-            runners = klient.hole(f"/orgs/{org}/actions/runners", {"per_page": 100}).daten
-            for r in runners.get("runners", []) if isinstance(runners, dict) else []:
-                if not runner_name or r.get("name") == runner_name:
-                    ergebnis["runner"] = {
-                        "zustand": "online" if r.get("status") == "online" else "offline",
-                        "beschaeftigt": bool(r.get("busy")),
-                        "labels": [l.get("name") for l in r.get("labels", []) if l.get("name")],
-                    }
-                    break
-        except GitHubFehler as fehler:
-            if fehler.art not in ("keine-rechte",):
-                raise
-            ergebnis["runner"] = {"zustand": "unbekannt", "grund": "Recht „Self-hosted runners: read“ fehlt"}
-
-        ergebnis["letzterErfolg"] = jetzt
-        for name in set(ruhige) - {r.get("name", "") for r in repos}:
-            del ruhige[name]  # gelöschte oder archivierte Repositories vergessen
-    except GitHubFehler as fehler:
-        ergebnis["abfrage"] = "nicht-erreichbar" if fehler.art in ("nicht-erreichbar", "fehler") else fehler.art
-        ergebnis["fehler"] = str(fehler)
-    ergebnis["kontingent"] = klient.kontingent()
-    ergebnis["anfragen"] = dict(klient.zaehler)  # davon „unveraendert“ = 304, ohne Kontingent
-    return ergebnis
+def __getattr__(name: str):
+    if name in _IM_ADAPTER:
+        from .anbieter import github as adapter  # spät importiert: der Adapter nutzt diesen Klienten
+        return getattr(adapter, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def neueste_version(klient: Klient, repo: str) -> dict:
