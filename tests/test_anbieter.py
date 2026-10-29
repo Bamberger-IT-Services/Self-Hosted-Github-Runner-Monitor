@@ -13,6 +13,7 @@ from unittest import mock
 
 from runner_monitor import anbieter, erkennung, github, konfig, runner, sammler, server, zustand
 from runner_monitor.anbieter import github as gh_adapter
+from runner_monitor.anbieter import gitlab as gitlab_adapter
 from runner_monitor.anbieter import token as zugangsdaten
 
 # Bestand bis 0.7: Bereich „status“ (FUNKTIONSWEISE.md) – muss unverändert bleiben (E-19, additiv)
@@ -39,8 +40,14 @@ def registriere_runner(d: Path, name: str = "runner-vm-01") -> None:
 
 class FaehigkeitenTest(unittest.TestCase):
     def test_tabelle_passt_zur_erkennung(self):
-        """Erkennung (Einstufung) und Adapter (was wirklich geliefert wird) dürfen nicht auseinanderlaufen."""
-        self.assertEqual(anbieter.faehigkeiten_tabelle(), erkennung.FAEHIG)
+        """Die ausgelieferte Tabelle (``erkennung.FAEHIG``) verspricht nie mehr, als der Adapter kann; sie
+        darf weniger versprechen, solange der Sammler den Adapter nicht aufruft (E-20). Mit Adapter gleich: GitHub."""
+        adapter = anbieter.faehigkeiten_tabelle()
+        for dienst, f in erkennung.FAEHIG.items():
+            for faehigkeit, wert in f.items():
+                self.assertTrue(adapter[dienst][faehigkeit] or not wert, f"{dienst}.{faehigkeit}")
+        self.assertEqual(adapter["github"], erkennung.FAEHIG["github"])
+        self.assertEqual(erkennung.FAEHIG["gitlab"]["jobs"], False)  # bis zur Anbindung im Sammler (#94)
 
     def test_tabelle_vollstaendig(self):
         tabelle = anbieter.faehigkeiten_tabelle()
@@ -52,7 +59,8 @@ class FaehigkeitenTest(unittest.TestCase):
 
     def test_registry(self):
         self.assertIs(anbieter.klasse_fuer("github"), gh_adapter.GitHub)
-        for dienst in ("forgejo", "gitea", "gitlab", "unbekannt", "gibt-es-nicht"):
+        self.assertIs(anbieter.klasse_fuer("gitlab"), gitlab_adapter.GitLab)
+        for dienst in ("forgejo", "gitea", "unbekannt", "gibt-es-nicht"):
             self.assertIs(anbieter.klasse_fuer(dienst), anbieter.Grundueberwachung, dienst)
         a = anbieter.adapter(anbieter.RunnerKonfig(id="x", name="x", dienst="forgejo", unit="forgejo-runner.service"))
         self.assertIsInstance(a, anbieter.Grundueberwachung)
@@ -68,7 +76,7 @@ class FaehigkeitenTest(unittest.TestCase):
             FAEHIG = {"status": True}
         with self.assertRaises(ValueError):
             anbieter.registriere(Halb)
-        self.assertIs(anbieter.klasse_fuer("gitlab"), anbieter.Grundueberwachung)  # nichts eingetragen
+        self.assertIs(anbieter.klasse_fuer("gitlab"), gitlab_adapter.GitLab)  # nichts überschrieben
 
     def test_ohne_unit_kein_status_und_kein_log(self):
         a = anbieter.Grundueberwachung(anbieter.RunnerKonfig(id="x", name="x", dienst="forgejo"))

@@ -153,10 +153,12 @@ sie der Sammler auf Auftrag der Oberfläche (POST-Endpunkt mit #96/#97):
   "runner": {
     "buildagent":   { "stand": "grund", "dienst": "unbekannt", "name": "Build-Agent",
                       "unit": "buildagent.service", "log": "/var/log/buildagent/agent.log" },
-    "runner-vm-03": { "stand": "ignoriert" } } }
+    "runner-vm-03": { "stand": "ignoriert" },
+    "runner-vm-04": { "http_erlaubt": true } } }
 ```
 
-Schlüssel ist die `id` des Funds; jedes Feld ist freiwillig. Ungültige Einträge oder Felder werden
+Schlüssel ist die `id` des Funds; jedes Feld ist freiwillig. `http_erlaubt` (nur `true` gilt) erlaubt einem
+Adapter, das Token dieses Runners über `http://` zu senden (E-21, GitLab); ohne dieses Feld nur `https://`. Ungültige Einträge oder Felder werden
 verworfen. Ein Eintrag mit `unit`, der nicht gefunden wurde, erscheint als „von Hand zugeordnet“.
 
 **Sicherheit (S-ERK-01):** Bei Funden mit Unit-Datei kommen Name, Server und Dienst nur aus Registrierungen, die die Unit vorgibt
@@ -192,6 +194,7 @@ dahintersteht ([ADR-0006](adr/0006-anbieter-adapter-und-zustand.md), E-19). Pake
 |---|---|
 | `__init__.py` | Basisklasse `Anbieter` (zugleich Grundüberwachung), `RunnerKonfig`, Registry (`registriere`, `klasse_fuer`, `faehigkeiten_tabelle`) |
 | `github.py` | GitHub-Adapter: Abfrage einer Runde (bisher `github.abfrage`), Jobs je Repository, aktueller Job mit Schritten, Online-Status, Log-Quelle `_diag/pages` |
+| `gitlab.py` | GitLab-Adapter (#99): REST-Klient (`/api/v4`, nur lesend, ohne Weiterleitungen), Runner-Status, aktueller Job, letzte Jobs, Jobs je Projekt; ohne Schritte |
 | `token.py` | Zugangsdaten je Runner, Übernahme des alten Tokens, Kommandozeile für `einrichten.sh` |
 
 Schnittstelle je Runner: `faehig()`, `abfrage(speicher, …)` (nur im Sammler, root, mit Token),
@@ -201,13 +204,13 @@ Schnittstelle je Runner: `faehig()`, `abfrage(speicher, …)` (nur im Sammler, r
 REST-Klient (auch für Releases und die Prüfung in der Einrichtung) und reicht die alten Namen
 (`github.abfrage`, `job_fuer_runner` …) an den Adapter weiter, bis das Altformat entfällt.
 
-**Fähigkeiten je Dienst** (diese Version; Test: muss zu `erkennung.FAEHIG` passen):
+**Fähigkeiten je Dienst** (Spalten: was der Adapter kann; **ausgeliefert** wird `erkennung.FAEHIG`, die nie mehr verspricht als der Adapter kann, aber bis der Sammler einen Adapter aufruft weniger – E-20; ein Test prüft das):
 
 | Dienst | Adapter | status | jobs | schritte | logs | updates |
 |---|---|---|---|---|---|---|
 | GitHub | `GitHub` | ✓ | ✓ | ✓ | ✓ | – |
 | Forgejo, Gitea | Grundüberwachung (bis #93) | ✓ | – | – | ✓ | – |
-| GitLab | Grundüberwachung (bis #99) | ✓ | – | – | ✓ | – |
+| GitLab | `GitLab` (#99), bis zur Anbindung (#94) ausgeliefert als Grundüberwachung | ✓ | ✓ (ausgeliefert: –) | – | ✓ | – |
 | unbekannt | Grundüberwachung | ✓ | – | – | ✓ | – |
 
 Ohne Unit gibt es weder `status` noch `logs` (außer beim GitHub-Runner aus `MONITOR_RUNNER_VERZ`,
@@ -222,6 +225,63 @@ der Erkennung kommen nur ID, Anzeigename, Unit (geprüft), Version, Einstufung u
 Anzeigen, nie als Ziel einer Anfrage. Der Monitor prüft `erkennung.json` beim Lesen noch einmal
 (`erkennung.pruefe_ergebnis`), nimmt höchstens 20 Runner auf und fragt den Dienststatus von Runnern in
 Grundüberwachung höchstens alle 10 s ab.
+
+### GitLab-Adapter (#99)
+
+Token mit dem Bereich **`read_api`** (persönliches, Projekt- oder Gruppen-Zugriffstoken), abgelegt
+in `zugang/<id>.token`; der **Server** kommt nur aus der Konfiguration (nicht aus dem Fund, E-18) und
+muss `https://` sein. `http://` nur, wenn `runner.json` für diesen Runner ausdrücklich
+`"http_erlaubt": true` setzt (E-21); dann geht die Anfrage auch nie über einen Proxy aus der Umgebung
+(`HTTP_PROXY`), bei `https://` bleibt ein Proxy-Tunnel möglich. Der Klient folgt **keiner Weiterleitung**, sendet das
+Token nur in der Kopfzeile `PRIVATE-TOKEN` an `<Server>/api/v4/…`, liest höchstens 4 MB je Antwort
+und fragt nur mit `GET`. Jede Anfrage hat eine **harte Gesamtfrist** von 15 s (eigener Daemon-Faden, stückweises Lesen mit Frist). Alle 30 s eine Runde:
+
+| Anfrage | Zweck | wenn sie fehlschlägt |
+|---|---|---|
+| `GET /personal_access_tokens/self` (höchstens stündlich) | Bereiche (`read_api` oder `api` nötig) und Ablaufdatum → Meldung „Token läuft ab“ | 403/404 (ältere GitLab-Version, andere Token-Art): übersprungen |
+| `GET /runners` (nur beim ersten Mal und wenn die gemerkte Nummer nicht mehr passt; 100 je Seite, höchstens 5 Seiten) | den Runner finden: `description` = `name` in `config.toml` (bzw. der Anzeigename); ist der Name nicht genau einmal vorhanden, bleibt der Status „unbekannt“ mit Grund | 401/403/404: Token ungültig bzw. keine Rechte |
+| `GET /runners/:id` | Status (`online`, `offline`, `stale`, `never_contacted`; ältere Versionen nur das Feld `online`), **Pause** (`paused`, früher `active: false`: ein pausierter Runner nimmt keine Jobs an und gilt als `offline`, mit `pausiert: true`, nie als „bereit“), Labels (`tag_list`), Version | 403/404: Labels und Version fehlen, der Status kommt aus der Liste |
+| `GET /runners/:id/jobs?status=running` | aktueller Job (Projekt, Pipeline, Job, Stage, Ref, Start, Link) und „Jobs je Repository“ (laufend) | wie oben |
+| `GET /runners/:id/jobs?order_by=id&sort=desc` | die letzten fünf beendeten Jobs (`erfolg`, `fehler`, `abgebrochen`, Dauer, Ende) | wie oben |
+
+Ergebnis (öffentlich, ohne Token) im selben Format wie `github.json`, dazu `letzteJobs` und
+`wartetUnbekannt: true`. Die Fehlerarten sind die von GitHub: `nicht-erreichbar` (Netz, Zeitlimit,
+5xx, keine JSON-Antwort, Weiterleitung, zu große Antwort), `token-ungueltig` (401),
+`keine-rechte` (403, 404 oder Token ohne `read_api`), `kontingent` (429; `RateLimit-*` werden gezeigt,
+wenn der Server sie sendet), `kein-token`, `fehler` (Server fehlt, keine Adresse, nicht `https://` ohne
+Erlaubnis, oder „unerwartete Antwort“: Felder in falscher Form, `NaN`/`Infinity`, ungültige Daten – die Runde zeigt dann
+nichts Halbes). Fremde Antworten werden Feld für Feld geprüft (Typ, Wertebereich, Länge); Nummer und Name des
+Runners bleiben die aus der Liste, auch wenn die Einzelantwort etwas anderes behauptet.
+
+**Was GitLab nicht hergibt (steht so in der Oberfläche als „nicht verfügbar“):**
+- **Schritte:** Die REST-API kennt Pipelines → Stages → Jobs, aber keine Schrittliste innerhalb eines
+  laufenden Jobs; das Job-Protokoll (`/trace`) ist Rohtext. Darum `schritte: false`, `job.schritt`
+  ist `null`, der Job zeigt Pipeline, Stage und Name.
+- **Wartende Jobs je Projekt:** Die Runner-API kennt nur `running`, `success`, `failed`, `canceled`.
+  `wartet` ist immer 0 und `jobsJeRepository.wartetUnbekannt` ist `true` – die Oberfläche soll die Zahl
+  dann nicht zeigen (Umsetzung #94). `privat` ist immer `false` (die Sichtbarkeit steht nicht in der Antwort).
+- **Live-Log:** aus dem Journal der Unit (`gitlab-runner.service`) bzw. einer Datei aus `runner.json`.
+- **Updates des Runners:** `updates: false` wie bei allen Diensten.
+
+**Unsicherheiten (nach GitLab-Dokumentation, ohne Test gegen einen echten Server geschrieben):**
+(1) Welche Rolle `GET /runners` und `GET /runners/:id/jobs` verlangen – laut Dokumentation reichen
+`read_api` und Zugriff auf den Runner (Gruppe/Projekt, mindestens Maintainer, bei **Gruppen-Runnern ggf. Owner**); bei zu
+geringer Rolle antwortet GitLab mit 403/404 und der Monitor zeigt „keine Rechte“. **Instanz-Runner** (von der
+Verwaltung der GitLab-Instanz angelegt, `is_shared`) lassen sich nicht über `/runners` abfragen: dafür gäbe es
+`/runners/all`, das nur Administratoren erlaubt ist – der Monitor sucht dort nicht und zeigt „nicht gefunden“. Ab
+GitLab 16/17 steht die **Version** eines Runners ggf. nicht mehr in `/runners/:id`, sondern in `/runners/:id/managers`
+(Runner mit mehreren Rechnern); der Monitor liest sie dort nicht, die Version fehlt dann. (2) Ob `project.name` in den Jobs der
+Runner-API steht (bei fehlendem Namen steht „Projekt <Nummer>“). (3) `GET /personal_access_tokens/self` gibt es
+ab GitLab 15.5. (4) Der Runner wird über den Namen gefunden, nicht über die Runner-Nummer, weil die
+Nummer in `config.toml` nicht steht und das Runner-Token nie gelesen wird. Diese Punkte sind mit einem
+echten GitLab-Server zu bestätigen, bevor GitLab als „vollständig unterstützt“ eingestuft wird
+(`erkennung.EINSTUFUNG["gitlab"]` bleibt bis dahin und bis zur Anbindung im Sammler/in der Einrichtung
+(#94, #96) auf „teil“, `erkennung.FAEHIG["gitlab"]` auf Grundüberwachung – E-20).
+
+**Anbindung im Sammler:** Der Sammler fragt bis #94 nur den GitHub-Runner ab. Der Adapter ist
+vollständig (`GitLab.abfrage`, `beim_dienst`, `jobs_je_repository`, `api_job`, `letzte_jobs`,
+`konfig_fuer`) und getestet, wird aber erst mit der Mehr-Runner-Verarbeitung (#94) und der
+Server-Eingabe der Einrichtung (#96) aufgerufen.
 
 ### Momentaufnahme `GET /api/zustand` (E-19, additiv)
 
