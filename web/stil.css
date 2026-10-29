@@ -341,7 +341,7 @@ body.dashboard { overflow: hidden; }
 
 /* ---------------------------------------------------------------- Info & Hilfe (Blatt von rechts) */
 .info-scrim { position: fixed; inset: 0; z-index: 20; background: var(--scrim); animation: einblenden .25s ease-out; }
-.info { position: fixed; top: 0; right: 0; bottom: 0; z-index: 21; width: min(560px, 100vw); display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -12px 0 40px rgba(12,26,36,.20); animation: info-rein .4s var(--feder); }
+.info { position: fixed; top: 0; right: 0; bottom: 0; z-index: 21; width: min(890px, 100vw); display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--border); box-shadow: -12px 0 40px rgba(12,26,36,.20); animation: info-rein .4s var(--feder); }
 .info:focus { outline: none; }
 .info.raus { animation: info-raus .25s ease-in forwards; }
 @keyframes info-rein { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
@@ -350,6 +350,37 @@ body.dashboard { overflow: hidden; }
 .info-titel { font-size: 20px; line-height: 24px; font-weight: 650; letter-spacing: -.015em; margin: 0; }
 .vm-eyebrow { font-size: 11px; line-height: 13px; color: var(--ink-muted); font-weight: 500; }
 .info-body { flex: 1; min-height: 0; overflow: auto; padding: 0 24px 24px; }
+/* Info & Hilfe, 890 px: zwei Spalten im Goldenen Schnitt (Design 0.8.0) – links Runner, Verbindungen, Was tun, wenn …; rechts Updates, Darstellung, Über, Fehler/Idee. Darunter „Info › Runner“ (.ir-*) und „Verbindungen“ (.vb-titel). */
+.info-spalten { display: grid; grid-template-columns: minmax(0, 1.618fr) minmax(0, 1fr); gap: 0 32px; align-items: start; }
+.info-spalte { min-width: 0; }
+.ir-kopfzeile { margin-bottom: 10px; }
+.ir-kopfzeile .info-h { margin: 0; }
+.ir-status { margin: 0 0 8px; }
+.ir { padding: 12px 0; border-top: 1px solid var(--border); }
+.ir-erst { border-top: 0; padding-top: 2px; }
+.ir-kopf { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; min-width: 0; }
+.ir-name { font-size: 14px; line-height: 18px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ir-kopf .pill { margin-left: auto; flex: none; }
+.ir-aktionen { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; }
+.ir-box { margin-top: 10px; padding: 12px; border-radius: 4px; background: var(--surface-alt); display: flex; flex-direction: column; gap: 10px; }
+.ir-box .link-knopf { align-self: flex-start; }
+.ir-text { font-size: 13px; line-height: 18px; }
+.ir-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
+.ir-feld { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; min-width: 0; }
+.ir-feld input, .ir-feld select { height: 32px; padding: 0 8px; border: 1px solid var(--ink-muted); border-radius: 2px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; font-weight: 400; min-width: 0; }
+.ir-feld input.mono { font-family: var(--mono); font-size: 12px; }
+.ir-feld input[aria-invalid="true"] { border-color: var(--danger); }
+.ir-hinweis { font-size: 12px; font-weight: 400; color: var(--danger); }
+.ir-knoepfe { display: flex; gap: 8px; flex-wrap: wrap; }
+.ir-neu { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin-bottom: 6px; border-radius: 4px; background: color-mix(in srgb, var(--brand) 8%, var(--surface)); font-size: 13px; }
+.ir-neu b { font-weight: 650; }
+.ir-neu-knoepfe { display: flex; gap: 8px; margin-left: auto; }
+.ir-meldung { margin: 0 0 8px; }
+.vb-titel { display: flex; align-items: center; gap: 8px; margin: 12px 0 4px; font-size: 13px; font-weight: 600; min-width: 0; }
+.vb-titel:first-child { margin-top: 0; }
+.vb-titel .mut { font-weight: 400; }
+.keine-oben { margin-top: 0; }
+.alt-hinweis { margin-top: 12px; }
 .info-abschnitt { padding: 18px 0; border-bottom: 1px solid var(--border); }
 .info-abschnitt:last-child { border-bottom: 0; }
 .info-h { margin: 0 0 10px; font-size: 13px; line-height: 16px; font-weight: 650; }
@@ -485,6 +516,11 @@ body.formular { min-height: 100%; display: flex; flex-direction: column; font-si
 .demo .seg-knopf { white-space: nowrap; padding: 0 8px; }
 
 /* ---------------------------------------------------------------- Systemeinstellungen */
+@media (max-width: 900px) {
+  .info-spalten { grid-template-columns: minmax(0, 1fr); }
+  .info-spalte + .info-spalte .info-abschnitt:first-child { border-top: 1px solid var(--border); }
+  .ir-form { grid-template-columns: minmax(0, 1fr); }
+}
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .2s !important; animation-iteration-count: 1 !important; }
   .info { animation-name: einblenden; }
