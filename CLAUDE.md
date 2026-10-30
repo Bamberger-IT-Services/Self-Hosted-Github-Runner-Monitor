@@ -35,7 +35,9 @@ Bereichslabels: `area:monitor`, `area:einrichtung`, `area:runner`, `area:docs`.
 - **Öffentliches Repository:** keine echten IPs, Rechner-, Organisations- oder Personennamen,
   keine Tokens – auch nicht in Tests, Bildern, Logs. Platzhalter: `runner-vm`, `runner-vm-01`,
   `beispiel-org`, Adressen aus `192.0.2.0/24` (RFC 5737).
-- CI läuft auf `ubuntu-latest`, **nie** auf dem eigenen Runner (fremde PRs).
+- CI läuft auf Forgejo auf dem eigenen Runner (`ubuntu-latest` ist dort nur ein Label). Deshalb trägt
+  jeder Job den Fork-Schutz (`if:` mit `head.repo.full_name == github.repository`); PRs aus Forks
+  laufen nie auf dem Runner, sie prüft ein Mitglied lokal.
 - Nur Python-Standardbibliothek und Vanilla-JS. Keine Pakete ohne ADR.
 - Oberfläche: Ansprache „Sie“ in Anmeldung und Einrichtung, neutral im Dashboard, nie „du“.
 - CSP: keine Inline-Skripte, keine `style="…"`-Attribute; Werte per `element.style` setzen.

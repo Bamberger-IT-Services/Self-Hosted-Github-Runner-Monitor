@@ -3,8 +3,10 @@
 # develop prüft Claude vor dem Merge lokal (Tests, Node-Tests), damit der einzige Forgejo-Runner nicht
 # je Issue 10–15 Minuten belegt ist. Forgejo liest .forgejo/workflows,
 # sonst .github/workflows (dieser Ordner); dafür braucht Forgejo einen Actions-Runner (Issue #108).
-# Öffentliches Repository: läuft immer auf GitHubs Rechnern (ubuntu-latest), nie auf dem eigenen
-# Runner – sonst könnte Code aus fremden Pull Requests auf der Runner-VM laufen.
+# Öffentliches Repository: Auf Forgejo ist „ubuntu-latest“ nur ein Label, die Jobs laufen auf dem
+# eigenen Runner der Organisation. Damit kein Code aus fremden Pull Requests auf der Runner-VM läuft,
+# prüft jeder Job bei pull_request, dass der PR aus diesem Repo kommt (kein Fork). PRs aus Forks
+# prüft ein Mitglied lokal und übernimmt sie auf einen eigenen Branch.
 # Auf Forgejo ist „ubuntu-latest“ ein Container-Image des Forgejo-Runners (act): Schritte laufen dort
 # als root, bash mit pipefail, ohne shellcheck. Die Schritte müssen in beiden Umgebungen gehen (#133).
 name: CI
@@ -24,7 +26,9 @@ jobs:
   pruefen:
     # Nur vor dem Release (E-30): PR nach main, Push auf main, von Hand. PRs nach develop und Push auf
     # develop bekommen nur „geheimnisse“ (gitleaks läuft so auch bei direkten Pushes auf develop).
-    if: github.base_ref == 'main' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: >-
+      (github.base_ref == 'main' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+      && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -76,6 +80,7 @@ jobs:
           sed -n '1,10p' dist/inhalt.txt
 
   geheimnisse:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
