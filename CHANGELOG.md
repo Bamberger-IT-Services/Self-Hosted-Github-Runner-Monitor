@@ -4,6 +4,67 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.8.2] – 30.10.2026
+
+### Behoben (vor dem Release)
+- Test „ohne Schreibrecht kein Docker-Aufruf“ läuft als root nicht mehr (die Forgejo-CI läuft als root, dort ist jedes Verzeichnis schreibbar).
+
+### Neu
+- Update-Quelle wählbar (#138, ADR-0007): Neben GitHub (bleibt Vorgabe, für bestehende VMs ändert sich
+  nichts) kommen Updates auf Wunsch von einem Forgejo-Server – `sudo einrichten.sh quelle` bzw.
+  `MONITOR_UPDATE_QUELLE=forgejo` und `MONITOR_UPDATE_FORGEJO=https://…` in `konfig.env`. Ohne Token
+  (das Repository muss ohne Anmeldung lesbar sein), ohne Weiterleitungen, `http://` nur mit
+  `MONITOR_UPDATE_HTTP_ERLAUBT=1`. Die Herkunft prüft der Hilfsdienst auch dann per GitHub-Attestierung
+  gegen das GitHub-Repository. Info › Updates zeigt die Zeile „Quelle“, `einrichten.sh status` ebenso.
+  Das Update auf diese Version selbst kommt noch von GitHub (bzw. per Paket); danach `einrichten.sh quelle`.
+- Aufräumen der Platte für jeden Runner (#144): `sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen` richtet
+  `/usr/local/bin/runner-aufraeumen`, den nächtlichen Lauf mit `fstrim` und neu `runner-aufraeumen.timer` (alle 15 Minuten
+  unter 25 GB frei) ein – auch für Forgejo-, Gitea- und GitLab-Runner, die keinen Hook vor Jobs kennen; beim GitHub-Runner
+  zusätzlich vor jedem Job wie bisher. Idempotent; läuft gerade ein Job, räumt das Skript schonend auf: unbenutzte Images erst, wenn sie seit mindestens
+  30 Minuten auf der VM liegen und nicht gerade gebaut, geladen oder gezogen wurden, Container und Build-Cache erst nach
+  24 Stunden, nur anonyme Volumes (E-31).
+  `einrichten.sh runner` nutzt denselben Ablauf, die Erstinstallation bietet ihn an.
+- Der Monitor meldet, ob das Aufräumen eingerichtet ist (neuer Bereich `aufraeumen` in `/events` und `/api/zustand`,
+  additiv; der Sammler prüft als root ohne Symlinks zu folgen, S-AUFR-01).
+
+### Sicherheit
+- Update-Hilfsdienst: Anmeldeseiten (HTML, Weiterleitung auf `/user/login`, 401/403) enden als klarer
+  Fehler „Quelle verlangt Anmeldung“, ein Download muss ein gzip-Archiv sein, und die Datei `VERSION`
+  im Paket muss die Zielversion nennen – ein älteres Paket unter neuerer Nummer wird vor dem Neustart
+  verworfen (S-UPD-02).
+
+### Behoben
+- CI auf Forgejo (#133): Der Test „Live-Strom endet bei Überlauf“ sendete feste 2100 Nachrichten; auf einem
+  langsamen Runner las der Server schnell genug mit, die Schlange lief nie über, und der Test lief in eine
+  Zeitüberschreitung. Er sendet jetzt, bis die Schlange überläuft. Das Programm ist unverändert.
+- Forgejo/Gitea: Runner, die auf **Instanz-Ebene** registriert sind oder beim Server anders heißen als
+  ihre Unit, werden gefunden (#145). Zugeordnet wird über UUID und Name aus der `.runner`-Datei (die
+  Erkennung liest sie jetzt mit, auch bei `WorkingDirectory=~`), gesucht in der Liste der Organisation,
+  – wenn das Token es darf (`read:admin`, freiwillig) – in `/admin/actions/runners` und in den Listen der
+  Repositories; 403/404 dort ist kein Fehler. Laufende Jobs und „Letzte Jobs“ werden über die UUID auch
+  ohne Runner-Liste zugeordnet.
+- Runner-Status: Ist die Abfrage erfolgreich und aktuell und fehlt nur der Runner in den lesbaren Listen,
+  zeigt die Karte „Dienst aktiv“ bzw. „Job läuft“ mit „Forgejo: nicht sichtbar“ statt „Zustand
+  unbekannt“ (#145).
+- Info › Runner: Server und Sicherheitsgrad nutzen den Server aus `runner.json` (die Erkennung prüft ihn
+  ohne Zugangsdaten); „wahrscheinlich“ nennt den Grund der Erkennung statt pauschal „Server nicht
+  erreichbar“ (#145).
+- „Platte knapp“ empfahl `sudo runner-aufraeumen`, auch wo es den Befehl nicht gab („command not found“, #144).
+
+### Geändert
+- Doku-Links in der Einrichtung (Anleitung zu Forgejo/Gitea, GitLab, Anbieter ergänzen) und im
+  Hinweis von `einrichten.sh zugang` zeigen auf den Tag der laufenden Version
+  (`…/blob/v<VERSION>/docs/…`) statt auf `blob/main`; ohne bekannte Release-Version bleibt `main`
+  der Rückfall (#132, E-28). Die Links bleiben auf GitHub, weil die Forgejo-Spiegelung `main`,
+  `develop`, `release/*` und alle Tags dorthin schiebt. Neuer Test `tests/test_doku_links.py`
+  prüft Dateien und Anker gegen die Überschriften in `docs/`.
+- CI-Takt (E-30): Die volle Prüfung läuft nur noch vor dem Release (PRs nach `main`, Push auf `main`, von Hand);
+  PRs nach `develop` prüfen nur auf Geheimnisse (gitleaks), die Tests laufen vor dem Merge lokal.
+- Info › Was tun, wenn … › „Platte knapp“ zeigt `sudo /usr/local/bin/runner-aufraeumen` mit vollem Pfad und nur, wenn
+  es das Skript auf der VM gibt – sonst den Befehl zum Einrichten. Die Meldung „Platte knapp“ sagt, was wirklich aufräumt.
+- Der Hook vor dem Job ruft `runner-aufraeumen --vor-dem-job 25` auf; ein Neustart des GitHub-Runners nach dem Eintragen
+  geht über `systemctl try-restart` statt `svc.sh` aus dem Runner-Ordner. Hook und `.env` schreibt der Runner-Benutzer.
+
 ## [0.8.1] – 29.10.2026
 
 ### Behoben

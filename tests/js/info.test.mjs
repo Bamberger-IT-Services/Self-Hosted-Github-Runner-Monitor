@@ -284,3 +284,73 @@ test('Texte nennen Zugangsdaten nur als Befehl: nirgends ein Token-Feld oder Tok
   const alle = JSON.stringify(INFO.anleitungen(ctx(), t));
   assert.doesNotMatch(alle, /ghp_|github_pat_|glpat-/);
 });
+
+test('Platte knapp (#144): runner-aufraeumen mit vollem Pfad nur, wenn es auf der VM eingerichtet ist', () => {
+  const sofort = 'sudo /usr/local/bin/runner-aufraeumen', einrichten = 'sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen';
+  const platte = (aufraeumen) => anl(ctx({ knapp: true, aufraeumen }), 'platte');
+  // eingerichtet, GitHub-Runner mit Hook vor dem Job: Text wie bisher, Befehl mit vollem Pfad
+  let a = platte({ skript: true, nacht: true, timer: true, vorDemJob: true });
+  assert.equal(a.schritte[0][0], 'Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:');
+  assert.equal(a.schritte[0][1], sofort);
+  assert.doesNotMatch(codes(a), /einrichten\.sh aufraeumen/);
+  // eingerichtet ohne Hook (Forgejo, Gitea, GitLab): Timer alle 15 Minuten
+  a = platte({ skript: true, nacht: true, timer: true, vorDemJob: null });
+  assert.match(a.schritte[0][0], /alle 15 Minuten/);
+  assert.equal(a.schritte[0][1], sofort);
+  // fehlt: zuerst der Befehl zum Einrichten
+  a = platte({ skript: false, nacht: false, timer: false, vorDemJob: null });
+  assert.equal(a.schritte[0][1], einrichten);
+  assert.match(a.schritte[0][0], /kein automatisches Aufräumen/);
+  // teilweise (Skript da, kein nächtlicher Lauf, kein Timer): vervollständigen und sofort aufräumen
+  a = platte({ skript: true, nacht: false, timer: false, vorDemJob: false });
+  assert.deepEqual(a.schritte.slice(0, 2).map(([, c]) => c), [einrichten, sofort]);
+  // unbekannt (älterer Sammler, noch keine Prüfung): kein Befehl, den es vielleicht nicht gibt
+  for (const u of [undefined, null, 'kaputt']) {
+    a = platte(u);
+    assert.equal(a.schritte[0][1], einrichten);
+    assert.doesNotMatch(codes(a), /\/usr\/local\/bin\/runner-aufraeumen/);
+  }
+  // nirgends mehr der Befehl ohne Pfad
+  for (const u of [undefined, { skript: true, nacht: true, timer: true, vorDemJob: true }, { skript: false }]) {
+    assert.doesNotMatch(codes(platte(u)), /(^|\s)sudo runner-aufraeumen/);
+  }
+});
+
+test('aufraeumenLage (#144): nur echte Wahrheitswerte zählen', () => {
+  assert.equal(INFO.aufraeumenLage(null), 'unbekannt');
+  assert.equal(INFO.aufraeumenLage({}), 'fehlt');
+  assert.equal(INFO.aufraeumenLage({ skript: 'true', nacht: true, timer: true }), 'fehlt');
+  assert.equal(INFO.aufraeumenLage({ skript: true, nacht: true, timer: false, vorDemJob: null }), 'teilweise');
+  assert.equal(INFO.aufraeumenLage({ skript: true, nacht: false, timer: true, vorDemJob: true }), 'teilweise');
+  assert.equal(INFO.aufraeumenLage({ skript: true, nacht: true, timer: false, vorDemJob: true }), 'eingerichtet');
+  assert.equal(INFO.aufraeumenLage({ skript: true, nacht: true, timer: true, vorDemJob: null }), 'eingerichtet');
+});
+
+test('Sicherheitsgrad „wahrscheinlich“ nennt den Grund der Erkennung, Runner-Grund übersetzbar (#145)', () => {
+  const uebersetzt = [];
+  const tt = (text, w) => { uebersetzt.push(text); return t(text, w); };
+  const z = INFO.runnerZeilen({ funde: [fund('forgejo-runner', 'forgejo', { grad: 'wahrscheinlich', grund: 'keine Registrierung gefunden' }),
+    fund('b', 'forgejo', { grad: 'wahrscheinlich' }), fund('c', 'forgejo', { server: 'https://git.example.org' })], runner: [], neu: [], zeit: sek }, { ...f, t: tt });
+  assert.deepEqual(z[0].kv.find(([k]) => k === 'Sicherheitsgrad'), ['Sicherheitsgrad', 'wahrscheinlich – keine Registrierung gefunden', 'warn']);
+  assert.equal(z[1].kv.find(([k]) => k === 'Sicherheitsgrad')[1], 'wahrscheinlich – Server nicht erreichbar');
+  assert.equal(z[2].kv[0][1], 'https://git.example.org');
+  assert.ok(uebersetzt.includes('keine Registrierung gefunden'));
+  const v = INFO.verbindungen([runner('forgejo-runner', 'forgejo', { jobsJeRepository: gh({ runnerGrund: 'Runner beim Dienst nicht sichtbar (globaler Runner? Token-Rechte)' }) })], { ...f, t: tt });
+  const kv = Object.fromEntries(v[0].kv.map(([k, ...rest]) => [k, rest]));
+  assert.match(kv['Rechte (nötig)'][0], /nicht sichtbar/);
+  assert.ok(uebersetzt.includes('Runner beim Dienst nicht sichtbar (globaler Runner? Token-Rechte)'));
+});
+
+test('Update-Quelle (#138): GitHub als Vorgabe, Forgejo mit Adresse, http als Hinweis', () => {
+  assert.deepEqual(INFO.updateQuelle(undefined, t), { name: 'GitHub', text: 'GitHub', http: false, releases: null });
+  const gh = INFO.updateQuelle({ art: 'github', adresse: 'https://github.com', http: false, releases: 'https://github.com/beispiel-org/runner-monitor/releases' }, t);
+  assert.equal(gh.text, 'GitHub');
+  assert.equal(gh.releases, 'https://github.com/beispiel-org/runner-monitor/releases');
+  const fj = INFO.updateQuelle({ art: 'forgejo', adresse: 'https://git.example.org', http: false, releases: 'https://git.example.org/beispiel-org/runner-monitor/releases' }, t);
+  assert.deepEqual(fj, { name: 'Forgejo', text: 'Forgejo · git.example.org', http: false, releases: 'https://git.example.org/beispiel-org/runner-monitor/releases' });
+  const lan = INFO.updateQuelle({ art: 'forgejo', adresse: 'http://192.0.2.10:3000', http: true }, t);
+  assert.equal(lan.text, 'Forgejo · 192.0.2.10:3000 · unverschlüsselt (http)');
+  assert.equal(lan.http, true);
+  // nur http(s)-Adressen als Link
+  assert.equal(INFO.updateQuelle({ art: 'forgejo', adresse: 'https://git.example.org', releases: 'javascript:alert(1)' }, t).releases, null);
+});

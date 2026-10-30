@@ -8,6 +8,7 @@
 
 const INFO = (() => {
   const SKRIPT = 'sudo /opt/runner-monitor/aktuell/einrichten.sh';
+  const AUFRAEUMEN = 'sudo /usr/local/bin/runner-aufraeumen';  // voller Pfad: /usr/local/bin fehlt im PATH von sudo mancher VMs
   const NAMEN = { github: 'GitHub', forgejo: 'Forgejo', gitea: 'Gitea', gitlab: 'GitLab' };
   const ID = /^[a-z0-9_]([a-z0-9._-]{0,62}[a-z0-9_])?$/;           // wie einrichten.sh (Runner-ID) und erkennung.als_id
   const EINHEIT = /^[A-Za-z0-9:_.@\\-]{1,200}$/;                  // wie erkennung.pruefe_unit (ohne Sonderfälle)
@@ -99,6 +100,9 @@ const INFO = (() => {
       wahrscheinlich: t('wahrscheinlich – Server nicht erreichbar'),
       unklar: t('unklar – nur allgemeine Hinweise'),
     };
+    // „wahrscheinlich“ mit dem Grund aus der Erkennung (#145): z. B. „keine Registrierung gefunden“ statt pauschal „nicht erreichbar“
+    const gradText = (fund) => (fund.grad === 'wahrscheinlich' && typeof fund.grund === 'string' && fund.grund
+      ? t('wahrscheinlich – {grund}', { grund: t(fund.grund) }) : grad[fund.grad] || fund.grad);
     const pille = { angebunden: t('angebunden'), grund: t('Grundüberwachung'), noch: t('noch nicht angebunden'), neu: t('neu gefunden'), ignoriert: t('ignoriert') };
     const erkannt = daten.zeit ? (RM.tm(daten.zeit) === RM.tm(f.jetzt) ? t('heute') : RM.tm(daten.zeit)) + ' ' + RM.hm(daten.zeit) : '–';
     return (daten.funde || []).map((fund) => {
@@ -107,7 +111,7 @@ const INFO = (() => {
       const st = einstufung(fund, r, istNeu);
       const server = fund.dienst === 'github' ? ohneSchema(fund.server) : String(fund.server || '');
       const kv = [[t('Server'), server || '–']];
-      if (fund.grad) kv.push([t('Sicherheitsgrad'), grad[fund.grad] || fund.grad, fund.grad === 'sicher' ? '' : 'warn']);
+      if (fund.grad) kv.push([t('Sicherheitsgrad'), gradText(fund), fund.grad === 'sicher' ? '' : 'warn']);
       kv.push([t('Unit'), fund.unit || '–'], [t('Letzte Erkennung'), istNeu ? t('gerade eben') : erkannt]);
       return {
         id: fund.id, name: fund.name, dienst: dienstName(fund.dienst) || t('unbekannt'), dienstId: fund.dienst,
@@ -137,7 +141,7 @@ const INFO = (() => {
         [t('Server'), server || '–'],
         [t('Organisation'), r.org || j.org || '–'],
         ['Token', token, fehl ? 'warn' : ''],
-        [t('Rechte (nötig)'), rechte + (j.runnerGrund ? ` (${j.runnerGrund})` : ''), j.runnerGrund ? 'warn' : ''],
+        [t('Rechte (nötig)'), rechte + (j.runnerGrund ? ` (${t(j.runnerGrund)})` : ''), j.runnerGrund ? 'warn' : ''],
         [t('Ablauf'), tage != null ? t('{d} (in {n} {tage})', { d: RM.datum(j.tokenAblauf), n: tage, tage: RM.mehrzahl(tage, t('Tag'), t('Tagen')) }) : '–', tage != null && tage <= 14 ? 'warn' : ''],
         [t('Letzte Abfrage'), letzte, !['ok', 'kein-token', 'ausstehend'].includes(abf) ? 'warn' : ''],
         [t('Nächste Abfrage'), '', '', 'naechste'],
@@ -156,8 +160,18 @@ const INFO = (() => {
 
   /* ------------------------------------------------------------ Was tun, wenn … */
 
+  /* Stand des Aufräumens der Platte (#144) aus dem Bereich „aufraeumen“ des Sammlers: 'unbekannt' (noch keine
+     Prüfung, älterer Sammler), 'fehlt' (kein Skript), 'teilweise' (Skript da, aber kein nächtlicher Lauf oder
+     weder Timer noch Hook vor dem Job) oder 'eingerichtet'. */
+  function aufraeumenLage(a) {
+    if (!a || typeof a !== 'object') return 'unbekannt';
+    if (a.skript !== true) return 'fehlt';
+    return a.nacht === true && (a.timer === true || a.vorDemJob === true) ? 'eingerichtet' : 'teilweise';
+  }
+
   /* Anleitungen für den gewählten Runner. c: dienst, id, unit, server, org, grund (Stopp-Ursache) und die Flags der
-     Lage (gestoppt, offline, fehlt, abfrage, tokenAblauf, knapp, getrennt, updNeu, updFehler). z (freiwillig): ein
+     Lage (gestoppt, offline, fehlt, abfrage, tokenAblauf, knapp, getrennt, updNeu, updFehler) sowie aufraeumen (Bereich
+     des Sammlers, #144). z (freiwillig): ein
      anderer Runner nur für „Zugangsdaten einrichten oder erneuern“ – der Link bei „Zugangsdaten ändern“. */
   function anleitungen(c, t, z) {
     const dienst = NAMEN[c.dienst] ? c.dienst : 'unbekannt', gh = dienst === 'github';
@@ -182,6 +196,7 @@ const INFO = (() => {
         [t('Nur lesende Rechte: Repository › Actions „Read-only“ (Metadata kommt automatisch dazu). Für den Online-Status zusätzlich Organization › Self-hosted runners „Read-only“.')],
         [t('Verlangt die Organisation eine Freigabe: Organisation › Settings › Personal access tokens › Pending requests. Vorher meldet der Monitor „ohne Zugriff“.')],
         [t('Forgejo / Gitea · Auf dem Server: Einstellungen › Anwendungen › „Neues Token generieren“. Rechte repository und organization jeweils „Lesen“.')],
+        [t('Forgejo / Gitea · Den Online-Status zeigt die Runner-Liste der Organisation nur ihren Besitzern. Ein Runner auf Instanz-Ebene (global) erscheint dort mit; ohne Besitzerrechte sieht ihn nur ein Administrator mit dem zusätzlichen Recht admin „Lesen“ (read:admin). Das ist freiwillig und weitreichend (Abwägung in docs/EINRICHTUNG.md) – ohne zeigt der Monitor „nicht sichtbar“, Dienst und Jobs bleiben sichtbar.')],
         [t('GitLab · Benutzer › Einstellungen › Zugriffstoken. Bereich read_api.')],
         [t('Auf der VM eintragen, die Eingabe bleibt unsichtbar. Das Skript fragt auch nach Server und Organisation, Enter behält die bisherigen:'), befehlZugang(zd.id)],
         ...(pruefenToken ? [[t('Prüfen, ob der Dienst das Token annimmt (200 = in Ordnung, 401 = ungültig, 403/404 = kein Zugriff):'), pruefenToken]] : []),
@@ -255,8 +270,22 @@ const INFO = (() => {
         [t('Alles gebündelt zum Weitergeben, z. B. für eine Fehlersuche:'), `journalctl -u ${u} --since today > ~/runner-journal.txt`],
       ] };
 
+    /* Den Befehl runner-aufraeumen nur zeigen, wenn es ihn auf der VM gibt (#144) – sonst, wie man ihn einrichtet. */
+    const ar = c.aufraeumen || {}, lage = aufraeumenLage(c.aufraeumen), einrichten = `${SKRIPT} aufraeumen`;
+    const aufraeumen = lage === 'eingerichtet' ? [
+      [ar.vorDemJob === true ? t('Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:')
+        : t('Die VM räumt dann alle 15 Minuten selbst auf, während eines Jobs nur schonend. Sofort aufräumen:'), AUFRAEUMEN],
+    ] : lage === 'teilweise' ? [
+      [t('Das automatische Aufräumen ist nur teilweise eingerichtet. Vervollständigen (jede Nacht gründlich, alle 15 Minuten unter 25 GB frei; ein laufender Job wird nicht gestört):'), einrichten],
+      [t('Sofort aufräumen:'), AUFRAEUMEN],
+    ] : lage === 'fehlt' ? [
+      [t('Auf dieser VM ist kein automatisches Aufräumen eingerichtet (der Befehl runner-aufraeumen fehlt). Einrichten – jede Nacht gründlich, alle 15 Minuten unter 25 GB frei, beim GitHub-Runner auch vor jedem Job; ein laufender Job wird nicht gestört:'), einrichten],
+      [t('Danach sofort aufräumen:'), AUFRAEUMEN],
+    ] : [
+      [t('Ob das automatische Aufräumen eingerichtet ist, meldet der Monitor noch nicht. Einrichten oder auf den neuesten Stand bringen (schadet nicht, wenn es schon eingerichtet ist):'), einrichten],
+    ];
     const platte = { id: 'platte', titel: t('Platte knapp'), aktiv: !!c.knapp, wann: t('Wenn auf „/“ weniger als 25 GB frei sind.'), schritte: [
-      [t('Der Runner räumt dann vor jedem Job selbst auf. Sofort aufräumen:'), 'sudo runner-aufraeumen'],
+      ...aufraeumen,
       [t('Wer belegt den Platz?'), 'docker system df'],
       [t('Freien Platz an Proxmox zurückgeben:'), 'sudo fstrim -av'],
       [t('Reicht das dauerhaft nicht, die Platte der VM in Proxmox vergrößern.')],
@@ -275,8 +304,21 @@ const INFO = (() => {
     return [token, erreichbar, gestoppt, fehlt, offline, logs, platte, monitor, update];
   }
 
-  return { SKRIPT, NAMEN, dienstName, befehlZugang, tokenDatei, serverBasis, ohneSchema, einheit, einstufung, fundeAusRunner, neueFunde,
-    hatZugang, formEintrag, geaendert, formStart, erkennenText, runnerZeilen, verbindungen, naechste, anleitungen };
+  /* ------------------------------------------------------------ Update-Quelle */
+
+  /* Info › Updates (#138, ADR-0007): woher Updates kommen – GitHub (Vorgabe, auch ohne Angabe vom Server)
+     oder Forgejo mit Adresse; bei http:// ein Hinweis. „releases“ nur als http(s)-Adresse, sonst null. */
+  function updateQuelle(q, t) {
+    const forgejo = !!q && q.art === 'forgejo';
+    const name = forgejo ? 'Forgejo' : 'GitHub';
+    const adresse = forgejo ? ohneSchema(q.adresse) : '';
+    const http = forgejo && q.http === true;
+    const releases = q && typeof q.releases === 'string' && /^https?:\/\/[^\s"'<>]+$/.test(q.releases) ? q.releases : null;
+    return { name, text: (adresse ? `${name} · ${adresse}` : name) + (http ? ` · ${t('unverschlüsselt (http)')}` : ''), http, releases };
+  }
+
+  return { SKRIPT, AUFRAEUMEN, NAMEN, dienstName, befehlZugang, tokenDatei, serverBasis, ohneSchema, einheit, einstufung, fundeAusRunner, neueFunde,
+    hatZugang, formEintrag, geaendert, formStart, erkennenText, runnerZeilen, verbindungen, naechste, aufraeumenLage, anleitungen, updateQuelle };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = INFO;

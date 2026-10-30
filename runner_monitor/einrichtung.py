@@ -499,6 +499,8 @@ def verbindung_anbieter(erg: dict | None, seit: float | None = None, dienst: str
             zeilen.append({"ok": True, "text": "Runner beim Server gefunden (Online-Status wird angezeigt)"})
         elif gitlab:
             zeilen.append({"warn": True, **meldung("Runner beim Server nicht gefunden oder nicht eindeutig: Online-Status bleibt „unbekannt“")})
+        elif (erg.get("runner") or {}).get("ursache") == "nicht-gefunden":  # #145: Liste lesbar, Runner fehlt
+            zeilen.append({"warn": True, "text": "Runner beim Server nicht sichtbar (globaler Runner? Recht read:admin oder Name beim Server prüfen): Online-Status bleibt „unbekannt“"})
         else:
             zeilen.append({"warn": True, "text": "Runner-Status nur mit Organisations-Recht: Online-Status bleibt „unbekannt“"})
         return {"fertig": True, "ok": True, "ergebnisse": zeilen}

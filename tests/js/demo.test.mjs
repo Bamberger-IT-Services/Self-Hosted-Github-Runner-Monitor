@@ -166,3 +166,17 @@ test('Info › Verbindungen: ?forgejo=angebunden zeigt Forgejo mit Jobs', () => 
   assert.equal(r.server, 'https://git.example.org');
   assert.ok(r.jobsJeRepository);
 });
+
+test('Aufräumen (#144): Bereich wie der Sammler, ?aufraeumen=fehlt|teilweise|timer|unbekannt', () => {
+  const felder = ['geprueft', 'nacht', 'skript', 'timer', 'vorDemJob'];
+  let { empfangen } = starteDemo('?demo&leiste=0');
+  let a = letzte(empfangen, 'aufraeumen');
+  assert.deepEqual(Object.keys(a).sort(), felder);
+  assert.equal(a.vorDemJob, true);
+  ({ empfangen } = starteDemo('?demo&leiste=0&aufraeumen=fehlt'));
+  assert.equal(letzte(empfangen, 'aufraeumen').skript, false);
+  ({ empfangen } = starteDemo('?demo&leiste=0&aufraeumen=timer'));
+  assert.equal(letzte(empfangen, 'aufraeumen').vorDemJob, null);
+  ({ empfangen } = starteDemo('?demo&leiste=0&aufraeumen=unbekannt'));
+  assert.ok(!empfangen.some(([b]) => b === 'aufraeumen'));
+});

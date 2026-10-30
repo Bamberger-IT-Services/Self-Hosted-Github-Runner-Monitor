@@ -1,6 +1,6 @@
 # 2 Das Dashboard
 
-**Stand: 29.10.2026 · Version 0.8.1**
+**Stand: 30.10.2026 · Version 0.8.2**
 
 ![Dashboard mit laufendem Job](bilder/dashboard-job.png)
 
@@ -48,6 +48,7 @@ Das Wichtigste zuerst: groß der Zustand (hier am Beispiel GitHub; bei Forgejo, 
 | **Bereit** (grün) | Dienst läuft, GitHub sieht den Runner, kein Job |
 | **Dienst gestoppt** (rot) | der systemd-Dienst des Runners läuft nicht – Jobs warten. Hat systemd ihn wegen eines Fehlers beendet, steht die Ursache unter **Grund**, z. B. „Speicher voll (OOM-Killer)“ oder „mit Fehlercode beendet“. Link „Runner-Logs abrufen“ |
 | **Offline bei GitHub** (orange) | Dienst läuft, GitHub sieht ihn aber nicht |
+| **Dienst aktiv** mit „Forgejo: nicht sichtbar“ (grün) | Forgejo/Gitea: Die Abfrage klappt, der Runner steht aber in keiner Runner-Liste, die das Token lesen darf (z. B. ein Runner der ganzen Instanz ohne Besitzer- oder Admin-Recht). Dienst, Log und Jobs, die sich dem Runner zuordnen lassen, bleiben sichtbar; ob er beim Server online ist, ist unbekannt. Link „Anleitung: Token-Rechte“ |
 | **Kein Runner** | auf der VM ist keiner eingerichtet |
 
 Darunter die **letzten fünf Jobs** mit Ergebnis (Erfolg, Fehler, Abgebrochen), Dauer und Endzeit.
@@ -102,8 +103,10 @@ während eines Jobs ist normal – der Runner lädt dann Docker-Images und Paket
 Die sechs Prozesse mit der meisten CPU (PID, Benutzer, CPU %, RAM %, Befehl in Kurzform; die
 volle Befehlszeile steht im Tooltip). Darunter jedes Laufwerk mit freiem Platz (ein Netzlaufwerk, das
 nicht antwortet, fehlt, bis es wieder erreichbar ist). Für „/“ zeigt
-eine Marke die **Aufräumschwelle** (25 GB frei): Darunter räumt der Runner vor jedem Job auf, der
-Teil über der Schwelle wird orange.
+eine Marke die **Aufräumschwelle** (25 GB frei): Darunter räumt die VM auf – der GitHub-Runner vor jedem
+Job, alle anderen Runner alle 15 Minuten –, sofern das Aufräumen eingerichtet ist
+(`sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen`; die Meldung „Platte knapp“ sagt, ob). Der Teil über
+der Schwelle wird orange.
 
 ![Platte knapp](bilder/dashboard-platte-knapp.png)
 

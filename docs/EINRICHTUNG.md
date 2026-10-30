@@ -1,6 +1,6 @@
 # Erstinstallation auf der VM
 
-**Stand: 29.10.2026 · Version 0.8.1**
+**Stand: 30.10.2026 · Version 0.8.2**
 
 Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 `beispiel-org` durch die eigenen Werte ersetzen.
@@ -15,7 +15,7 @@ Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 ## 1. Herunterladen und entpacken
 
 ```bash
-V=0.8.1
+V=0.8.2
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz.sha256
 sha256sum -c runner-monitor-$V.tar.gz.sha256     # muss „OK“ melden
@@ -200,11 +200,34 @@ Anwendungen › „Zugriffstoken erstellen“ (Gitea: „Neues Token generieren�
 | `repository` | **Lesen** – Repositories, Läufe, Jobs, Schritte, Log-Anfang |
 | `organization` | **Lesen** – Organisation und Runner-Liste („Online“) |
 | `user` | **Lesen**, nur wenn die Runner einem Benutzer statt einer Organisation gehören |
+| `admin` | freiwillig **Lesen** (`read:admin`), nur Administratoren, nur für globale Runner ohne Besitzerrechte – Abwägung unten, Empfehlung: weglassen |
 | alles andere | keine Rechte |
 
+**Globale Runner und `read:admin` (#145).** Ein Runner auf **Instanz-Ebene** (registriert mit einem
+Token aus der Administration, nicht aus der Organisation) steht in der Runner-Liste der Organisation mit
+(der Monitor fragt mit `visible=true`), aber nur für deren Besitzer. Zugeordnet wird er über UUID und Name
+aus seiner `.runner`-Datei, nicht über die ID im Monitor – der Name beim Server darf also anders lauten als
+die Unit. Findet der Monitor die `.runner` nicht (Info › Runner: Sicherheitsgrad „wahrscheinlich – keine
+Registrierung gefunden“), tragen Sie unter Einrichtung › Runner › „Zuordnung ändern“ als Namen den Namen
+beim Server ein. Fehlt der Runner in allen Listen, die das Token lesen darf, zeigt die Karte „Dienst
+aktiv“ mit „Forgejo: nicht sichtbar“ – Dienst, Log und laufende Jobs (über die UUID) bleiben sichtbar.
+
+Wer den Online-Status eines globalen Runners **ohne Besitzerrechte** sehen will, kann einem Token eines
+**Administrators** zusätzlich `read:admin` geben; dann liest der Monitor `/admin/actions/runners` (nur
+lesend; ohne das Recht antwortet der Server mit 403, der Monitor versucht es erst nach einer Stunde wieder).
+**Abwägung:** `read:admin` gilt für alle lesenden Admin-Schnittstellen der Instanz – wer das Token hat,
+sieht u. a. alle Benutzer mit E-Mail-Adressen, Organisationen, Cron-Aufgaben und Hooks, und das Konto
+muss Administrator sein (ein Konto mit Administratorrechten, dessen Passwort die ganze Instanz öffnet).
+Das Token liegt zwar nur für root lesbar auf der VM (`zugang/<id>.token`) und geht nur per GET an den
+Server aus `runner.json`, ein Leck wöge aber deutlich schwerer als bei `read:repository`/`read:organization`.
+**Empfehlung:** ohne `read:admin` – den Runner lieber in der Organisation registrieren oder das Konto des
+Monitors in deren Team „Owners“ aufnehmen; `read:admin` nur, wenn beides nicht geht und der Online-Status
+gebraucht wird.
+
 Die Runner-Liste der Organisation zeigt Forgejo und Gitea nur ihren **Besitzern**. Gehört das Konto
-des Tokens nicht zu den Besitzern, bleibt „beim Dienst“ unbekannt, und bei Forgejo lassen sich
-Jobs keinem Runner zuordnen (Jobs je Repository gibt es trotzdem). Ein eigenes Konto nur für den
+des Tokens nicht zu den Besitzern, zeigt die Karte „Dienst aktiv“ mit „Forgejo: nicht sichtbar“;
+Jobs ordnet der Monitor dann nur über die UUID aus der `.runner`-Datei zu – fehlt sie, lassen sich
+Jobs bei Forgejo keinem Runner zuordnen (Jobs je Repository gibt es trotzdem). Ein eigenes Konto nur für den
 Monitor im Team „Owners“ ist die sauberste Lösung. Forgejo und Gitea melden einen Ablauf des Tokens
 nicht über die API; der Monitor kann deshalb nicht vorher warnen, sondern meldet erst „Token ungültig“.
 
@@ -274,7 +297,7 @@ leitet der Server z. B. von `http` auf `https` um, die `https`-Adresse eintragen
 ```bash
 sudo ./einrichten.sh status                       # Dienste und Version
 journalctl -u runner-monitor -u runner-monitor-sammler -n 30
-curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.8.1", "vm": "runner-vm"}
+curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.8.2", "vm": "runner-vm"}
 ```
 
 ## Einstellungen
@@ -293,7 +316,10 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `MONITOR_ADRESSE` | `0.0.0.0` | `127.0.0.1`, wenn ein Proxy davor sitzt |
 | `MONITOR_UPDATE_HERKUNFT` | – | `pflicht`: Update nur mit bestätigter GitHub-Attestierung ([UPDATE.md](UPDATE.md)) |
 | `RUNNER_LABELS` | `self-hosted,linux,x64` | Labels, falls GitHub nicht abgefragt werden kann |
-| `MONITOR_RELEASE_REPO` | dieses Repository | Quelle für Updates (nur für Forks ändern) |
+| `MONITOR_RELEASE_REPO` | dieses Repository | Repository der Updates, auf GitHub und Forgejo gleich (nur für Forks ändern) |
+| `MONITOR_UPDATE_QUELLE` | `github` | `forgejo`: Updates vom Forgejo-Server unter `MONITOR_UPDATE_FORGEJO` (`einrichten.sh quelle`, [UPDATE.md](UPDATE.md)) |
+| `MONITOR_UPDATE_FORGEJO` | – | Adresse des Forgejo-Servers, z. B. `https://git.example.org` (nur mit `MONITOR_UPDATE_QUELLE=forgejo`) |
+| `MONITOR_UPDATE_HTTP_ERLAUBT` | aus | `1`: `MONITOR_UPDATE_FORGEJO` darf `http://` sein (nur im vertrauenswürdigen LAN) |
 
 ## Weitere Befehle
 
@@ -304,7 +330,9 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `sudo ./einrichten.sh token` | GitHub-Token eintragen oder erneuern |
 | `sudo ./einrichten.sh zugang <runner>` | Zugangsdaten eines Runners eintragen oder erneuern (`<runner>` = ID aus der Erkennung; ohne Angabe: Liste). Schreibt `/etc/runner-monitor/zugang/<runner>.token`, beim GitHub-Runner auch `github-token`; bei Forgejo, Gitea und GitLab auch Server und Organisation in `runner.json`, danach Verbindungsprüfung |
 | `sudo ./einrichten.sh runner` | GitHub-Runner einrichten |
+| `sudo ./einrichten.sh aufraeumen` | Aufräumen der Platte einrichten oder auf den Stand bringen – für jeden Runner (GitHub, Forgejo, Gitea, GitLab): `/usr/local/bin/runner-aufraeumen`, jede Nacht gründlich mit `fstrim`, alle 15 Minuten unter 25 GB frei (`runner-aufraeumen.timer`), beim GitHub-Runner auch vor jedem Job. Idempotent, stört keinen laufenden Job ([RUNNER.md](RUNNER.md), Abschnitt 6a) |
 | `sudo ./einrichten.sh aktualisieren` | neueste Version installieren ([UPDATE.md](UPDATE.md)) |
+| `sudo ./einrichten.sh quelle` | Update-Quelle wählen: GitHub (Vorgabe) oder Forgejo ([UPDATE.md](UPDATE.md#quelle-github-oder-forgejo)) |
 | `sudo ./einrichten.sh zurueck` | zur vorherigen Version |
 | `sudo ./einrichten.sh entfernen` | Dienste und Firewall-Regel entfernen, Daten bleiben (`--alles` löscht auch Daten) |
 

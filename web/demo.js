@@ -10,7 +10,7 @@ window.RM_DEMO = (() => {
   let INST = '0.0.0', NEU = '0.1.0';
   const naechste = (v) => { const t = v.split('.').map(Number); return `${t[0] || 0}.${(t[1] || 0) + 1}.0`; };
   let grund = '';  // ?grund=oom-kill: Ursache des gestoppten Dienstes (#68)
-  let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600, schritteLokal = false;
+  let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600, schritteLokal = false, updQuelle = 'github';
   let cpuSchnitt = 40, job = null, schrittNr = 1, zeilenImSchritt = 0, updSchritt = 0;
   const START = jetzt() - 3 * 86400 - 4 * 3600;
   const REPOS = [
@@ -70,7 +70,11 @@ window.RM_DEMO = (() => {
       ] };
     const st = upd === 'laeuft' ? { zustand: 'laeuft', schritt: Math.min(5, 1 + Math.floor(updSchritt / 4)), version: NEU, zeit: t - updSchritt }
       : upd === 'fehler' ? { zustand: 'fehler', schritt: 5, version: NEU, zeit: t - 300, meldung: 'die neue Version hat nach dem Neustart nicht geantwortet' } : {};
-    return { installiert: INST, neueste, status: st, auto: false };
+    // Update-Quelle (#138): ?quelle=forgejo zeigt Forgejo per http im LAN (Platzhalter-Adresse)
+    const quelle = updQuelle === 'forgejo'
+      ? { art: 'forgejo', name: 'Forgejo', adresse: 'http://192.0.2.10:3000', http: true, releases: 'http://192.0.2.10:3000/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases' }
+      : { art: 'github', name: 'GitHub', adresse: 'https://github.com', http: false, releases: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases' };
+    return { installiert: INST, neueste, status: st, auto: false, quelle };
   };
   const platten = () => {
     const frei = zustand === 'platte' ? 18.4 * GB : 61.2 * GB;
@@ -79,6 +83,15 @@ window.RM_DEMO = (() => {
       { pfad: '/var/lib/docker', gesamt: 256 * GB, frei: 171 * GB, belegt: 85 * GB },
     ];
   };
+  /* Aufräumen der Platte (#144) wie der Bereich „aufraeumen“ des Sammlers. ?aufraeumen=fehlt|teilweise|timer|unbekannt,
+     Standard: eingerichtet mit Hook vor dem Job (GitHub-Runner). „unbekannt“ schickt nichts (älterer Sammler). */
+  let aufraeumenWahl = 'hook';
+  const aufraeumen = () => ({
+    hook: { skript: true, nacht: true, timer: true, vorDemJob: true },
+    timer: { skript: true, nacht: true, timer: true, vorDemJob: null },
+    teilweise: { skript: true, nacht: false, timer: false, vorDemJob: false },
+    fehlt: { skript: false, nacht: false, timer: false, vorDemJob: null },
+  }[aufraeumenWahl] || null);
 
   /* Seit #92 (E-19, additiv): zusätzlich runner[] und meldungen[] wie GET /api/zustand bzw. die
      Ereignisse „runner“ und „meldungen“; die Oberfläche nutzt sie seit #94 (Reiter, Meldungen mit Runner).
@@ -92,7 +105,8 @@ window.RM_DEMO = (() => {
   const FAEHIG_TEIL = { status: true, jobs: true, schritte: false, logs: true, updates: false };
   let faehigWahl = 'voll';
   // ?forgejo=angebunden (Design 0.8.0 › „Verbindungen · GitHub und Forgejo“): runner-vm-02 mit Jobs statt Grundüberwachung
-  let forgejoAngebunden = false;
+  // ?forgejo=unsichtbar (#145): angebunden, aber der Runner fehlt in den Runner-Listen, die das Token lesen darf
+  let forgejoAngebunden = false, forgejoUnsichtbar = false;
   // ?anbieter=kein-token|nicht-erreichbar|token-ungueltig (#123): Abfrage der Runner ab runner-vm-02 (Forgejo, Gitea, GitLab) mit Fehler;
   // ?anbieteralter=N: Alter ihres letzten guten Stands in Sekunden (Standard 900 = veraltet; 200 = Hinweis mit Alter)
   let anbieterAbfrage = 'ok', anbieterAlter = 900;
@@ -108,15 +122,17 @@ window.RM_DEMO = (() => {
     };
   };
   // Runner mit Jobs und Schritten, aber ohne laufenden Job (Zustand bereit oder offline beim Server)
-  const vollRunner = (id, dienst, unit, labels, offline) => {
+  const vollRunner = (id, dienst, unit, labels, offline, unsichtbar = false) => {
     const t = jetzt(), w = workflows();
+    const beimDienst = unsichtbar ? { zustand: 'unbekannt', seit: null, sichtbar: false } : offline ? { zustand: 'offline', seit: START + 86400 } : { zustand: 'online', seit: null };
     return {
       id, name: id, dienst, server: dienst === 'gitlab' ? 'https://gitlab.example.org' : 'https://git.example.org', org: dienst === 'gitlab' ? null : 'beispiel-org', unit, stand: 'angebunden', einstufung: 'voll',
       version: dienst === 'gitea' ? 'act_runner 0.2.11' : dienst === 'forgejo' ? 'Forgejo Runner 9.1' : 'GitLab Runner 17.5', labels, faehig: FAEHIG_VOLL,
-      status: { zustand: offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst: offline ? { zustand: 'offline', seit: START + 86400 } : { zustand: 'online', seit: null } },
+      status: { zustand: unsichtbar ? 'aktiv' : offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst },
       job: null, letzteJobs: [{ repo: 'datenimport', workflow: 'Import', name: 'nachts', ergebnis: 'erfolg', dauer: 128, ende: t - 720 }],
       jobsJeRepository: { ...w, abfrage: anbieterAbfrage, abgefragt: anbieterAbfrage === 'ok' ? t - (takt % 30) : t - anbieterAlter, naechste: t + 30 - (takt % 30), tokenAblauf: null,  // Forgejo, Gitea und GitLab melden kein Ablaufdatum (E-18: nur, was der Dienst liefert)
-        kontingent: {}, repos: anbieterAbfrage === 'kein-token' ? [] : REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })) },
+        kontingent: {}, repos: anbieterAbfrage === 'kein-token' ? [] : REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })),
+        runnerGrund: unsichtbar ? 'Runner beim Dienst nicht sichtbar (globaler Runner? Token-Rechte)' : '' },
       log: { art: 'journal', unit },
     };
   };
@@ -133,7 +149,7 @@ window.RM_DEMO = (() => {
       status: { zustand: zust, dienst: st.dienst, beimDienst: st.github }, job, letzteJobs: st.letzteJobs, jobsJeRepository: w,
       log: { art: 'seiten', unit },
     }];
-    if (runnerAnzahl >= 2) liste.push(forgejoAngebunden ? vollRunner('runner-vm-02', 'forgejo', 'forgejo-runner.service', ['ubuntu-latest'], false)
+    if (runnerAnzahl >= 2) liste.push(forgejoAngebunden ? vollRunner('runner-vm-02', 'forgejo', 'forgejo-runner.service', forgejoUnsichtbar ? [] : ['ubuntu-latest'], false, forgejoUnsichtbar)
       : grundRunner('runner-vm-02', 'runner-vm-02', 'forgejo', 'forgejo-runner.service', 'voll', 'grund', 'aktiv', { neustarts: 2, letzterStopp: jetzt() - 26 * 3600 }));
     if (runnerAnzahl >= 3) liste.push(grundRunner('buildagent', 'buildagent', 'unbekannt', 'buildagent.service', 'unbekannt', 'grund', zustand === 'gestoppt' ? 'gestoppt' : 'aktiv',
       { seit: jetzt() - (6 * 86400 + 4 * 3600 + 900) }));
@@ -301,6 +317,7 @@ window.RM_DEMO = (() => {
     api.empfange('platten', platten());
     api.empfange('workflows', workflows());
     api.empfange('update', update());
+    const a = aufraeumen(); if (a) api.empfange('aufraeumen', { ...a, geprueft: jetzt() });
     runnerSenden();
   }
 
@@ -334,12 +351,15 @@ window.RM_DEMO = (() => {
     const p = new URLSearchParams(location.search);
     zustand = p.get('zustand') || zustand; grund = p.get('grund') || ''; gh = p.get('github') || gh; upd = p.get('update') || upd;
     if (p.get('kerne')) kerne = Number(p.get('kerne'));
+    if (p.get('quelle') === 'forgejo') updQuelle = 'forgejo';
     const rn = parseInt(p.get('runner'), 10); if (rn >= 1 && rn <= 5) runnerAnzahl = rn;
     if (p.get('faehig') === 'teilweise') faehigWahl = 'teilweise';
-    forgejoAngebunden = p.get('forgejo') === 'angebunden';
+    forgejoAngebunden = ['angebunden', 'unsichtbar'].includes(p.get('forgejo'));
+    forgejoUnsichtbar = p.get('forgejo') === 'unsichtbar';
     if (['kein-token', 'nicht-erreichbar', 'token-ungueltig'].includes(p.get('anbieter'))) anbieterAbfrage = p.get('anbieter');
     if (parseInt(p.get('anbieteralter'), 10) > 0) anbieterAlter = parseInt(p.get('anbieteralter'), 10);
     schritteLokal = p.get('schritte') === 'lokal';
+    if (['fehlt', 'teilweise', 'timer', 'unbekannt'].includes(p.get('aufraeumen'))) aufraeumenWahl = p.get('aufraeumen');
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();
     if (['job', 'platte', 'volllast'].includes(zustand)) neuerJob();

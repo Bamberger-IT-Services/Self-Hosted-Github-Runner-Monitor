@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 29.10.2026 · Version 0.8.1**
+**Stand: 30.10.2026 · Version 0.8.2**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -77,6 +77,7 @@ für `runner.json`, „Neu erkennen“ und „Verbindung prüfen“) und prüfen
 | Forgejo-/Gitea-Runner: Online, Jobs je Repository, aktueller Job mit Schritten, letzte Jobs | API des Servers aus `runner.json` (`/api/v1`, Token aus `zugang/<id>.token`), siehe „Fähigkeiten je Anbieter“ | 30 s |
 | Neue Version | GitHub-API `repos/<release-repo>/releases/latest` | 6 h |
 | Docker-Container | `docker ps --format json` (wird gesammelt, in Version 0.1 nicht angezeigt) | 10 s |
+| Aufräumen der Platte eingerichtet? (#144) | Sammler (root, `runner_monitor/aufraeumen.py`): `/usr/local/bin/runner-aufraeumen` und `/etc/cron.daily/runner-aufraeumen` per `lstat` – nur reguläre Dateien von root, für Gruppe/andere nicht schreibbar, ausführbar, der nächtliche Lauf ruft das Skript auf; `systemctl is-active runner-aufraeumen.timer`; beim GitHub-Runner `.env` (`ACTIONS_RUNNER_HOOK_JOB_STARTED` = `<runner-verz>/vor-dem-job.sh`) und der Hook ruft das Skript auf – gelesen mit `O_NOFOLLOW`, höchstens 64 KiB, ohne zu blockieren. Ergebnis `/run/runner-monitor/aufraeumen.json`, nur bei Änderung geschrieben | 60 s |
 
 **Ohne Token** laufen Runner-Status, Auslastung, Prozesse, Platten und Live-Log normal; Job-
 Name und Ergebnis kommen dann allein aus dem Journal, Repository und Schrittnamen fehlen.
@@ -132,7 +133,7 @@ Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README)
   "version": "13.0 / Runner 9.1", "grad": "sicher", "merkmale": ["systemd-Unit forgejo-runner.service", "…"],
   "einstufung": "voll", "stand": "offen", "unit": "forgejo-runner.service", "log": null,
   "faehig": { "status": true, "jobs": true, "schritte": true, "logs": true, "updates": false },
-  "aktiv": true, "grund": null }
+  "aktiv": true, "grund": null, "kennung": { "name": "runner-vm-02", "uuid": "00000000-0000-4000-8000-000000000002" } }
 ```
 
 `dienst`: `github|forgejo|gitea|gitlab|unbekannt`; `stand`: `angebunden|grund|ignoriert|offen`
@@ -140,7 +141,16 @@ Ergebnis je Fund (`erkennung.json` › `runner[]`, Format aus dem Design-README)
 anderes sagt; ein Fund ohne Unit ist nie `angebunden`, E-18); `log`: Pfad oder `null` (= Journal der
 Unit; GitHub mit Unit: `<runner>/_diag`, ohne Unit `null`). Zusätzlich zum Design: `aktiv` (Unit
 läuft: `true`/`false`/`null` unbekannt; bei einer zugeordneten anderen Unit deren Zustand) und
-`grund` (warum nur „wahrscheinlich“). Die Datei hat außerdem `zeit` und `geprueft`.
+`grund` (warum nur „wahrscheinlich“). Seit #145 außerdem `kennung` (nur Forgejo/Gitea): `name` und
+`uuid` des Runners **beim Dienst** aus der `.runner`-Datei, die die Unit selbst vorgibt (nie aus einer Datei,
+die nur ein Prozess nennt, #109; `null` bei einer per `runner.json` zugeordneten anderen Unit). Die UUID ist
+kein Geheimnis (angemeldet wird mit dem Token aus `.runner`, das nie übernommen wird); sie dient dem Adapter
+nur zum Vergleich mit Runner-Listen und Job-Logs. `WorkingDirectory=~` wird wie bei systemd zum
+Heimatordner des `User=` (aus `/etc/passwd`). **Server aus `runner.json` (#145):** Nennt `runner.json`
+für einen Fund mit Unit einen Server, steht er im Fund (`server`) und die Erkennung prüft ihn ohne
+Zugangsdaten wie eine Adresse aus `.runner` – bestätigt er den Dienst, wird der Grad `sicher` (außer bei
+widersprüchlichen Merkmalen), sonst nennt `grund` die Antwort („Server nicht erreichbar“). Info › Runner
+zeigt so den Server, den der Adapter wirklich nutzt. Die Datei hat außerdem `zeit` und `geprueft`.
 
 **IDs (E-18):** aus dem Namen, eindeutig (gleicher Name → `-2`, `-3`) und **zuerst an Funde mit
 Unit** vergeben – ein nachgemachter Fund (z. B. eine `.runner` in `/home`) bekommt so nie die ID
@@ -289,9 +299,13 @@ angebundener Gitea-Runner meldet in `runner[]` die Fähigkeiten seines Adapters.
 `faehig.schritte: false` – die Oberfläche zeigt dann „Schritte nicht verfügbar“ (Design ›
 „Teilweise“). **Ehrlich statt „Bereit“:** Ist der Runner beim Dienst beschäftigt, der Job aber in
 keinem Repository der Organisation zu finden, ist der Zustand `job` mit `job.zuordenbar: false`
-(„Job nicht zuordenbar“); ist die Runner-Liste oder sind die Läufe eines Repositorys nicht lesbar
-(`laeufeNichtLesbar`, z. B. 404 auf `/actions/runs`) oder schlug die Abfrage fehl, ist er
-`unbekannt`.
+(„Job nicht zuordenbar“); sind die Läufe eines Repositorys nicht lesbar (`laeufeNichtLesbar`, z. B. 404 auf
+`/actions/runs`), schlug die Abfrage fehl oder ist ihr letzter Erfolg älter als 10 Minuten, ist er
+`unbekannt`. **Nur der Runner fehlt (#145):** Ist die Abfrage erfolgreich und aktuell, der Runner aber in
+keiner lesbaren Runner-Liste (globaler Runner ohne `read:admin`, keine Besitzerrechte, anderer Name), meldet
+`beimDienst` `{"zustand": "unbekannt", "seit": null, "sichtbar": false}` und der Zustand bleibt beim lokalen
+Stand: `job`, wenn sich ein laufender Job über UUID/Name zuordnen lässt, sonst `aktiv` („Dienst aktiv“ mit
+dem Hinweis „{Dienst}: nicht sichtbar“) – nie „bereit“ und nicht mehr `unbekannt`.
 
 ### Fähigkeiten je Anbieter (API-Prüfung, #93)
 
@@ -303,10 +317,10 @@ einen laufenden Server geprüft. Alle Pfade unter `/api/v1`, Anmeldung `Authoriz
 | Was | Forgejo | Gitea | Monitor nutzt |
 |---|---|---|---|
 | Version | `/version` → `17.0.1+gitea-1.22.0` (nennt die Gitea-Basis) | `/version` → z. B. `1.24.6` | Art des Servers (Forgejo/Gitea), Anzeige |
-| Runner-Status | `/orgs/{org}/actions/runners?visible=true` (auch globale Runner), `/user/actions/runners`, `/repos/{o}/{r}/actions/runners`, `/admin/actions/runners`; Liste `[{name, uuid, status: offline/idle/active, labels: ["…"], version}]` | gleiche Pfade; `{runners: [{name, status: online/offline, busy, labels: [{name}]}]}` | Online/Offline, beschäftigt, Labels; braucht **Besitzerrechte** an der Organisation (sonst „unbekannt“ mit Grund) |
+| Runner-Status | `/orgs/{org}/actions/runners?visible=true` (auch globale Runner – ohne `visible=true` fehlen sie), `/user/actions/runners`, `/repos/{o}/{r}/actions/runners`, `/admin/actions/runners` (nur Administratoren mit `read:admin`); Liste `[{id, name, uuid, owner_id, repo_id, status: offline/idle/active, labels: ["…"], version}]`, global = `owner_id` 0 und `repo_id` 0 | gleiche Pfade; `{runners: [{name, status: online/offline, busy, labels: [{name}]}]}` | Online/Offline, beschäftigt, Labels; Suche in Organisation → Instanz (`/admin`, wenn das Token es darf) → Repositories, Zuordnung über UUID/Name aus `.runner` (#145); ohne Treffer „nicht sichtbar“ |
 | Läufe je Repository | `/repos/{o}/{r}/actions/runs` → `{workflow_runs: [{id, status: running/waiting/blocked/success/failure/cancelled/skipped, workflow_id, prettyref, trigger_event, title, started}]}` | `/repos/{o}/{r}/actions/runs` wie GitHub (`in_progress`, `queued`, `completed` + `conclusion`, `head_branch`, `pull_requests`, `path`); zusätzlich `/orgs/{org}/actions/runs` und `/orgs/{org}/actions/jobs` | Jobs je Repository (läuft/wartet), ruhige Repositories seltener |
 | Jobs eines Laufs | `/repos/{o}/{r}/actions/runs/{id}/jobs` → `[{id, name, status, task_id, attempt, html_url}]` – **ohne Runner, ohne Schritte, ohne Zeiten** | `{jobs: [{id, name, status, conclusion, runner_name, runner_id, started_at, completed_at, steps}]}` | aktueller Job dieses Runners |
-| Welcher Runner hat den Job? | nur in der **ersten Log-Zeile**: „Runner <uuid> (version:…) received task …“ (Forgejo Runner) bzw. „<name>(version:…) received task …“ (act_runner) | `runner_name` im Job | Forgejo: Log-Anfang (`Range: bytes=0-4095`), Vergleich mit der UUID aus der Runner-Liste, je Job einmal |
+| Welcher Runner hat den Job? | nur in der **ersten Log-Zeile**: „Runner <uuid> (version:…) received task …“ (Forgejo Runner) bzw. „<name>(version:…) received task …“ (act_runner) | `runner_name` im Job | Forgejo: Log-Anfang (`Range: bytes=0-4095`), Vergleich mit der UUID aus `.runner` bzw. der Runner-Liste, je Job einmal |
 | Schritte | `/repos/{o}/{r}/actions/jobs/{id}` (**ab Forgejo 17**) → `steps: [{number, name, status: success/failure/running/waiting/skipped/cancelled, started, stopped}]`, von Anfang an vollständig von „Set up job“ bis „Complete job“; Forgejo 16 hat den Pfad nicht | `steps` im Job (`status` + `conclusion`) | Schritt `{nr, von, name}`; ohne Pfad `faehig.schritte: false` |
 | Logs | `/repos/{o}/{r}/actions/jobs/{id}/logs` – Text, ab 17 mit `?step=N`, `?format=ndjson`, `Range`; `/runs/{id}/logs` als ZIP | `/repos/{o}/{r}/actions/jobs/{id}/logs` (Text) | nur der Anfang (Runner-Zuordnung). Live-Log weiter aus dem Journal der Unit; ein Log über die API mit Schritt-Trennern wäre möglich (eigenes Issue) |
 | Letzte Jobs | `/actions/jobs/{id}` (Ergebnis, Ende des letzten Schritts); vor 17 nur `status` in der Job-Liste | `/actions/jobs/{id}` (`conclusion`, `completed_at`) | Jobs, die der Sammler laufen sah (bis 5); kurze Jobs zwischen zwei Runden (30 s) fehlen |
@@ -321,8 +335,13 @@ die Art an der Version und richtet sich nach der **Form** jeder Antwort.
 **Token-Rechte** (Forgejo und Gitea, Einstellungen › Anwendungen › „Zugriffstoken“): `read:repository`
 (Repositories, Läufe, Jobs, Schritte, Logs) und `read:organization` (Organisation; die Runner-Liste
 nur für Besitzer der Organisation), bei einem Benutzer statt einer Organisation `read:user`. Kein
-Schreibrecht. Ohne Recht auf die Runner-Liste bleibt „beim Dienst“ unbekannt und Forgejo kann
-Jobs keinem Runner zuordnen (die UUID fehlt) – Jobs je Repository gibt es trotzdem. Die Bereiche
+Schreibrecht. Ohne Recht auf die Runner-Liste bleibt „beim Dienst“ „nicht sichtbar“; Jobs ordnet der
+Monitor dann über die UUID aus `.runner` zu (Fund der Erkennung, #145) – fehlt auch sie, bleibt nur der
+Name. Jobs je Repository gibt es trotzdem. **Freiwillig `read:admin`** (nur wirksam für das Token eines
+Administrators der Instanz): Dann findet der Monitor einen globalen Runner auch ohne Besitzerrechte in
+`/admin/actions/runners`. Das Recht ist weitreichend (es liest alle Admin-Daten der Instanz, u. a.
+Benutzer mit E-Mail-Adressen) – Abwägung in EINRICHTUNG.md und S-FORGEJO-01; antwortet `/admin` mit
+403/404, versucht der Monitor es erst nach einer Stunde wieder und meldet keinen Fehler. Die Bereiche
 stammen aus der Beschreibung; mit einem eingeschränkten Token sind sie noch nicht geprüft.
 
 **Eine Runde** (Sammler, alle 30 s, **je Runner ein eigener Faden** – siehe „Abfrage im Sammler“ unten;
@@ -330,8 +349,11 @@ eine Runde je Runner höchstens 25 s, je Anfrage eine harte Frist von 10 s in ei
 Daemon-Faden, die auch DNS und tröpfelnde Antworten abdeckt; Antworten werden stückweise gelesen, `NaN`
 und `Infinity` abgelehnt, eine Antwort in unerwarteter Form wird „unerwartete Antwort“ mit dem letzten
 guten Stand): Version → Organisation oder
-Benutzer (einmal je Token) → Runner-Liste → Repositories (ohne archivierte und ohne Actions, 50 je
-Seite) → Läufe je Repository (ruhige Repositories nur alle 5 Min., wie bei GitHub) → Jobs der
+Benutzer (einmal je Token) → Repositories (ohne archivierte und ohne Actions, 50 je Seite) →
+Runner-Liste (zuerst der Ort des letzten Funds, dann die eigene Liste; fehlt der Runner, höchstens alle
+10 Min. und nur mit mindestens 12 s Rest der Runde: `/admin/actions/runners` und die Listen der 10 zuletzt
+geänderten Repositories; 403/404 dort ist kein Fehler der Runde, ein älterer Server ohne den Pfad auch
+nicht) → Läufe je Repository (ruhige Repositories nur alle 5 Min., wie bei GitHub) → Jobs der
 laufenden Läufe → bei Forgejo Log-Anfang je neuem Job → Schritte des eigenen Jobs → Ergebnis der
 Jobs, die seit der letzten Runde fertig sind. Bei einer Instanz mit 7 Repositories ohne laufende
 Jobs waren das 11 Anfragen in 0,2 s, in der Runde danach 6.
@@ -403,9 +425,12 @@ aus der Konfiguration – GitHub: Server fest `https://github.com`, Organisation
 `einstellungen.json` bzw. `MONITOR_ORG`, Token aus `zugang/<id>.token` (Rückfall `github-token`);
 Forgejo/Gitea: Server und Organisation aus `runner.json`, Token aus `zugang/<id>.token`
 (`anbieter.konfig_aus`); Log-Datei anderer Runner nur aus `/etc/runner-monitor/runner.json`, sonst
-Journal der Unit. Der Runner-Name (aus dem Fund) dient nur als Filter in der Antwort des Servers. Vom Fund
-der Erkennung kommen nur ID, Anzeigename, Unit (geprüft), Version, Einstufung und Stand – zum
-Anzeigen, nie als Ziel einer Anfrage. Der Monitor prüft `erkennung.json` beim Lesen noch einmal
+Journal der Unit. Runner-Name und -UUID (aus dem Fund, `kennung`, #145) dienen nur als Filter in der
+Antwort des Servers (Runner-Listen, erste Log-Zeile eines Jobs); Reihenfolge: UUID, Name aus `.runner`,
+Name aus der Konfiguration (`runner.json` › `name` überschreibt den Anzeigenamen), Unit ohne `.service`.
+Kennt der Monitor die UUID und nennt der Server eine, zählt nur sie. Vom Fund der Erkennung kommen
+sonst nur ID, Anzeigename, Unit (geprüft), Version, Einstufung und Stand – zum Anzeigen, nie als Ziel
+einer Anfrage. Der Monitor prüft `erkennung.json` beim Lesen noch einmal
 (`erkennung.pruefe_ergebnis`), nimmt höchstens 20 Runner auf und fragt den Dienststatus von Runnern in
 Grundüberwachung höchstens alle 10 s ab.
 
@@ -482,12 +507,15 @@ Momentaufnahme nur als ersten Schwall von `/events`; jetzt auch als ein JSON-Obj
 { "format": 2,
   "status": { … wie bisher … }, "system": { …, "verlauf": {…} }, "prozesse": […], "platten": […],
   "container": […], "workflows": { … wie bisher … }, "update": { … },
-  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.8.1",
+  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.8.2",
           "auslastung": { …Bereich system… }, "verlauf": { "cpu": [], "ram": [], "netz": [], "start": 0 },
           "prozesse": […], "platten": […], "container": […] },
   "runner": [ …Einträge… ],
   "meldungen": [ …Meldungen… ] }
 ```
+
+Seit #144 kommt (additiv, `format` bleibt 2) der Bereich `aufraeumen` dazu, sobald der Sammler ihn geprüft hat
+(siehe „Vom Server in den Browser“); ältere Sammler liefern ihn nicht, dann gilt der Stand als unbekannt.
 
 Die bisherigen Bereiche bleiben **unverändert**, die Oberfläche nutzt sie weiter, bis #94 sie auf
 `vm`/`runner[]`/`meldungen[]` umstellt; danach kann das Altformat in einem eigenen Issue entfallen.
@@ -516,7 +544,9 @@ Ein Eintrag in `runner[]`:
 - `status.zustand`: `job|bereit|offline|gestoppt|fehlt` (mit Jobs), `aktiv|gestoppt|fehlt`
   (Grundüberwachung: „Dienst aktiv“). Ohne Unit (Fähigkeit `status` fehlt) ist er seit #95 `fehlt` – Reiter
   und Karte zeigen beide „Kein Dienst“ (Review #114); `unbekannt` heißt: der Dienst liefert keinen lesbaren
-  Stand (Forgejo/Gitea, #93) oder der Adapter kann gar keinen Status. `beimDienst` ist `null` ohne Anbindung.
+  Stand (Forgejo/Gitea, #93) oder der Adapter kann gar keinen Status. `beimDienst` ist `null` ohne Anbindung;
+  `beimDienst.sichtbar: false` (Forgejo/Gitea, #145): Abfrage gelungen, der Runner fehlt nur in den lesbaren
+  Runner-Listen – der Zustand ist dann `aktiv` bzw. `job` statt `unbekannt`.
 - `status.dienst`: `zustand`, `seit` (aktiv seit bzw. gestoppt seit), `grund` (systemd-`Result`),
   `neustarts` (`NRestarts`: automatische Neustarts durch `Restart=` seit dem letzten Start von Hand, sonst
   `null`) und `letzterStopp` (`InactiveEnterTimestamp`, `null`, wenn die Unit seit dem Booten nie beendet
@@ -622,6 +652,12 @@ Logik ohne DOM, geprüft mit `tests/js/info.test.mjs`).
   Organisation und Unit gehen nur nach strenger Prüfung in einen Befehl ein (`INFO.serverBasis`,
   `INFO.einheit`). Der Link „Anleitung: Zugangsdaten für {Dienst} ›“ bei „Zugangsdaten ändern“ zeigt die
   Zugangs-Anleitung für genau diesen Runner.
+- **„Platte knapp“ (#144):** Den Befehl `sudo /usr/local/bin/runner-aufraeumen` (voller Pfad) zeigt die Anleitung
+  nur, wenn der Bereich `aufraeumen` das Skript meldet (`INFO.aufraeumenLage`: `eingerichtet` – Skript, nächtlicher
+  Lauf und Timer oder Hook; `teilweise`; `fehlt`; `unbekannt` ohne Bereich). Sonst steht dort zuerst
+  `sudo /opt/runner-monitor/aktuell/einrichten.sh aufraeumen`; bei `unbekannt` nur dieser Befehl. Die Meldung „Platte
+  knapp“ sagt „räumt der Runner vor jedem Job auf“ (Hook, oder unbekannt wie bisher), „räumt die VM alle 15 Minuten
+  auf“ (Timer) oder „automatisches Aufräumen ist nicht eingerichtet“. Demo: `?demo&zustand=platte&aufraeumen=fehlt|teilweise|timer|unbekannt`.
 - **„Was tun?“ und Karten je Dienst (#123):** Die Meldung eines Runners (`meldungen[]` mit `dienst`) nennt seinen
   Dienst („runner-vm-02: Forgejo nicht erreichbar“, „Kein Gitea-Token“ …) und führt zur Anleitung, die für
   diesen Dienst gilt. Kartenfuß „Jobs je Repository“ und leerer Zustand ohne GitHub-Pfad: „{Dienst} nicht
@@ -784,6 +820,7 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | `runner` | seit #92: Liste der Runner wie `runner[]` in `/api/zustand` (siehe „Anbieter-Adapter“), nur bei Änderung; das Dashboard nutzt sie seit #94 |
 | `meldungen` | seit #92: Liste wie `meldungen[]` in `/api/zustand`, nur bei Änderung |
 | `journal` | seit #95, nur mit `/events?journal=<runner-id>`: `unit`, `neu`, `zeilen[]`, `ereignisse[]`, `hinweis` (siehe „Grundüberwachung und ‚teilweise‘“) |
+| `aufraeumen` | seit #144: `{skript, nacht, timer, vorDemJob, geprueft}` – Wahrheitswerte, ob `/usr/local/bin/runner-aufraeumen`, der nächtliche Lauf, `runner-aufraeumen.timer` und (nur GitHub-Runner, sonst `null`) der Hook vor dem Job eingerichtet sind; nur bei Änderung. Der Monitor übernimmt nur diese Felder mit diesen Typen (`aufraeumen.pruefe_stand`) |
 
 Zeiten sind Unix-Sekunden. Alle 15 s kommt ein Kommentar `: lebt`, damit Proxys die Verbindung
 offen lassen. Nach 5 s ohne Daten zeigt der Browser „Getrennt“ und den letzten Stand; nach 10 s
@@ -863,17 +900,27 @@ dieselben Daten ohne Server (Entwicklung, Bildschirmfotos).
 
 ## Update
 
-1. Der Sammler fragt alle 6 Stunden `releases/latest` ab und legt das Ergebnis in
-   `/run/runner-monitor/release.json` (nur root kann es schreiben). Hängen Archiv und Prüfsumme
+1. Der Sammler fragt alle 6 Stunden `releases/latest` der Update-Quelle ab und legt das Ergebnis in
+   `/run/runner-monitor/release.json` (nur root kann es schreiben, Feld `quelle`: `github` oder
+   `forgejo`). Quelle ist GitHub (Vorgabe, mit dem GitHub-Token des Monitors) oder – mit
+   `MONITOR_UPDATE_QUELLE=forgejo` – ein Forgejo-Server unter `MONITOR_UPDATE_FORGEJO`
+   (`runner_monitor/quelle.py`, ADR-0007): ohne Token, ohne Weiterleitungen, `http://` nur mit
+   `MONITOR_UPDATE_HTTP_ERLAUBT=1`; Archiv- und Prüfsummen-Adresse baut der Sammler selbst aus Basis,
+   Repository und Tag `vX.Y.Z`. Hängen Archiv und Prüfsumme
    noch nicht am Release (der Release-Workflow lädt sie erst nach dem Veröffentlichen hoch), steht
    dort `bereit: false`; der Sammler fragt dann nach 2 Minuten erneut, die Oberfläche zeigt
    „wird gerade bereitgestellt“ statt des Knopfs, und es gibt kein automatisches Update (#63).
 2. Klick auf „Jetzt aktualisieren“ → der Webserver legt `auftraege/update` mit der Versionsnummer ab.
 3. `runner-monitor-update.path` startet den root-Hilfsdienst. Er nimmt Archiv- und
    Prüfsummen-Adresse **nur** aus `release.json` und nur von
-   `https://github.com/<release-repo>/releases/download/…`, prüft SHA-256 und – mit GitHub-CLI – die
-   Herkunft per `gh attestation verify` (ADR-0005), entpackt nach
-   `/opt/runner-monitor/versionen/X.Y.Z`, hängt `aktuell` um und startet beide Dienste neu.
+   `https://github.com/<release-repo>/releases/download/…` bzw. bei Forgejo genau
+   `<basis>/<release-repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz[.sha256]` (ohne
+   Weiterleitungen; `release.json` einer anderen Quelle wird abgelehnt), verwirft Anmeldeseiten und
+   alles, was kein tar.gz ist, prüft SHA-256 und – mit GitHub-CLI – die Herkunft per
+   `gh attestation verify` gegen das GitHub-Repository (ADR-0005, auch bei Forgejo), entpackt nach
+   `/opt/runner-monitor/versionen/X.Y.Z` (die Datei `VERSION` im Paket muss X.Y.Z nennen), hängt
+   `aktuell` um und startet beide Dienste neu. Den Stand liest die Oberfläche aus `/api/zustand` bzw.
+   `/events` (Typ `update`, dort auch `quelle {art, name, adresse, http, releases}`).
 4. Meldet `/api/health` binnen 30 s nicht die neue Version, hängt er zurück auf die alte und
    meldet „Update fehlgeschlagen“. Drei Versionen bleiben liegen (`./einrichten.sh zurueck`).
 
@@ -894,7 +941,9 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `/etc/runner-monitor/github-token` | root, 0600 | bisheriger Ort des GitHub-Tokens, Rückfall bis #94/#96 (Update-Hilfsdienst und ältere Versionen lesen nur ihn) |
 | `/etc/runner-monitor/runner.json` | root:runner-monitor, 0640 | Zuordnung und Ignorieren erkannter Runner, Server und Organisation für Forgejo/Gitea (siehe „Runner erkennen“) |
 | `/var/lib/runner-monitor/` | runner-monitor, 0750 | `zugang.json` (scrypt-Hash), `sitzungen.json`, `sperren.json`, `einstellungen.json` (Organisation, Auto-Update), `einrichtungscode.json`, `systempruefung.json`, `update-status.json`, `verlauf.json` (Verlauf der letzten 10 Min., alle 10 s gesichert), `auftraege/` |
-| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner), `anbieter.json` (Forgejo/Gitea #93, GitLab #115) – Ergebnisse des Sammlers, ohne Token |
+| `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner), `anbieter.json` (Forgejo/Gitea #93, GitLab #115), `aufraeumen.json` (#144) – Ergebnisse des Sammlers, ohne Token |
+| `/usr/local/bin/runner-aufraeumen`, `/etc/cron.daily/runner-aufraeumen`, `/etc/systemd/system/runner-aufraeumen.{service,timer}` | root, 0755 bzw. 0644 | Aufräumen der Platte für jeden Runner, angelegt von `einrichten.sh aufraeumen` (`deploy/aufraeumen-einrichten.sh`, auch aus `deploy/runner-einrichten.sh`; [RUNNER.md](RUNNER.md), Abschnitt 6a). Beim GitHub-Runner zusätzlich `vor-dem-job.sh` und eine Zeile in `.env` im Runner-Ordner – geschrieben als Runner-Benutzer, nie als root |
+| `/var/lib/runner-aufraeumen/images` | root, Ordner 0755, Datei 0644 | Je Image-ID die Unix-Zeit, seit der `runner-aufraeumen` es kennt (E-31): Während eines Jobs entfernt das Skript nur Images, die es seit mindestens 30 Minuten kennt. Jeder Lauf als root schreibt sie neu (atomar); der Hook vor dem Job (Runner-Benutzer) liest sie nur |
 | `/etc/systemd/system/runner-monitor*.{service,path}` | root | Dienste ([deploy/systemd](../deploy/systemd/)) |
 
 ## Was der Monitor nicht kann

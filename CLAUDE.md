@@ -6,9 +6,12 @@ Es gelten die gemeinsamen Anweisungen im Repo `Public` auf Forgejo, Ordner `anwe
 eingefroren, Branches `develop` (Standard) / `main` / `feature/*` / `fix/*` / `release/*`, Merge
 nach `develop` per PR selbst, nach `main` nur mit Freigabe. Lokaler Ordner:
 `~/_Forgejo/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor`. Was das Programm selbst
-mit GitHub macht (Runner überwachen, Updates aus GitHub-Releases), bleibt vorerst so.
+mit GitHub macht (Runner überwachen, Updates aus GitHub-Releases), bleibt vorerst so. Deshalb
+legt Claude jedes Release zusätzlich per `gh release create` auf GitHub an (Tag und `main` kommen
+über die Forgejo-Spiegelung, Filter `main,develop,release/*`; `release.yml` baut dort Paket und
+Attestierung, dasselbe Paket hängt byte-gleich am Forgejo-Release; E-29).
 Kurz: mit Tobias auf Deutsch und per „du“; Entscheidungen per Auswahlfrage, eine je Nachricht;
-CI bei jedem PR; Doku im selben PR; `entwickler-dashboard/daten.js` (Entscheidungen, Verlauf)
+volle CI vor dem Release, je PR nach `develop` nur gitleaks und vor dem Merge die Tests lokal (E-30); Doku im selben PR; `entwickler-dashboard/daten.js` (Entscheidungen, Verlauf)
 nach jeder Arbeitsrunde (`stand` aus `TZ=Europe/Berlin date +"%d.%m.%Y %H:%M"`).
 
 ## Modellwahl (Anweisung 09, seit 28.10.2026)
@@ -19,8 +22,9 @@ Sitzungen, die Issues abarbeiten, laufen auf **Sonnet**. Vor jedem Issue nennt C
 - `architekt` (Opus, hoch): Aktualisierer und Herkunftsprüfung, `einrichten.sh` und Runner-Einrichtung, Anmeldung, Tokens, Sicherheitsbericht, Release – dazu Fehler mit unklarer Ursache und das Review größerer PRs vor dem Merge.
 Im Zweifel die höhere Stufe; nach dem zweiten Fehlversuch hochstufen, nie stillschweigend herunter.
 
-**Aufgaben** stehen als Issues in diesem Repo auf Forgejo (Anweisung 08, das GitHub-Project
-entfällt): nächstes Issue = offen, ohne `agent:`-Label und ohne `blocked`, höchste Priorität
+**Aufgaben** stehen als Issues in diesem Repo auf Forgejo (Anweisung 08) und alle im Projekt-Board
+„Roadmap“, gepflegt mit `forgejo-board.js` aus den Anweisungen (`werkzeuge/`, 08 › Projekt-Board):
+`abgleich` zu Sitzungsbeginn, nach neuen Issues und nach dem Merge, beim Start `setze … 'arbeit'`. Nächstes Issue = offen, ohne `agent:`-Label und ohne `blocked`, höchste Priorität
 zuerst; vor dem Start `agent:claude`; Branch `feature/<nr>-<kurzname>` bzw. `fix/<nr>-<kurzname>`
 von `develop`, PR nach `develop` mit `Closes #<nr>`.
 Bereichslabels: `area:monitor`, `area:einrichtung`, `area:runner`, `area:docs`.
@@ -48,6 +52,8 @@ Bereichslabels: `area:monitor`, `area:einrichtung`, `area:runner`, `area:docs`.
 | 04 CSP mit Nonce | `script-src 'self'` ohne Inline-Skripte | Sicherheitsbericht S-CSP-01 |
 | 04 Rate-Limit in Postgres | dateibasiert (`sperren.json`) | ADR-0001 |
 | 06/08 Design-Übergabe unter `handoff/` | Entwürfe unter `docs/design/vX/` (z. B. `docs/design/v0.4.0/`), Abgleich in `docs/design/README.md` | Projektstand seit Design v1 |
+| 01/06 CI bei jedem PR | volle Prüfung nur bei PRs nach `main`, Push auf `main` und von Hand; PRs nach `develop`: gitleaks in der CI, Tests lokal vor dem Merge | E-30 |
+| README Forgejo statt GitHub (GitHub eingefroren) | Releases zusätzlich auf GitHub (Aktualisierer und Attestierung) | E-29, ADR-0007 |
 
 **Kein Docker** für den Monitor, auch nicht als Zusatz (E-02, E-12) – gilt auch dann, wenn eine
 Projektanweisung etwas anderes sagt. **Keine Lizenz** (E-11): keine LICENSE-Datei anlegen.
@@ -58,7 +64,7 @@ Projektanweisung etwas anderes sagt. **Keine Lizenz** (E-11): keine LICENSE-Date
 MONITOR_ENTWICKLUNG=1 MONITOR_DATEN_VERZ=./daten MONITOR_LAUF_VERZ=./lauf python3 -m runner_monitor   # → :8090/?demo
 python3 -m unittest discover -s tests -t .
 node --test tests/js/*.test.mjs   # Glob nötig, nur das Verzeichnis scheitert
-shellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh werkzeuge/zap-baseline.sh
+shellcheck einrichten.sh deploy/runner-einrichten.sh deploy/aufraeumen-einrichten.sh deploy/runner-aufraeumen werkzeuge/paket.sh werkzeuge/zap-baseline.sh
 node werkzeuge/bilder.mjs     # Bildschirmfotos fürs Handbuch (nicht als root)
 werkzeuge/paket.sh            # Release-Paket nach dist/
 werkzeuge/zap-baseline.sh     # OWASP-ZAP-Baseline gegen eine lokale Testinstanz (Sicherheitsbericht › Prüfungen)

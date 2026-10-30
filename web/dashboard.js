@@ -249,6 +249,7 @@
         renderSystem(); break;
       case 'prozesse': S.prozesse = d; renderProzesse(); break;
       case 'platten': S.platten = d; renderPlatten(); renderKopf(); break;
+      case 'aufraeumen': S.aufraeumen = d && typeof d === 'object' ? d : null; renderKopf(); if (S.info) renderInfo(); break;  // #144
       case 'workflows': S.workflowsAlt = d; abgleich(); renderWorkflows(); renderKopf(); break;
       case 'update':
         S.update = d;
@@ -269,6 +270,13 @@
   }
 
   /* ------------------------------------------------------------ Meldungen (Kopfzeile Mitte) */
+  /* Zweite Zeile von „Platte knapp“: nur behaupten, was auf der VM eingerichtet ist (#144, Bereich „aufraeumen“). */
+  function plattenText(p) {
+    const a = S.aufraeumen, lage = INFO.aufraeumenLage(a), n = { n: zahl(p.schwelleFrei / GB, 0) };
+    if (lage === 'unbekannt' || (a.skript && a.vorDemJob === true)) return t('unter {n} GB räumt der Runner vor jedem Job auf', n);
+    if (a.skript && a.timer === true) return t('unter {n} GB räumt die VM alle 15 Minuten auf', n);
+    return t('automatisches Aufräumen ist nicht eingerichtet');
+  }
   function meldungen() {
     const M = [], st = S.status, w = S.workflows, u = S.update, jetzt = Date.now();
     if (S.verbindung === 'getrennt' && S.letzteDaten) M.push({ id: 'monitor', cls: 'fehler', ic: IC.getrennt(18), titel: t('Verbindung zum Monitor unterbrochen'), text: t('Stand {z} ({vor}) · neuer Versuch läuft', { z: zeit(S.letzteDaten), vor: vor((jetzt - S.letzteDaten) / 1000) }) });
@@ -287,7 +295,7 @@
     if (w && w.abfrage === 'kein-token') M.push({ id: 'token', cls: 'neutral', ic: IC.schluessel(18), titel: t('Kein GitHub-Token'), text: t('Workflows und GitHub-Status sind aus') });
     }
     for (const p of S.platten || []) {
-      if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', cls: 'warn', ic: IC.warn(18), titel: t('Platte knapp: {n} GB frei', { n: zahl(p.frei / GB, 1) }), text: t('unter {n} GB räumt der Runner vor jedem Job auf', { n: zahl(p.schwelleFrei / GB, 0) }) });
+      if (p.schwelleFrei && p.frei < p.schwelleFrei) M.push({ id: 'platte', cls: 'warn', ic: IC.warn(18), titel: t('Platte knapp: {n} GB frei', { n: zahl(p.frei / GB, 1) }), text: plattenText(p) });
     }
     M.push(...sm.filter((e) => e.nach));
     if (!srv && w && w.tokenAblauf) {
@@ -410,11 +418,16 @@
     const alt = grund ? { stufe: 'frisch' } : RUNNER.alter(w, jetzt);
     const veraltet = alt.stufe === 'veraltet' && st.dienst.zustand === 'aktiv';
     const unbekannt = (st.zustand === 'unbekannt' || veraltet) && st.dienst.zustand === 'aktiv';
-    const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : veraltet ? 'unbekannt' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : unbekannt ? 'unbekannt' : 'bereit';
+    // #145: Abfrage in Ordnung, der Runner fehlt nur in den lesbaren Runner-Listen – „Dienst aktiv“ mit Hinweis, nie „Bereit“
+    const nichtSichtbar = !grund && !veraltet && !!st.nichtSichtbar;
+    const art = st.dienst.zustand === 'fehlt' ? 'fehlt' : st.dienst.zustand === 'gestoppt' ? 'gestoppt' : grund ? 'aktiv' : veraltet ? 'unbekannt' : st.github.zustand === 'offline' ? 'offline' : st.job ? 'job' : unbekannt ? 'unbekannt' : nichtSichtbar ? 'aktiv' : 'bereit';
     const nichtZuordenbar = art === 'job' && st.job.zuordenbar === false;  // beschäftigt, Job nicht gefunden (#93)
     const pillD = st.dienst.zustand === 'aktiv' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Dienst aktiv')}</span>` : st.dienst.zustand === 'fehlt' ? `<span class="pill neutral">${IC.unklar()}${t('Kein Dienst')}</span>` : `<span class="pill fehler">${IC.x(13, 1.7)}${t('Dienst gestoppt')}</span>`;
     const g = veraltet ? 'unbekannt' : st.github.zustand;
-    const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei {dienst}', { dienst: dn })}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei {dienst}', { dienst: dn })}</span>` : `<span class="pill neutral">${IC.unklar()}${t('{dienst}: unbekannt', { dienst: dn })}</span>`;
+    const pillG = g === 'online' ? `<span class="pill ok">${IC.ok(13, 1.7)}${t('Online bei {dienst}', { dienst: dn })}</span>` : g === 'offline' ? `<span class="pill fehler">${IC.x(13, 1.7)}${t('Offline bei {dienst}', { dienst: dn })}</span>`
+      // #145: „nicht sichtbar“ auch bei „Job läuft“ (Job über die UUID aus .runner zugeordnet)
+      : !grund && !veraltet && st.github.sichtbar === false ? `<span class="pill neutral">${IC.unklar()}${t('{dienst}: nicht sichtbar', { dienst: dn })}</span>`
+        : `<span class="pill neutral">${IC.unklar()}${t('{dienst}: unbekannt', { dienst: dn })}</span>`;
     // Runner aus runner[] ohne Dienst (keine Unit, Unit weg): neutral „Kein Dienst“ wie sein Reiter (Review #114).
     // „Kein Runner“ mit Einrichtungsbefehl nur, wenn es gar keinen Runner gibt (Altformat ohne runner[], ohne id).
     const keinDienst = art === 'fehlt' && !!st.id;
@@ -460,7 +473,8 @@
         </div>`;
     } else {
       const text = {
-        aktiv: t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.'),
+        aktiv: nichtSichtbar ? t('Der Dienst läuft. {dienst} zeigt den Runner in keiner Runner-Liste, die das Token lesen darf (globaler Runner? Token-Rechte) – ob er dort online ist, ist unbekannt. Laufende Jobs erscheinen, sobald sie sich dem Runner zuordnen lassen.', { dienst: dn })
+          : t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.'),
         bereit: t('Wartet auf den nächsten Job. Neue Jobs starten automatisch.'),
         gestoppt: grund ? t('Nur Grundüberwachung: Dienst, Neustarts und Log. Jobs und Schritte sind ohne Anbindung an den Dienst nicht verfügbar.') : t('Der Runner-Dienst läuft nicht. Neue Jobs bleiben bei {dienst} in der Warteschlange, bis er wieder startet.', { dienst: dn })
           + (st.dienst.grund === 'oom-kill' ? ' ' + t('Ein Job hat den Arbeitsspeicher gesprengt – mehr RAM oder Swap hilft.') : ''),
@@ -481,9 +495,10 @@
         : art === 'gestoppt' ? [[t('Dienst'), dienstSeit], ...(stoppGrund(st) ? [[t('Grund'), esc(stoppGrund(st))]] : []), [t('Wartende Jobs'), wartend == null ? t('unbekannt') : t('{n} in der Warteschlange', { n: wartend })], [t('Letzter Job'), letzter]]
         : art === 'offline' ? [[t('Dienst'), dienstSeit], [t('Bei {dienst}', { dienst: dn }), st.github.seit ? t('offline seit {z} ({vor})', { z: zeit(st.github.seit), vor: vor((jetzt - ms(st.github.seit)) / 1000) }) : t('offline')], [t('Letzter Job'), letzter]]
         : art === 'fehlt' ? [['Runner', t('nicht gefunden in /opt/actions-runner')], [t('Einrichten'), `${SKRIPT} runner`]]
-        : [[t('Dienst'), dienstSeit], [t('Letzter Job'), letzter], [t('Runner-Version'), esc(st.version || '–')]];
+        : [[t('Dienst'), dienstSeit], ...(nichtSichtbar ? [[t('Bei {dienst}', { dienst: dn }), t('nicht sichtbar')]] : []), [t('Letzter Job'), letzter], [t('Runner-Version'), esc(st.version || '–')]];
       mitte = `<p class="zustand-text">${text}</p><dl class="kv">${kv.map(([k, v]) => `<div class="kv-z"><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>`
-        + (art === 'gestoppt' || art === 'offline' ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="logs">${IC.datei()}${t('Runner-Logs abrufen ›')}</button>` : '');
+        + (art === 'gestoppt' || art === 'offline' ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="logs">${IC.datei()}${t('Runner-Logs abrufen ›')}</button>` : '')
+        + (nichtSichtbar ? `<button type="button" class="link-knopf" data-aktion="info" data-anleitung="token">${t('Anleitung: Token-Rechte ›')}</button>` : '');
     }
     const ERG = { erfolg: ['ok', IC.ok(), t('Erfolg')], fehler: ['fehler', IC.x(), t('Fehler')], abgebrochen: ['neutral', IC.abbr(), t('Abgebrochen')] };
     const letzte = (st.letzteJobs || []).slice(0, 5).map(j => {
@@ -782,6 +797,7 @@
       tokenAblauf: !!(w.tokenAblauf && (ms(w.tokenAblauf) - Date.now()) < 14 * 86400000),
       gestoppt: st.dienst.zustand === 'gestoppt', fehlt: st.dienst.zustand === 'fehlt', offline: st.github.zustand === 'offline',
       knapp: (S.platten || []).some(p => p.schwelleFrei && p.frei < p.schwelleFrei), getrennt: S.verbindung === 'getrennt',
+      aufraeumen: S.aufraeumen || null,
       updFehler: us.zustand === 'fehler', updNeu: !!(u.neueste && vergleiche(u.neueste.version, u.installiert) > 0),
     }, t, zr && { dienst: zr.dienst, id: zr.id, server: zr.server || '', org: zr.org || '' });
   }
@@ -794,6 +810,7 @@
     if (p && p.zustand === 'laeuft' && jetzt - p.start > 45000) S.pruefung = { zustand: 'keine-antwort', bis: jetzt + 30000 };
     const q = S.pruefung, zst = q ? q.zustand : 'ruhe', updLaeuft = us.zustand === 'laeuft';
     const fehlerGh = zst === 'fertig' && u.neueste && u.neueste.fehler;
+    const qn = INFO.updateQuelle(u.quelle, t).name;  // GitHub oder Forgejo (#138)
     const ICO = {
       dreh: '<svg class="upd-dreh" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 106.5 6.5"/></svg>',
       ruhe: '<svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.5 8a5.5 5.5 0 11-1.61-3.89"/><path d="M13.5 2.5v3h-3"/></svg>',
@@ -802,13 +819,13 @@
       x: '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="8" cy="8" r="6.5"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4"/></svg>',
     };
     let text = '';
-    if (zst === 'laeuft') text = `<span class="pruef-text mut">${t('Frage GitHub nach neuen Versionen …')}</span>`;
+    if (zst === 'laeuft') text = `<span class="pruef-text mut">${t('Frage {q} nach neuen Versionen …', { q: qn })}</span>`;
     else if (zst === 'frisch') text = `<span class="pruef-text mut">${t('Gerade erst geprüft – Stand siehe oben.')}</span>`;
     else if (zst === 'fertig' && !fehlerGh) text = neu ? `<span class="pruef-text laeuft">${ICO.neu}${t('Version {v} ist verfügbar.', { v: esc(u.neueste.version) })}</span>` : `<span class="pruef-text ok">${ICO.ok}${t('Auf dem neuesten Stand.')}</span>`;
     else if (updLaeuft) text = `<span class="pruef-text mut">${t('Gesperrt, solange das Update läuft.')}</span>`;
     const aus = zst === 'laeuft' || updLaeuft;
-    let html = `<div class="pruef"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''} title="${t('GitHub sofort nach einer neuen Version fragen (sonst alle 6 Std.)')}">${zst === 'laeuft' ? ICO.dreh : ICO.ruhe}${t('Jetzt prüfen')}</button><span aria-live="polite" class="pruef-live">${text}</span></div>`;
-    if (fehlerGh) html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div>${t('GitHub nicht erreichbar:')} <span>${t('{f}. Der nächste automatische Versuch folgt in 6 Std.', { f: esc(u.neueste.fehler) })}</span></div></div>`;
+    let html = `<div class="pruef"><button type="button" class="knopf" data-aktion="update-pruefen"${aus ? ' disabled' : ''} title="${t('{q} sofort nach einer neuen Version fragen (sonst alle 6 Std.)', { q: qn })}">${zst === 'laeuft' ? ICO.dreh : ICO.ruhe}${t('Jetzt prüfen')}</button><span aria-live="polite" class="pruef-live">${text}</span></div>`;
+    if (fehlerGh) html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div>${t('{q} nicht erreichbar:', { q: qn })} <span>${t('{f}. Der nächste automatische Versuch folgt in 6 Std.', { f: esc(u.neueste.fehler) })}</span></div></div>`;
     if (zst === 'keine-antwort') html += `<div class="hinweis fehler pruef-fehler" role="alert">${ICO.x}<div class="hinweis-voll">${t('Keine Antwort vom Sammler.')} <span>${t('Auf der VM prüfen:')}</span>${codeBox('journalctl -u runner-monitor-sammler -n 30')}</div></div>`;
     return html;
   }
@@ -869,12 +886,13 @@
   // Was sich gegenüber der installierten Version ändert (#78): je Version „Neu in X“ und
   // „Einmalig nach dem Update“; neueste offen, ältere eingeklappt.
   function aenderungenHtml(u) {
+    const quelle = INFO.updateQuelle(u.quelle, t);
     const liste = (u.neueste.aenderungen && u.neueste.aenderungen.length) ? u.neueste.aenderungen
       : (u.neueste.notizen && u.neueste.notizen.length ? [{ version: u.neueste.version, url: u.neueste.url, neu: u.neueste.notizen, einmalig: '' }] : []);
     if (!liste.length) return '';
     const block = (r) => `${r.einmalig ? `<div class="upd-einmalig"><span class="upd-einmalig-titel">${t('Einmalig nach dem Update:')}</span> ${mitCode(r.einmalig)}</div>` : ''}`
       + (r.neu && r.neu.length ? `<ul>${r.neu.map(n => `<li>${mitCode(n)}</li>`).join('')}</ul>` : '')
-      + `<a href="${esc(r.url || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">${t('Release-Notiz {v} auf GitHub ↗', { v: esc(r.version) })}</a>`;
+      + `<a href="${esc(r.url || quelle.releases || `https://github.com/${REPO}/releases`)}" rel="noopener" target="_blank">${t('Release-Notiz {v} auf {q} ↗', { v: esc(r.version), q: quelle.name })}</a>`;
     const [erste, ...aeltere] = liste;
     const titel = liste.length > 1 ? t('Neu seit {v} · {n} Versionen', { v: esc(u.installiert), n: liste.length }) : t('Neu in {v}', { v: esc(erste.version) });
     return `<div class="upd-neu"><div class="upd-neu-titel">${titel}</div>`
@@ -912,10 +930,12 @@
     const kv = (liste) => `<dl class="kv">${liste.map(([k, v, cls]) => `<div class="kv-z"><dt>${k}</dt><dd class="${cls || ''}">${v}</dd></div>`).join('')}</dl>`;
 
     // Updates
+    const quelle = INFO.updateQuelle(u.quelle, t);
     let upd = kv([
       [t('Installiert'), esc(u.installiert || '–')],
       [t('Neueste'), u.neueste && u.neueste.version ? (neu ? t('{v} · erschienen am {d}', { v: esc(u.neueste.version), d: u.neueste.veroeffentlicht ? datum(u.neueste.veroeffentlicht) : '–' }) : t('{v} – auf dem neuesten Stand', { v: esc(u.neueste.version) })) : (u.neueste && u.neueste.fehler ? t('nicht abrufbar') : t('noch nicht geprüft')), neu ? 'laeuft' : 'ok'],
-      [t('Geprüft'), u.neueste && u.neueste.geprueft ? t('{tag} {z} bei GitHub · alle 6 Std.', { tag: tm(u.neueste.geprueft) === tm(jetzt) ? t('heute') : tm(u.neueste.geprueft), z: hm(u.neueste.geprueft) }) : '–'],
+      [t('Geprüft'), u.neueste && u.neueste.geprueft ? t('{tag} {z} bei {q} · alle 6 Std.', { tag: tm(u.neueste.geprueft) === tm(jetzt) ? t('heute') : tm(u.neueste.geprueft), z: hm(u.neueste.geprueft), q: quelle.name }) : '–'],
+      [t('Quelle'), esc(quelle.text), quelle.http ? 'warn' : ''],
       ['Runner', `${runnerVersion(st)}${istGitHub(st) ? ' · ' + t('aktualisiert sich selbst') : ''}`],
     ]);
     upd += pruefKnopf(u, us, neu);
@@ -1294,7 +1314,7 @@
     letzterVersuch = Date.now();
     // Mit Journal-Runner: /events?journal=<id> – der Server liefert dann zusätzlich das Journal seiner Unit (#95)
     quelle = new EventSource(RUNNER.journalUrl(S.stromJournal));
-    for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log', 'journal', 'runner', 'meldungen']) {
+    for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log', 'journal', 'runner', 'meldungen', 'aufraeumen']) {
       quelle.addEventListener(b, (e) => { try { empfange(b, JSON.parse(e.data)); } catch (f) { console.error(b, f); } });
     }
     quelle.onopen = () => setzeVerbindung('verbunden');

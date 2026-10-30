@@ -94,7 +94,9 @@ const RUNNER = (() => {
      Steuerung nur über faehig{…} (README › „Nicht verfügbar“ ehrlich zeigen), nie über den Dienstnamen:
      nurGrund = keine Jobs (Grundüberwachung: kein „Online bei …“, keine „Letzten Jobs“, „Jobs nicht verfügbar“),
      ohneSchritte = Jobs ja, Schritte nein („Schritte nicht verfügbar“, keine Trenner, kein Schritt-Chip).
-     anbieter dient nur der Anzeige (Plakette, „Online bei GitHub“). */
+     anbieter dient nur der Anzeige (Plakette, „Online bei GitHub“).
+     nichtSichtbar (#145): Abfrage beim Dienst gelungen, der Runner fehlt aber in den Runner-Listen, die das Token
+     lesen darf (globaler Runner, Rechte) – der Server meldet dann „aktiv“ (Dienst läuft) statt „unbekannt“. */
   function ansicht(r, basis = {}) {
     const s = r.status || {};
     const faehig = r.faehig || {};
@@ -112,6 +114,7 @@ const RUNNER = (() => {
       nurGrund: !faehig.jobs, ohneSchritte: !!faehig.jobs && !faehig.schritte,
       logQuelle: quelle, journalUnit: quelle === 'journal' ? r.log.unit : '',
       zustand: s.zustand || null,  // „unbekannt“: Dienst liefert keinen lesbaren Stand (Forgejo/Gitea, #93)
+      nichtSichtbar: !!faehig.jobs && s.zustand === 'aktiv' && !!s.beimDienst && s.beimDienst.sichtbar === false,
     };
   }
 

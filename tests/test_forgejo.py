@@ -143,9 +143,14 @@ class ForgejoAbfrageTest(unittest.TestCase):
         self.assertIn("Besitzerrechte", erg["runner"]["grund"])
         self.assertEqual(len(erg["repos"]), 2)
         self.assertIsNone(erg["job"])
+        self.assertEqual(erg["runner"]["ursache"], "nicht-lesbar")
         a = fj.Forgejo(anbieter.RunnerKonfig(id="r", name="runner-vm-02", dienst="forgejo"))
-        self.assertEqual(a.beim_dienst(erg), {"zustand": "unbekannt", "seit": None})
+        self.assertEqual(a.beim_dienst(erg), {"zustand": "unbekannt", "seit": None, "sichtbar": False})
         self.assertIn("Besitzerrechte", a.jobs_je_repository(erg)["runnerGrund"])
+        # nicht lesbar ist kein Fehler der Runde: Admin- und Repository-Listen versucht, 404/403 still hingenommen
+        pfade = [p for p, _, _ in k.pfade]
+        self.assertIn("/admin/actions/runners", pfade)
+        self.assertIn("/repos/beispiel-org/web-portal/actions/runners", pfade)
 
     def test_letzte_jobs(self):
         speicher = {}
@@ -334,7 +339,9 @@ class FehlerTest(unittest.TestCase):
     def ok(self):
         return fj.abfrage(Attrappe(lade("forgejo-17.json")), "beispiel-org", "runner-vm-02", {})
 
-    def test_runner_liste_nicht_lesbar_ist_unbekannt(self):
+    def test_runner_liste_nicht_lesbar_bleibt_beim_lokalen_zustand(self):
+        """#145: Abfrage gelungen und aktuell, nur die Runner-Liste fehlt → „Dienst aktiv“ statt „unbekannt“.
+        Schlägt die Abfrage fehl oder ist sie veraltet, bleibt es „unbekannt“."""
         antworten = lade("forgejo-17.json")
         for name in ("web-portal", "api-dienst"):
             for lauf in antworten[f"/repos/beispiel-org/{name}/actions/runs"]["workflow_runs"]:
@@ -343,7 +350,15 @@ class FehlerTest(unittest.TestCase):
         erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
         e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
                                  server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "aktiv")
+        self.assertEqual(e["status"]["beimDienst"], {"zustand": "unbekannt", "seit": None, "sichtbar": False})
+        alt = {**erg, "abgefragt": time.time() - fj.VERALTET - 1}
+        e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                 server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=alt, stand="angebunden")
         self.assertEqual(e["status"]["zustand"], "unbekannt")
+        e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                 server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "gestoppt", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "gestoppt")
         nicht_erreichbar_erg = fj.abfrage(Attrappe({}, fehler={"/version": nicht_erreichbar()}), "beispiel-org", "runner-vm-02", {})
         e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
                                  server="https://git.example.org", org="beispiel-org")).eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=nicht_erreichbar_erg, stand="angebunden")
@@ -401,6 +416,211 @@ class LogKopfTest(unittest.TestCase):
     def test_pfadteile_kodiert(self):
         self.assertEqual(fj.q("../admin"), "..%2Fadmin")
         self.assertEqual(fj.q("a b?c#d"), "a%20b%3Fc%23d")
+
+
+# ---------------------------------------------------------------- globale Runner, Zuordnung (#145)
+
+
+def kennung(uuid=UUID_02, name=None, *ersatz):
+    namen = tuple(n for n in (name, *ersatz) if n)
+    return fj.Kennung(namen=namen, uuid=uuid, name_aus_datei=name)
+
+
+class GlobalerRunnerTest(unittest.TestCase):
+    """#145: Runner auf Instanz-Ebene, Name beim Server ≠ Unit/Monitor-ID. Gesucht wird in der Liste der
+    Organisation, dann (wenn das Token es darf) in /admin/actions/runners und in den Listen der Repositories;
+    zugeordnet über UUID/Name aus .runner."""
+
+    def setUp(self):
+        self.antworten = lade("forgejo-17.json")
+        eintrag = self.antworten["/orgs/beispiel-org/actions/runners"][0]
+        eintrag["name"] = "anderer-name"  # Name beim Server aus .runner, nicht die Unit
+        self.global_liste = [eintrag]
+        self.antworten["/orgs/beispiel-org/actions/runners"] = []  # z. B. Konto ohne Besitzerrechte, die Liste ist leer
+
+    def a(self):
+        return fj.Forgejo(anbieter.RunnerKonfig(id="forgejo-runner", name="forgejo-runner", dienst="forgejo", unit="forgejo-runner.service",
+                                                server="https://git.example.org", org="beispiel-org",
+                                                name_beim_dienst="anderer-name", uuid=UUID_02))
+
+    def test_kennung_des_adapters(self):
+        k = self.a().kennung()
+        self.assertEqual((k.uuid, k.namen, k.name_aus_datei), (UUID_02, ("anderer-name", "forgejo-runner"), "anderer-name"))
+        ohne = fj.Forgejo(anbieter.RunnerKonfig(id="x", name="Anzeige", dienst="forgejo", unit="forgejo-runner@2.service")).kennung()
+        self.assertEqual((ohne.uuid, ohne.namen), (None, ("Anzeige", "forgejo-runner@2")))
+
+    def test_global_in_der_admin_liste(self):
+        self.antworten["/admin/actions/runners"] = self.global_liste
+        k = Attrappe(self.antworten)
+        speicher = {}
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["runner"], {"zustand": "online", "beschaeftigt": True, "labels": ["linux-amd64", "ubuntu-latest"]})
+        self.assertEqual(speicher["runnerOrt"], "admin")
+        self.assertEqual(erg["job"]["name"], "build")  # UUID aus der ersten Log-Zeile
+        e = self.a().eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+        self.assertEqual((e["status"]["zustand"], e["status"]["beimDienst"]["zustand"]), ("job", "online"))
+        # nächste Runde: gleich am gemerkten Ort, die Organisation nur, wenn er dort fehlt
+        k2 = Attrappe(self.antworten)
+        fj.abfrage(k2, "beispiel-org", self.a().kennung(), speicher)
+        pfade = [p for p, _, _ in k2.pfade]
+        self.assertIn("/admin/actions/runners", pfade)
+        self.assertNotIn("/orgs/beispiel-org/actions/runners", pfade)
+        self.assertFalse([p for p in pfade if p.endswith("/actions/runners") and p.startswith("/repos/")])
+        # nur GET über hole(), keine Schreibpfade
+        self.assertFalse([p for p in pfade if any(w in p for w in ("registration-token", "delete", "rerun", "cancel"))])
+
+    def test_ohne_admin_recht_einmal_je_stunde_und_job_trotzdem_zugeordnet(self):
+        """403 auf /admin: kein Fehler der Runde, keine Wiederholung in jeder Runde; der Job wird über die UUID
+        aus .runner trotzdem zugeordnet, der Runner gilt als „nicht sichtbar“ (nicht „unbekannt“)."""
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("keine-rechte", "403")})
+        speicher = {}
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["runner"], {"zustand": "unbekannt", "grund": fj.GRUND_NICHT_SICHTBAR, "ursache": "nicht-gefunden"})
+        self.assertEqual(erg["job"]["name"], "build")
+        self.assertGreater(speicher["adminAb"], time.time() + fj.ADMIN_ERNEUT - 60)
+        a = self.a()
+        self.assertEqual(a.beim_dienst(erg), {"zustand": "unbekannt", "seit": None, "sichtbar": False})
+        self.assertIn("nicht sichtbar", a.jobs_je_repository(erg)["runnerGrund"])
+        self.assertEqual(a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")["status"]["zustand"], "job")
+        # Job beendet: „Letzte Jobs“ füllen sich auch ohne Runner-Liste
+        fertig = copy.deepcopy(self.antworten)
+        fertig["/repos/beispiel-org/web-portal/actions/runs"]["workflow_runs"][0]["status"] = "success"
+        detail = fertig["/repos/beispiel-org/web-portal/actions/jobs/99"]
+        detail["status"] = "success"
+        for st in detail["steps"]:
+            st.update(status="success", started=st["started"] or "2026-10-29T10:03:00+01:00", stopped=st["stopped"] or "2026-10-29T10:04:00+01:00")
+        k2 = Attrappe(fertig, fehler={"/admin/actions/runners": fj.ForgejoFehler("keine-rechte", "403")})
+        erg2 = fj.abfrage(k2, "beispiel-org", self.a().kennung(), speicher)
+        self.assertNotIn("/admin/actions/runners", [p for p, _, _ in k2.pfade])  # innerhalb der Stunde nicht erneut
+        self.assertEqual([j["name"] for j in erg2["letzteJobs"]], ["build"])
+        e = a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg2, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "aktiv")  # kein Job, Runner nicht sichtbar: „Dienst aktiv“
+        self.assertEqual(e["letzteJobs"][0]["ergebnis"], "erfolg")
+
+    def test_suche_hoechstens_alle_zehn_minuten(self):
+        k = Attrappe(self.antworten)
+        speicher = {}
+        fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
+        self.assertIn("/admin/actions/runners", [p for p, _, _ in k.pfade])
+        k2 = Attrappe(self.antworten)
+        fj.abfrage(k2, "beispiel-org", self.a().kennung(), speicher)
+        pfade = [p for p, _, _ in k2.pfade]
+        self.assertIn("/orgs/beispiel-org/actions/runners", pfade)  # die eigene Liste jede Runde
+        self.assertFalse([p for p in pfade if p.endswith("/actions/runners") and not p.startswith("/orgs/")])
+        speicher["sucheAb"] = 0  # zehn Minuten später
+        speicher["adminAb"] = 0
+        k3 = Attrappe(self.antworten)
+        fj.abfrage(k3, "beispiel-org", self.a().kennung(), speicher)
+        self.assertIn("/admin/actions/runners", [p for p, _, _ in k3.pfade])
+
+    def test_in_der_liste_eines_repositorys(self):
+        """Ohne Besitzer- und Admin-Recht: die Repository-Liste (visible=true zeigt auch globale Runner)."""
+        self.antworten["/repos/beispiel-org/api-dienst/actions/runners"] = self.global_liste
+        k = Attrappe(self.antworten, fehler={"/orgs/beispiel-org/actions/runners": fj.ForgejoFehler("keine-rechte", "403")})
+        speicher = {}
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
+        self.assertEqual(erg["runner"]["zustand"], "online")
+        self.assertEqual(speicher["runnerOrt"], "repo:api-dienst")
+        anfrage = next(par for p, par, _ in k.pfade if p == "/repos/beispiel-org/api-dienst/actions/runners")
+        self.assertEqual(anfrage["visible"], "true")
+        # verschwindet er dort, wird der Ort vergessen und wieder gesucht
+        del self.antworten["/repos/beispiel-org/api-dienst/actions/runners"]
+        speicher["sucheAb"] = 0
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", self.a().kennung(), speicher)
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")
+        self.assertNotIn("runnerOrt", speicher)
+
+    def test_uuid_geht_vor_dem_namen(self):
+        """Gleicher Name, andere UUID (neu registriert oder fremd): nicht dieser Runner."""
+        fremd = dict(self.global_liste[0], uuid="00000000-0000-4000-8000-0000000000ff", status="offline")
+        self.antworten["/orgs/beispiel-org/actions/runners"] = [fremd]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", self.a().kennung(), {})
+        self.assertEqual(erg["runner"]["zustand"], "unbekannt")
+        # ohne UUID in .runner zählt der Name (Gitea-Listen haben keine UUID)
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", kennung(None, "anderer-name"), {})
+        self.assertEqual(erg["runner"]["zustand"], "offline")
+        # Rang: UUID vor Name, Name aus .runner vor Ersatznamen
+        liste = [{"name": "forgejo-runner"}, {"name": "anderer-name"}, {"name": "x", "uuid": UUID_02.upper()}]
+        self.assertEqual(fj.bester(liste, kennung(UUID_02, "anderer-name", "forgejo-runner")), liste[2])
+        self.assertEqual(fj.bester(liste[:2], kennung(None, "anderer-name", "forgejo-runner")), liste[1])
+        self.assertIsNone(fj.bester([{"name": 5}, {}], kennung(None, "x")))  # fremde Typen zählen nicht
+
+    def test_ersatzname_unit_ohne_runner_datei(self):
+        """Ohne .runner (Erkennung fand sie nicht): Name aus der Konfiguration bzw. Unit, wie bisher."""
+        self.antworten["/orgs/beispiel-org/actions/runners"] = [dict(self.global_liste[0], name="forgejo-runner")]
+        a = fj.Forgejo(anbieter.RunnerKonfig(id="forgejo-runner", name="forgejo-runner", dienst="forgejo", unit="forgejo-runner.service"))
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", a.kennung(), {})
+        self.assertEqual(erg["runner"]["zustand"], "online")
+        self.assertEqual(erg["job"]["name"], "build")  # UUID aus der Liste
+
+    def test_admin_alter_server_ohne_pfad(self):
+        """Ein älterer Server antwortet auf /admin/actions/runners mit 405: kein Fehler der Runde."""
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("fehler", "Server antwortet mit 405")})
+        self.assertEqual(fj.abfrage(k, "beispiel-org", self.a().kennung(), {})["abfrage"], "ok")
+        # nicht erreichbar bleibt ein Fehler der Runde (kein „ok“ mit halbem Stand)
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": nicht_erreichbar()})
+        self.assertEqual(fj.abfrage(k, "beispiel-org", self.a().kennung(), {})["abfrage"], "nicht-erreichbar")
+
+    def test_wenig_zeit_in_der_runde_keine_erweiterte_suche(self):
+        k = Attrappe(self.antworten)
+        k.rest = lambda: 5.0
+        speicher = {}
+        fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
+        self.assertNotIn("/admin/actions/runners", [p for p, _, _ in k.pfade])
+        self.assertNotIn("sucheAb", speicher)  # nächste Runde erneut versuchen
+
+
+class FakeServerTest(unittest.TestCase):
+    """Ende zu Ende über HTTP (127.0.0.1, http_erlaubt): globaler Runner nur in /admin/actions/runners,
+    Organisation und Repositories liefern [], das Token geht nur per GET an diesen Server."""
+
+    def setUp(self):
+        daten = lade("forgejo-17.json")
+        runner = dict(daten["/orgs/beispiel-org/actions/runners"][0], name="anderer-name")
+        antworten = {f"/api/v1{p}": (200, {"Content-Type": "application/json"}, json.dumps(v).encode())
+                     for p, v in daten.items() if not p.endswith("/logs")}
+        antworten.update({f"/api/v1{p}": (200, {"Content-Type": "text/plain"}, v.encode())
+                          for p, v in daten.items() if p.endswith("/logs")})
+        antworten["/api/v1/orgs/beispiel-org/actions/runners"] = (200, {}, b"[]")
+        antworten["/api/v1/repos/beispiel-org/web-portal/actions/runners"] = (200, {}, b"[]")
+        antworten["/api/v1/repos/beispiel-org/api-dienst/actions/runners"] = (200, {}, b"[]")
+        self.antworten = antworten
+        self.runner = runner
+        self.server, self.handler = starte(antworten)
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def runde(self, speicher=None):
+        k = fj.Klient(f"http://127.0.0.1:{self.server.server_port}", TOKEN, http_erlaubt=True)
+        a = fj.Forgejo(anbieter.RunnerKonfig(id="forgejo-runner", name="forgejo-runner", dienst="forgejo", unit="forgejo-runner.service",
+                                             server=k.server, org="beispiel-org", http_erlaubt=True,
+                                             name_beim_dienst="anderer-name", uuid=UUID_02))
+        return a, a.abfrage({} if speicher is None else speicher, token=TOKEN, klient=k)
+
+    def test_admin_darf(self):
+        self.antworten["/api/v1/admin/actions/runners"] = (200, {}, json.dumps([self.runner]).encode())
+        a, erg = self.runde()
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["runner"]["zustand"], "online")
+        self.assertEqual(erg["job"]["name"], "build")
+        gesehen = [p for p, _ in self.handler.gesehen]
+        self.assertIn("/api/v1/admin/actions/runners?visible=true&page=1&limit=50", gesehen)
+        self.assertTrue(all(k.get("Authorization") == f"token {TOKEN}" for _, k in self.handler.gesehen))
+        self.assertNotIn(TOKEN, json.dumps(erg))
+
+    def test_admin_verboten(self):
+        self.antworten["/api/v1/admin/actions/runners"] = (403, {}, b'{"message":"token does not have at least one of required scope(s): [read:admin]"}')
+        a, erg = self.runde()
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")
+        self.assertEqual(erg["job"]["name"], "build")  # über die UUID aus .runner
+        e = a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+        self.assertEqual(e["status"]["zustand"], "job")
+        self.assertIs(e["status"]["beimDienst"]["sichtbar"], False)
 
 
 # ---------------------------------------------------------------- Klient (nur 127.0.0.1)
@@ -734,6 +954,21 @@ class SammlerZustandTest(unittest.TestCase):
         self.assertIsNone(liste["runner-vm-03"]["server"])  # nie der Server aus dem Fund
         self.assertEqual(liste["runner-vm-05"]["server"], "https://git.example.org")  # aus runner.json, nur angezeigt
         self.assertFalse([m for m in z.bereiche["meldungen"] if m["runner"] == "runner-vm-02"])
+
+    def test_kennung_aus_der_erkennung_erreicht_den_adapter(self):
+        """#145: Name beim Server ≠ Monitor-ID; die UUID aus .runner (Fund der Erkennung) ordnet Runner und Job zu."""
+        funde = json.loads((self.d / "lauf" / "erkennung.json").read_text())
+        funde["runner"][0]["kennung"] = {"name": "anderer-name", "uuid": UUID_02}
+        (self.d / "lauf" / "erkennung.json").write_text(json.dumps(funde))
+        self.antworten["/orgs/beispiel-org/actions/runners"][0]["name"] = "anderer-name"
+        _, daten = self.abfragen()
+        erg = daten["runner"]["runner-vm-02"]
+        self.assertEqual((erg["runner"]["zustand"], erg["job"]["name"]), ("online", "build"))
+        a = self.s.anbindungen()[0]
+        self.assertEqual((a.k.name_beim_dienst, a.k.uuid), ("anderer-name", UUID_02))
+        # eine neue Registrierung (andere UUID) beginnt mit leerem Speicher
+        schluessel = self.s._anbieter_speicher["runner-vm-02"][0]
+        self.assertIn(UUID_02, schluessel)
 
     def test_meldung_bei_ungueltigem_token(self):
         (self.k.lauf_verz / "anbieter.json").write_text(json.dumps({"zeit": 1, "runner": {"runner-vm-02": {

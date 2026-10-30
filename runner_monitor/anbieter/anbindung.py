@@ -269,6 +269,10 @@ def bewerte(dienst: str, erg: dict, org: str = "") -> tuple[int, list[tuple[str,
             zeilen.append(("ok", f"Runner beim Server gefunden ({runner['zustand']})"))
         elif dienst == "gitlab":
             zeilen.append(("warn", f"Runner bei GitLab nicht gefunden: {_text(runner.get('grund') or 'Name muss der Beschreibung bei GitLab entsprechen')}"))
+        elif runner.get("ursache") == "nicht-gefunden":  # #145: Liste lesbar, Runner nicht darin
+            zeilen.append(("warn", "Runner in keiner lesbaren Runner-Liste gefunden (globaler Runner ohne Recht read:admin "
+                                   "oder anderer Name beim Server): Online-Status bleibt „unbekannt“, Dienst und Jobs werden "
+                                   "weiter angezeigt"))
         else:
             zeilen.append(("warn", "Runner-Status nur mit Organisations-Recht (Konto im Team „Owners“): Online-Status bleibt „unbekannt“"))
         if erg.get("laeufeNichtLesbar"):
