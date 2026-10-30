@@ -43,7 +43,7 @@ jobs:
           grep -q "^VERSION = \"$v\"" runner_monitor/__init__.py || { echo "runner_monitor/__init__.py passt nicht"; exit 1; }
           [ -f "docs/releases/$TAG.md" ] || { echo "Release-Notiz docs/releases/$TAG.md fehlt"; exit 1; }
           git merge-base --is-ancestor HEAD origin/main || { echo "Tag zeigt nicht auf einen Stand von main"; exit 1; }
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - run: python -m unittest discover -s tests -t .
