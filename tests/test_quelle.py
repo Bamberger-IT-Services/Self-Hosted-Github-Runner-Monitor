@@ -16,7 +16,8 @@ from unittest import mock
 from runner_monitor import aktualisierer as a
 from runner_monitor import konfig, quelle
 
-REPO = "beispiel-org/runner-monitor"
+REPO = "beispiel-org/runner-monitor"  # Repository auf Forgejo (MONITOR_UPDATE_FORGEJO_REPO)
+GITHUB_REPO = "beispiel-org/monitor-auf-github"  # Repository auf GitHub (MONITOR_RELEASE_REPO), heißt anders (#162)
 
 
 def paket(version: str, version_drin: str | None = None) -> bytes:
@@ -90,7 +91,7 @@ class FakeForgejo:
 
 def k_forgejo(basis, **mehr):
     werte = {"MONITOR_UPDATE_QUELLE": "forgejo", "MONITOR_UPDATE_FORGEJO": basis, "MONITOR_UPDATE_HTTP_ERLAUBT": "1",
-             "MONITOR_RELEASE_REPO": REPO, **mehr}
+             "MONITOR_RELEASE_REPO": GITHUB_REPO, "MONITOR_UPDATE_FORGEJO_REPO": REPO, **mehr}
     return konfig.lade(datei=Path("/nicht/da.env"), umgebung=werte)
 
 
@@ -112,8 +113,8 @@ class KonfigTest(unittest.TestCase):
         k = self.lade(MONITOR_UPDATE_QUELLE="Forgejo", MONITOR_UPDATE_FORGEJO="https://Git.Example.org/")
         self.assertEqual((k.update_quelle, k.update_forgejo, k.update_http_erlaubt), ("forgejo", "https://git.example.org", False))
         self.assertEqual(quelle.download_urls(k, "1.2.3"), (
-            "https://git.example.org/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v1.2.3/runner-monitor-1.2.3.tar.gz",
-            "https://git.example.org/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v1.2.3/runner-monitor-1.2.3.tar.gz.sha256"))
+            "https://git.example.org/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted/releases/download/v1.2.3/runner-monitor-1.2.3.tar.gz",
+            "https://git.example.org/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted/releases/download/v1.2.3/runner-monitor-1.2.3.tar.gz.sha256"))
         self.assertEqual(quelle.download_urls(k, "1.2.3/../x"), ("", ""))
 
     def test_fehler_halten_den_start_an(self):
@@ -139,7 +140,34 @@ class KonfigTest(unittest.TestCase):
         self.assertEqual(quelle.anzeige(self.lade())["releases"], "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases")
         q = quelle.anzeige(self.lade(MONITOR_UPDATE_QUELLE="forgejo", MONITOR_UPDATE_FORGEJO="https://git.example.org/forgejo"))
         self.assertEqual(q, {"art": "forgejo", "name": "Forgejo", "adresse": "https://git.example.org/forgejo", "http": False,
-                             "releases": "https://git.example.org/forgejo/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases"})
+                             "releases": "https://git.example.org/forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted/releases"})
+
+    def test_repository_auf_forgejo_eigener_schluessel(self):
+        """#162, E-33: Auf Forgejo heißt das Repository anders als auf GitHub. GitHub-Quelle und Herkunftsprüfung
+        bleiben beim alten Namen, Forgejo nutzt den neuen – ohne sich auf eine Weiterleitung zu verlassen."""
+        alt = "Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor"
+        k = self.lade(MONITOR_UPDATE_QUELLE="forgejo", MONITOR_UPDATE_FORGEJO="https://git.example.org")
+        self.assertEqual((k.release_repo, k.update_forgejo_repo), (alt, "Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted"))
+        self.assertNotIn(alt, quelle.download_praefix(k))
+        # auch mit dem MONITOR_RELEASE_REPO, das jede bestehende konfig.env aus der Vorlage mitbringt
+        k = self.lade(MONITOR_UPDATE_QUELLE="forgejo", MONITOR_UPDATE_FORGEJO="https://git.example.org", MONITOR_RELEASE_REPO=alt)
+        self.assertEqual(quelle.download_praefix(k), "https://git.example.org/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted/releases/download/")
+        self.assertEqual(quelle.download_praefix(self.lade(MONITOR_RELEASE_REPO=alt)), f"https://github.com/{alt}/releases/download/")
+        # eigener Wert (Fork), leer = Vorgabe, ungültig hält den Start an – auch bei Quelle GitHub
+        k = self.lade(MONITOR_UPDATE_QUELLE="forgejo", MONITOR_UPDATE_FORGEJO="https://git.example.org", MONITOR_UPDATE_FORGEJO_REPO="fork/x")
+        self.assertEqual(quelle.anzeige(k)["releases"], "https://git.example.org/fork/x/releases")
+        self.assertEqual(self.lade(MONITOR_UPDATE_FORGEJO_REPO=" ").update_forgejo_repo, "Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted")
+        for falsch in ("ohne-schraegstrich", "a/b/c", "../x", "a/..", "a/.", "a/b?c"):
+            with self.subTest(falsch=falsch), self.assertRaises(konfig.KonfigFehler):
+                self.lade(MONITOR_UPDATE_FORGEJO_REPO=falsch)
+
+    def test_abfrage_der_einrichtung_nutzt_forgejo_repository(self):
+        """einrichten.sh quelle ruft ``abfrage`` ohne --repo, wenn konfig.env keins nennt."""
+        for argumente, erwartet in (([], "Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted"), (["--repo", "fork/x"], "fork/x")):
+            with mock.patch.object(quelle, "forgejo_release", return_value={"fehler": "x"}) as abfrage, \
+                 mock.patch("sys.stdout", new_callable=io.StringIO):
+                quelle._main(["abfrage", "--basis", "https://git.example.org", *argumente])  # noqa: SLF001
+            self.assertEqual(abfrage.call_args[0][0].update_forgejo_repo, erwartet)
 
 
 class ReleaseTest(unittest.TestCase):
@@ -193,7 +221,7 @@ class ReleaseTest(unittest.TestCase):
             zweiter.schliessen()
 
     def test_http_ohne_freigabe_fragt_nicht(self):
-        k = konfig.Konfig(release_repo=REPO, update_quelle="forgejo", update_forgejo=self.fake.basis, update_http_erlaubt=False)
+        k = konfig.Konfig(update_forgejo_repo=REPO, update_quelle="forgejo", update_forgejo=self.fake.basis, update_http_erlaubt=False)
         daten = quelle.forgejo_release(k, "1.0.0")
         self.assertEqual(daten["version"], "")
         self.assertEqual(self.fake.aufrufe, [])
@@ -356,7 +384,9 @@ class HerkunftForgejoTest(unittest.TestCase):
                 with self.assertRaises(a.UpdateFehler):
                     a.herkunft_pruefen(k, d / "a.tar.gz")
             aufruf = (d / "aufruf").read_text()
-            self.assertIn(f"--repo {REPO} --signer-workflow {REPO}/.github/workflows/release.yml", aufruf)
+            # gegen das GitHub-Repository (MONITOR_RELEASE_REPO), nicht gegen den Namen auf Forgejo (#162)
+            self.assertIn(f"--repo {GITHUB_REPO} --signer-workflow {GITHUB_REPO}/.github/workflows/release.yml", aufruf)
+            self.assertNotIn(REPO, aufruf)
             self.assertNotIn("git.example.org", aufruf)
 
 

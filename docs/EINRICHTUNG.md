@@ -316,10 +316,11 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `MONITOR_ADRESSE` | `0.0.0.0` | `127.0.0.1`, wenn ein Proxy davor sitzt |
 | `MONITOR_UPDATE_HERKUNFT` | – | `pflicht`: Update nur mit bestätigter GitHub-Attestierung ([UPDATE.md](UPDATE.md)) |
 | `RUNNER_LABELS` | `self-hosted,linux,x64` | Labels, falls GitHub nicht abgefragt werden kann |
-| `MONITOR_RELEASE_REPO` | dieses Repository | Repository der Updates, auf GitHub und Forgejo gleich (nur für Forks ändern) |
+| `MONITOR_RELEASE_REPO` | `Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor` | Repository auf GitHub: Updates von GitHub und Herkunftsprüfung, auch bei Forgejo als Quelle (nur für Forks ändern) |
 | `MONITOR_UPDATE_QUELLE` | `github` | `forgejo`: Updates vom Forgejo-Server unter `MONITOR_UPDATE_FORGEJO` (`einrichten.sh quelle`, [UPDATE.md](UPDATE.md)) |
 | `MONITOR_UPDATE_FORGEJO` | – | Adresse des Forgejo-Servers, z. B. `https://git.example.org` (nur mit `MONITOR_UPDATE_QUELLE=forgejo`) |
 | `MONITOR_UPDATE_HTTP_ERLAUBT` | aus | `1`: `MONITOR_UPDATE_FORGEJO` darf `http://` sein (nur im vertrauenswürdigen LAN) |
+| `MONITOR_UPDATE_FORGEJO_REPO` | `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` | Repository auf Forgejo (heißt seit #162 anders als auf GitHub, E-33; nur für Forks ändern) |
 
 ## Weitere Befehle
 

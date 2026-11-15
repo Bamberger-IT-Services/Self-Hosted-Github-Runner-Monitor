@@ -8,6 +8,9 @@ Für Codex und andere Agenten gelten dieselben Regeln wie für Claude:
   `main`, `feature/*`, `fix/*`, `release/*`; Arbeit per PR nach `develop`.
 - Projektregeln und Abweichungen: [CLAUDE.md](CLAUDE.md) (öffentliches Repo mit Platzhaltern,
   nur Python-Standardbibliothek und Vanilla-JS, kein Docker, keine Lizenz, CSP ohne Inline-Skripte).
+- Repository auf Forgejo: `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` (bis #162 `Self-Hosted-Github-Runner-Monitor`); das eingefrorene
+  GitHub-Repository behält den alten Namen, weil Updates und Doku-Links laufender Installationen
+  dorthin zeigen (E-33).
 - Aufgaben: Issues dieses Repos auf Forgejo. Nächstes Issue ist ein offenes ohne `agent:`-Label
   und ohne `blocked`, höchste Priorität zuerst; vor dem Start `agent:codex` setzen. Issues mit
   fremdem `agent:`-Label nicht anfassen.

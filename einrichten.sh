@@ -590,10 +590,12 @@ quelle() {
         fi
       done
       abschnitt "Forgejo prüfen"
-      repo="$(grep -E '^MONITOR_RELEASE_REPO=' "$ETC/konfig.env" 2>/dev/null | cut -d= -f2 | tr -d "\"'" || true)"
-      repo="${repo:-Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor}"
+      # Repository auf Forgejo (#162, E-33): eigener Schlüssel, ohne Eintrag die Vorgabe aus runner_monitor/konfig.py
+      # (MONITOR_RELEASE_REPO ist das GitHub-Repository und gilt hier nicht)
+      repo="$(grep -E '^MONITOR_UPDATE_FORGEJO_REPO=' "$ETC/konfig.env" 2>/dev/null | tail -1 | cut -d= -f2 | tr -d "\"' " || true)"
+      repo_arg=(); [ -z "$repo" ] || repo_arg=(--repo "$repo")
       rc=0; ausgabe="$(cd "$QUELLE" && PYTHONDONTWRITEBYTECODE=1 timeout --foreground 60 "$PYTHON" -m runner_monitor.quelle \
-        abfrage --basis "$s" "${http[@]}" --repo "$repo" 2>/dev/null)" || rc=$?
+        abfrage --basis "$s" "${http[@]}" "${repo_arg[@]}" 2>/dev/null)" || rc=$?
       zeilen_ausgeben "$ausgabe"
       if [ "$rc" != 0 ]; then frage "Forgejo antwortet nicht wie erwartet. Trotzdem speichern?" || fehler "Nichts geändert."; fi
       ausgabe="$(quelle_helfer setze --konfig "$ETC/konfig.env" --quelle forgejo --basis "$s" "${http[@]}")" || { zeilen_ausgeben "$ausgabe"; fehler "Nicht gespeichert."; }
