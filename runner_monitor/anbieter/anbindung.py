@@ -276,7 +276,7 @@ def bewerte(dienst: str, erg: dict, org: str = "") -> tuple[int, list[tuple[str,
         else:
             zeilen.append(("warn", "Runner-Status nur mit Organisations-Recht (Konto im Team „Owners“): Online-Status bleibt „unbekannt“"))
         if erg.get("laeufeNichtLesbar"):
-            zeilen.append(("warn", f"Läufe von {int(erg['laeufeNichtLesbar'])} Repositories nicht lesbar (Server zu alt oder ohne Rechte)"))
+            zeilen.append(("warn", f"Läufe von {int(erg['laeufeNichtLesbar'])} Repositories nicht lesbar (Server zu alt, ohne Rechte oder Antwort ungültig bzw. zu groß)"))
         return 0, zeilen
     if art == "kein-token":
         return 1, [("fehler", "Kein Token hinterlegt.")]
