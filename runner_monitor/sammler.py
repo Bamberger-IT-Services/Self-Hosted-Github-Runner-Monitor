@@ -46,7 +46,7 @@ MAX_ANBINDUNGEN = 20      # höchstens so viele Runner fragt der Sammler beim Di
 MAX_GLEICHZEITIG = 4      # so viele Runner-Abfragen laufen höchstens zugleich (je Runner ein Faden, #115)
 RUNDENFRIST = 35.0        # harte Grenze einer Runde je Runner (Adapter selbst: 25 s); danach „nicht erreichbar“
 # Was bei einem Fehler aus dem letzten guten Stand stehen bleibt (Runner enthält Labels und Version)
-GUTER_STAND = ("repos", "runner", "job", "letzteJobs", "art", "serverVersion", "tokenAblauf", "wartetUnbekannt")
+GUTER_STAND = ("repos", "laufende", "wartende", "runner", "job", "letzteJobs", "art", "serverVersion", "tokenAblauf", "wartetUnbekannt")
 TAKT_RELEASE = 6 * 3600
 TAKT_ERKENNUNG = 6 * 3600  # Runner auf der VM erkennen: beim Start und alle 6 Stunden (#91)
 MAX_STDERR = 2000         # so viel Fehlerausgabe der Erkennung kommt ins Journal
@@ -299,7 +299,7 @@ class Sammler:
             # Bei Fehlern den letzten guten Stand stehen lassen und nur den Fehler ergänzen.
             alt = self._lies(self.k.lauf_verz / "github.json")
             if alt and alt.get("repos") and ergebnis["abfrage"] != "kein-token":
-                for schluessel in ("repos", "runner", "job", "tokenAblauf"):
+                for schluessel in ("repos", "laufende", "wartende", "runner", "job", "tokenAblauf"):
                     ergebnis[schluessel] = alt.get(schluessel)
                 ergebnis["letzterErfolg"] = alt.get("letzterErfolg")
         schreibe_oeffentlich(self.k.lauf_verz / "github.json", ergebnis)
