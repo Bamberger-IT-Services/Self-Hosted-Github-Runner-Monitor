@@ -104,7 +104,8 @@ Lücken melden: vertraulich über GitHub (Security › Report a vulnerability), 
 ## V10 Schadcode / Updates
 
 - Update-Hilfsdienst lädt nur von `https://github.com/<release-repo>/releases/download/` oder – mit
-  Forgejo als Quelle – genau von `<basis>/<release-repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz[.sha256]`
+  Forgejo als Quelle – genau von `<basis>/<forgejo-repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz[.sha256]`
+  (`MONITOR_UPDATE_FORGEJO_REPO`; geprüft wird die Herkunft weiter gegen `<release-repo>` auf GitHub, #162)
   ohne Weiterleitungen (S-UPD-02), Adresse aus root-eigener Datei, verwirft Anmeldeseiten und
   Nicht-gzip, prüft SHA-256 und die GitHub-Attestierung, entpackt nur reguläre Dateien und Ordner
   (keine Links, kein `..`), prüft `VERSION` im Paket, automatischer Rückweg (S-UPD-01).
