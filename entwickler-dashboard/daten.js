@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "15.11.2026 20:49",
+  stand: "15.11.2026 21:06",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -267,6 +267,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "15.11.2026 21:06", text: "Release 0.8.4 vorbereitet (Branch release/0.8.4, OK von Tobias für Vorbereiten und Veröffentlichen): #172 (PR #173, „Name beim Server“, Registrierung aus runner.file und server.connections, „sicher“ nur mit Kennung) und Dashboard-Nachtrag #170; VERSION, CHANGELOG [0.8.4] – 15.11.2026, Release-Notiz (nach dem Update nichts nötig; wer den Namen beim Server als Anzeigenamen eingetragen hatte, trägt ihn im neuen Feld ein), Stand der Dokus. Ablauf wie 0.8.3." },
     { datum: "15.11.2026 20:49", text: "#172 Architekt-Review eingearbeitet: keine config.yml-Heuristik ohne -c (forgejo-runner liest dann keine Datei), Konfiguration einmal und ohne Symlink gelesen, YAML-Leser mit BOM/null/~ und Flussform mit Anführungszeichen, Nachschritte der Erkennung abgesichert, Grund „mehrere Verbindungen – Server in runner.json eintragen“, Merkmale zu server.connections übersetzt; Sicherheitsbericht S-EINR-01/S-FORGEJO-01 und Design-Abgleich ergänzt." },
     { datum: "15.11.2026 20:34", text: "#172 Nachtrag (gleicher Branch): Erkennung liest bei forgejo-runner ab 12.7 ohne .runner url und uuid aus server.connections der Konfiguration (Format belegt an config.example.yaml/config.go des Runners, v12.7.0–v13.2.1), nie den Token; mehrere Verbindungen: die zum Server aus runner.json. Security-Review (MEDIUM) behoben: frei gewählte Registrierungsnamen nur aus der Konfiguration der Unit-Datei, gliedweise ohne Symlink geöffnet (dir_fd, O_NOFOLLOW). Tests, Doku, Sicherheitsbericht S-ERK-01." },
     { datum: "15.11.2026 20:23", text: "#172 umgesetzt (Branch fix/172-zuordnung-globaler-runner, Opus): neues Feld „Name beim Server“ (runner.json › name_beim_dienst) in Info › Runner › „Zuordnung ändern“, zählt wie der Name aus .runner auch in /admin und Repo-Listen (#152 bleibt: Anzeigename/Unit dort nicht); Erkennung liest runner.file aus der Runner-Konfiguration (-c/--config, .yml/.yaml, relativ zum WorkingDirectory, Rückfall neben der Konfiguration) und nennt einen fehlenden erwarteten Ort in der Begründung; „sicher“ bei Forgejo/Gitea nur mit UUID oder Name beim Server. Tests, Doku (EINRICHTUNG, FUNKTIONSWEISE, Handbuch, Sicherheitsbericht S-ERK-01), CHANGELOG. Offen: PR anlegen, auf der VM prüfen, ob /root/.runner existiert." },
