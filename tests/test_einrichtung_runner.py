@@ -85,6 +85,22 @@ class PruefungTest(unittest.TestCase):
                          "/home/u/a.log", "/var/log/", "/opt/.log"):
             self.assertIsNone(einrichtung.pruefe_log(schlecht), schlecht)
 
+    def test_name_beim_server(self):
+        """#172: Name beim Server aus „Zuordnung ändern“ – eigenes Feld, geprüft wie der Anzeigename."""
+        e = einrichtung.pruefe_eintrag({"id": "forgejo-runner", "stand": None, "name_beim_dienst": "runner-vm-01"})
+        self.assertEqual(e, {"id": "forgejo-runner", "stand": None, "name_beim_dienst": "runner-vm-01"})
+        for leer in (None, ""):
+            self.assertIsNone(einrichtung.pruefe_eintrag({"id": "a", "stand": None, "name_beim_dienst": leer})["name_beim_dienst"])
+        for schlecht in ("a b", " runner-vm-01", "<script>", "-x", "a" * 65, 5, ["x"], "runner\n"):
+            with self.assertRaises(einrichtung.EingabeFehler, msg=schlecht):
+                einrichtung.pruefe_eintrag({"id": "a", "stand": None, "name_beim_dienst": schlecht})
+        alt = {"version": 1, "runner": {"forgejo-runner": {"server": "https://git.example.org", "org": "beispiel-org"}}}
+        neu = einrichtung.wende_an(alt, [e])
+        self.assertEqual(neu["runner"]["forgejo-runner"], {"server": "https://git.example.org", "org": "beispiel-org",
+                                                           "name_beim_dienst": "runner-vm-01"})
+        weg = einrichtung.wende_an(neu, [{"id": "forgejo-runner", "stand": None, "name_beim_dienst": None}])
+        self.assertNotIn("name_beim_dienst", weg["runner"]["forgejo-runner"])
+
     def test_liste(self):
         self.assertEqual(len(einrichtung.pruefe_liste([{"id": f"r{i}", "stand": "grund"} for i in range(20)])), 20)
         for roh in ([], None, {"id": "a"}, [{"id": f"r{i}", "stand": "grund"} for i in range(21)],
@@ -222,6 +238,17 @@ class FundeTest(unittest.TestCase):
         self.assertTrue(d["auftrag"]["zuordnung"])
         for f in d["runner"]:
             self.assertNotIn("log", f)  # Pfade der VM nicht in die Oberfläche
+
+    def test_name_beim_server_in_der_zuordnung(self):
+        """#172: Info › Runner sieht den gespeicherten Namen beim Server (auch aus einem offenen Auftrag)."""
+        schreibe_erkennung(self.k, [fund("forgejo-runner", "forgejo", server="https://git.example.org")])
+        self.k.zuordnung_datei.parent.mkdir(parents=True)
+        self.k.zuordnung_datei.write_text(json.dumps({"runner": {"forgejo-runner": {"name_beim_dienst": "runner-vm-01", "org": "beispiel-org"}}}))
+        d = einrichtung.funde(self.k.lauf_verz, self.k.zuordnung_datei, self.k.auftraege_verz, None)
+        self.assertEqual(d["runner"][0]["zuordnung"], {"name_beim_dienst": "runner-vm-01"})  # org geht nicht raus
+        einrichtung.lege_auftrag(self.k.auftraege_verz, [{"id": "forgejo-runner", "stand": None, "name_beim_dienst": "runner-vm-09"}])
+        d = einrichtung.funde(self.k.lauf_verz, self.k.zuordnung_datei, self.k.auftraege_verz, None)
+        self.assertEqual(d["runner"][0]["zuordnung"], {"name_beim_dienst": "runner-vm-09"})
 
     def test_zurueckgenommener_stand(self):
         schreibe_erkennung(self.k, [fund("a", stand="ignoriert")])  # Erkennung lief noch mit alter Zuordnung

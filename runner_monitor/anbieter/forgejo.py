@@ -11,8 +11,9 @@ Forgejo und Gitea nur unterscheiden, wenn der Server ohne Anmeldung antwortet):
   der Organisation bzw. des Benutzers (mit ``visible=true`` auch globale Runner, braucht Besitzerrechte),
   sonst – höchstens alle 10 Minuten – in ``/admin/actions/runners`` (nur mit ``read:admin`` eines
   Administrators; 403/404 = „darf nicht“, dann erst nach einer Stunde wieder) und in den Listen der
-  Repositories (#145). Zugeordnet wird über UUID bzw. Name aus der ``.runner``-Datei (Fund der Erkennung),
-  sonst über den Namen aus der Konfiguration bzw. der Unit – nie über die Monitor-ID allein.
+  Repositories (#145). Zugeordnet wird über UUID bzw. Name aus der ``.runner``-Datei (Fund der Erkennung)
+  oder den von Hand eingetragenen Namen beim Server (``runner.json`` › ``name_beim_dienst``, #172), in der
+  eigenen Liste auch über den Namen aus der Konfiguration bzw. der Unit – nie über die Monitor-ID allein.
 * Läufe: ``/repos/{o}/{r}/actions/runs`` – Forgejo ``status: running|waiting|blocked|success|…``,
   Gitea wie GitHub (``in_progress``, ``queued`` …). Forgejo (gemessen an 17.0.1) beachtet ``limit`` nur
   zusammen mit ``page`` und liefert sonst **alle** Läufe (je Lauf rund 27 KB); ``status`` filtert serverseitig,
@@ -345,8 +346,9 @@ def wer_aus_log(kopf: str) -> str | None:
 
 @dataclass(frozen=True)
 class Kennung:
-    """Wer „dieser Runner“ beim Dienst ist (#145): ``uuid`` und ``name_aus_datei`` aus der ``.runner``-Datei
-    (Fund der Erkennung), ``namen`` = dieser Name und Ersatznamen (Name aus der Konfiguration, Unit ohne
+    """Wer „dieser Runner“ beim Dienst ist (#145): ``uuid`` aus der ``.runner``-Datei (Fund der Erkennung),
+    ``name_aus_datei`` = Name beim Server – von Hand aus ``runner.json`` › ``name_beim_dienst`` (#172) oder aus
+    der Registrierung –, ``namen`` = dieser Name und Ersatznamen (Anzeigename aus der Konfiguration, Unit ohne
     ``.service``) in dieser Reihenfolge."""
 
     namen: tuple[str, ...] = ()
@@ -368,8 +370,8 @@ def passt(r: dict, kennung: Kennung, streng: bool = False) -> int | None:
     """Rang eines Eintrags der Runner-Liste (0 = UUID, 1 … = Name in der Reihenfolge der Kennung) oder None.
     Kennt der Monitor die UUID und nennt der Dienst eine, zählt nur sie – ein gleichnamiger, neu
     registrierter Runner ist ein anderer. ``streng`` (Liste der Instanz, Repository-Listen; #152): ohne
-    UUID zählt nur der Name aus der ``.runner``-Datei – Ersatznamen (Monitor-ID, Unit) könnten dort einen
-    gleichnamigen Runner einer anderen Organisation treffen."""
+    UUID zählt nur der Name beim Server (aus der ``.runner``-Datei oder von Hand, #172) – Ersatznamen
+    (Monitor-ID, Unit) könnten dort einen gleichnamigen Runner einer anderen Organisation treffen."""
     ruuid = erkennung.pruefe_uuid(r.get("uuid"))
     if kennung.uuid and ruuid:
         return 0 if ruuid == kennung.uuid else None
@@ -846,7 +848,8 @@ class Forgejo(Anbieter):
                        self.k.org, self.kennung(), speicher, letzter_erfolg)
 
     def kennung(self) -> Kennung:
-        """Name und UUID beim Dienst aus ``.runner`` (#145), dann Name aus der Konfiguration und Unit-Name."""
+        """Name beim Dienst (von Hand aus runner.json, #172, sonst aus ``.runner``) und UUID aus ``.runner``
+        (#145), dann Anzeigename aus der Konfiguration und Unit-Name (Ersatznamen, nur in der eigenen Liste)."""
         unit = (self.k.unit or "").removesuffix(".service")
         namen = [self.k.name_beim_dienst, self.k.name, erkennung.pruefe_name(unit)]
         return Kennung(namen=tuple(dict.fromkeys(n for n in namen if n)), uuid=erkennung.pruefe_uuid(self.k.uuid),

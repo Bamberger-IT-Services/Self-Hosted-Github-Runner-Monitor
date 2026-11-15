@@ -4,6 +4,29 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Behoben
+- Forgejo/Gitea, globaler Runner ohne gefundene Registrierung (#172): Der dokumentierte Ausweg griff seit #152
+  nicht mehr – der unter „Zuordnung ändern“ eingetragene Name galt als Anzeigename und damit als Ersatzname, der
+  in `/admin/actions/runners` und den Listen der Repositories nicht zählt. Die Karte blieb „Forgejo: nicht
+  sichtbar“ ohne Jobs. Neu: das Feld **Name beim Server** (Info & Hilfe › Runner › „Zuordnung ändern“, nur
+  Forgejo/Gitea), gespeichert als `name_beim_dienst` in `runner.json`; es zählt wie der Name aus `.runner`,
+  auch in `/admin` und Repository-Listen. Anzeigename und Unit bleiben dort ausgeschlossen (#152). Wer bisher
+  den Namen beim Server als Anzeigenamen eingetragen hat, trägt ihn im neuen Feld ein.
+- Erkennung (#172): Die Registrierung wird dort gesucht, wo der Runner sie erwartet – `runner.file` aus seiner
+  Konfiguration (`-c`/`--config` der Unit, `config.yml` oder `config.yaml`; ohne die Angabe liest auch der Runner
+  keine Datei), relativ zum `WorkingDirectory` der Unit, auch unter anderem Dateinamen als `.runner`
+  (dann nur im Ordner der Konfiguration bzw. im Arbeitsverzeichnis, nie `.credentials*` oder Dateien des
+  Monitors; ein frei gewählter Name nur aus der Konfiguration der Unit-Datei und ohne Symlink in irgendeinem
+  Glied des Pfads). Gelesen wird nur der Schlüssel `file` unter `runner:`. Fehlt die Datei, nennt die Begründung
+  den erwarteten Ort.
+- Erkennung (#172): forgejo-runner ab 12.7 ohne `.runner` – die Anmeldung steht in der Konfiguration unter
+  `server.connections`. Der Monitor liest dort nur `url` (Server-Vorschlag) und `uuid` (Kennung), nie den Token.
+  Bei mehreren Verbindungen gilt die, deren `url` zum Server in `runner.json` passt; ohne Server dort lautet
+  der Grund „mehrere Verbindungen – Server in runner.json eintragen“.
+- Info › Runner (#172): Der Sicherheitsgrad ist bei Forgejo und Gitea nur noch „sicher“, wenn UUID oder Name
+  beim Server bekannt sind; sonst „wahrscheinlich – Name beim Server unbekannt – Zuordnung ändern“ (übersetzt).
+  Bisher stand dort „sicher“, sobald der Server aus `runner.json` antwortete.
+
 ## [0.8.3] – 15.11.2026
 
 ### Geändert

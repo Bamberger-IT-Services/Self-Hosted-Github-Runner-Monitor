@@ -85,11 +85,13 @@ const EINR = (() => {
   }
 
   /* Prüfung des Formulars „Zuordnen“ wie auf dem Server (runner_monitor/einrichtung.py) – nur für die
-     Rückmeldung am Feld; der Server prüft selbst. Gibt {feld: 'name'|'unit'|'log'} zurück. */
+     Rückmeldung am Feld; der Server prüft selbst. Gibt {feld: 'name'|'name_beim_dienst'|'unit'|'log'} zurück. */
   function pruefeFormular(w, neu) {
     const fehler = {};
     const name = String(w.name || '').trim(), unit = String(w.unit || '').trim(), log = String(w.log || '').trim();
     if (name && !/^[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}$/.test(name)) fehler.name = 'name';
+    const beimServer = String(w.name_beim_dienst || '').trim();  // Name beim Server (#172), wie name geprüft
+    if (beimServer && !/^[A-Za-z0-9][A-Za-z0-9._@+-]{0,63}$/.test(beimServer)) fehler.name_beim_dienst = 'name_beim_dienst';
     if ((unit || neu) && !/^(?:[A-Za-z0-9:_.@-]|\\x[0-9a-fA-F]{2}){1,200}\.service$/.test(unit)) fehler.unit = 'unit';
     if (unit.startsWith('-')) fehler.unit = 'unit';
     if (log) {
@@ -169,6 +171,15 @@ const EINR = (() => {
     if (x) return t('/api/v3/meta antwortet: GitHub Enterprise {v}', { v: x[1] }).trim();
     x = /^(\/api\/[\w/.-]+) antwortet: (\S+)$/.exec(s);
     if (x) return t('{pfad} antwortet: {v}', { pfad: x[1], v: x[2] });
+    x = /^(\/\S+) laut Konfiguration erwartet, nicht gefunden$/.exec(s);  // #172
+    if (x) return t('{pfad} laut Konfiguration erwartet, nicht gefunden', { pfad: x[1] });
+    x = /^(\/\S+) mit server\.connections, url (\S+)$/.exec(s);
+    if (x) return t('{datei} mit server.connections, url {url}', { datei: x[1], url: x[2] });
+    x = /^(\/\S+) mit server\.connections ohne gültige url$/.exec(s);
+    if (x) return t('{datei} mit server.connections ohne gültige url', { datei: x[1] });
+    x = /^(\/\S+) mit (\d+) Verbindungen in server\.connections$/.exec(s);
+    if (x) return t('{datei} mit {n} Verbindungen in server.connections', { datei: x[1], n: x[2] });
+    if (s === 'Verbindung in server.connections passt zum Server aus runner.json') return t('Verbindung in server.connections passt zum Server aus runner.json');
     if (s === 'Server aus runner.json bestätigt') return t('Server aus runner.json bestätigt');
     if (s === 'Server aus runner.json: nicht bestätigt') return t('Server aus runner.json: nicht bestätigt');
     if (s === 'Anmeldeseite meldet GitLab') return t('Anmeldeseite meldet GitLab');

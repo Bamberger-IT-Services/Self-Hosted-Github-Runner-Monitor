@@ -83,6 +83,22 @@ test('Formular: nur geänderte Felder, Stand bleibt, kein Server/Organisation/To
   assert.equal(INFO.formEintrag(fund('x', 'gitea'), { dienst: 'gitea', name: 'x', unit: 'x.service' }, EINR.DIENST_WAHL).stand, null);
 });
 
+test('Formular: Name beim Server nur bei Forgejo/Gitea, eigenes Feld (#172)', () => {
+  assert.equal('name_beim_dienst' in INFO.formStart(fund('buildagent', 'unbekannt')), false);
+  assert.equal('name_beim_dienst' in INFO.formStart(fund('runner-vm-01', 'github')), false);
+  const fu = fund('forgejo-runner', 'forgejo', { zuordnung: { name_beim_dienst: 'runner-vm-01' } });
+  const w0 = INFO.formStart(fu);
+  assert.equal(w0.name_beim_dienst, 'runner-vm-01');
+  assert.deepEqual(INFO.formEintrag(fu, w0, EINR.DIENST_WAHL), { id: 'forgejo-runner', stand: null });  // unverändert
+  assert.deepEqual(INFO.formEintrag(fu, { ...w0, name_beim_dienst: ' runner-vm-09 ' }, EINR.DIENST_WAHL),
+    { id: 'forgejo-runner', stand: null, name_beim_dienst: 'runner-vm-09' });
+  assert.deepEqual(INFO.formEintrag(fu, { ...w0, name_beim_dienst: '' }, EINR.DIENST_WAHL), { id: 'forgejo-runner', stand: null, name_beim_dienst: null });
+  // ohne gespeicherten Wert: leer bleibt leer, der Anzeigename wird nie als Name beim Server übernommen
+  const neu = fund('forgejo-runner', 'forgejo');
+  assert.deepEqual(INFO.formEintrag(neu, INFO.formStart(neu), EINR.DIENST_WAHL), { id: 'forgejo-runner', stand: null });
+  assert.equal(INFO.mitNameBeimServer(fund('x', 'gitea')), true);
+});
+
 test('Statuszeile: Suche, keine Änderung, Anzahl und Zeitpunkt', () => {
   const z = (o) => INFO.erkennenText({ erk: 'ruhe', zeit: sek - 600, anzahl: 3, ignoriert: 0, ...o }, f);
   assert.equal(z({ erk: 'laeuft' }), 'Suche Runner …');

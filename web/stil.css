@@ -371,6 +371,7 @@ body.dashboard { overflow: hidden; }
 .ir-feld input.mono { font-family: var(--mono); font-size: 12px; }
 .ir-feld input[aria-invalid="true"] { border-color: var(--danger); }
 .ir-hinweis { font-size: 12px; font-weight: 400; color: var(--danger); }
+.ir-tipp { font-size: 12px; line-height: 16px; font-weight: 400; color: var(--ink-muted); }
 .ir-knoepfe { display: flex; gap: 8px; flex-wrap: wrap; }
 .ir-neu { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; margin-bottom: 6px; border-radius: 4px; background: color-mix(in srgb, var(--brand) 8%, var(--surface)); font-size: 13px; }
 .ir-neu b { font-weight: 650; }

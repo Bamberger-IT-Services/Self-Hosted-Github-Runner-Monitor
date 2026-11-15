@@ -75,6 +75,9 @@ test('Formular „Zuordnen“ prüft wie der Server', () => {
     assert.deepEqual(E.pruefeFormular({ log }), { log: 'log' }, log);
   }
   assert.deepEqual(E.pruefeFormular({ dienst: 'woodpecker' }), { dienst: 'dienst' });
+  // #172: Name beim Server wie der Anzeigename
+  assert.deepEqual(E.pruefeFormular({ dienst: 'forgejo', name_beim_dienst: 'runner-vm-01' }), {});
+  for (const n of ['a b', '-x', '<b>', 'a'.repeat(65)]) assert.deepEqual(E.pruefeFormular({ dienst: 'forgejo', name_beim_dienst: n }), { name_beim_dienst: 'name_beim_dienst' }, n);
 });
 
 test('Fertig: angebunden, Grundüberwachung, ignoriert; offene fehlen', () => {
@@ -128,4 +131,18 @@ test('Merkmale der Server-Probe werden übersetzt (#152)', () => {
   assert.equal(E.merkmalText('Server aus runner.json: Server nicht erreichbar', t), 'server from runner.json: server unreachable');
   assert.equal(E.merkmalText('/api/v3/meta antwortet: GitHub Enterprise 3.12', t), '/api/v3/meta responds: GitHub Enterprise 3.12');
   assert.equal(E.merkmalText('systemd-Unit forgejo-runner.service', t), 'systemd-Unit forgejo-runner.service');
+  // #172: Ort der Registrierung laut Konfiguration
+  const EN2 = { ...EN, '{pfad} laut Konfiguration erwartet, nicht gefunden': '{pfad} expected according to the configuration, not found' };
+  const t2 = (text, w) => (EN2[text] || text).replace(/\{(\w+)\}/g, (m, k) => (w && k in w ? String(w[k]) : m));
+  assert.equal(E.merkmalText('/root/.runner laut Konfiguration erwartet, nicht gefunden', t2), '/root/.runner expected according to the configuration, not found');
+  const EN3 = { '{datei} mit server.connections, url {url}': '{datei} with server.connections, url {url}',
+    '{datei} mit {n} Verbindungen in server.connections': '{datei} with {n} connections in server.connections',
+    '{datei} mit server.connections ohne gültige url': '{datei} with server.connections without a valid url' };
+  const t3 = (text, w) => (EN3[text] || text).replace(/\{(\w+)\}/g, (m, k) => (w && k in w ? String(w[k]) : m));
+  assert.equal(E.merkmalText('/etc/forgejo-runner/config.yaml mit server.connections, url https://git.example.org', t3),
+    '/etc/forgejo-runner/config.yaml with server.connections, url https://git.example.org');
+  assert.equal(E.merkmalText('/etc/forgejo-runner/config.yaml mit 2 Verbindungen in server.connections', t3),
+    '/etc/forgejo-runner/config.yaml with 2 connections in server.connections');
+  assert.equal(E.merkmalText('/etc/forgejo-runner/config.yaml mit server.connections ohne gültige url', t3),
+    '/etc/forgejo-runner/config.yaml with server.connections without a valid url');
 });
