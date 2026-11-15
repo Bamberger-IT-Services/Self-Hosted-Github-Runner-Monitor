@@ -9,7 +9,8 @@ Der Monitor findet selbst, welche CI-Runner auf der VM laufen, zu welchem Dienst
 * **Prozesse** – ``/proc/<pid>/cmdline``, ``cgroup`` (zu welcher Unit gehört der Prozess?) und ``cwd``.
 * **Registrierungen** – ``.runner`` (GitHub, Forgejo, Gitea) und ``config.toml`` (GitLab) neben den
   Units und Prozessen sowie an den üblichen Orten; bei Forgejo/Gitea auch die Datei aus ``runner.file``
-  der ``config.yml``/``config.yaml`` (``-c``/``--config`` der Unit bzw. im Arbeitsverzeichnis, #172).
+  der ``config.yml``/``config.yaml`` (``-c``/``--config`` der Unit bzw. im Arbeitsverzeichnis, #172) und
+  ohne Registrierungsdatei ``url``/``uuid`` aus ``server.connections`` (forgejo-runner ab 12.7, nie ``token``).
 * **Server-API-Probe** ohne Zugangsdaten – ``/api/forgejo/v1/version``, ``/api/v1/version``,
   GitLab-Anmeldeseite, ``/api/v3/meta`` (GitHub Enterprise). Ohne Netz bleibt der Grad „wahrscheinlich“.
 
@@ -18,8 +19,9 @@ Regeln (Sicherheitsbericht): Die Erkennung führt **nie** etwas aus, das in eine
 ``journalctl`` mit geprüftem Unit-Namen als eigenem Argument. Dateien werden nur gelesen, wenn sie
 reguläre Dateien unter einer Größengrenze sind, ohne Symlinks zu folgen (Ausnahme: Unit-Dateien in
 den root-eigenen systemd-Verzeichnissen), Registrierungen nur mit festen Dateinamen – oder unter dem Namen
-aus ``runner.file`` der Runner-Konfiguration, dann nur im Ordner der Konfiguration bzw. im Arbeitsverzeichnis
-und nie in den Ordnern des Monitors (#172). Tokens
+aus ``runner.file`` einer Runner-Konfiguration, die die Unit-Datei vorgibt, dann nur im Ordner der
+Konfiguration bzw. im Arbeitsverzeichnis, ohne Symlink in irgendeinem Glied und nie in den Ordnern des
+Monitors (#172). Tokens
 (``token`` in ``.runner``/``config.toml``) werden nie übernommen, ``.credentials`` wird nie gelesen.
 Namen, Pfade und Adressen werden streng geprüft; die Textausgabe ersetzt Steuerzeichen, damit ein
 Fund das Terminal nicht verändern kann. Die Server-Probe gilt nur für Funde mit systemd-Unit (E-17)
@@ -271,6 +273,62 @@ class Quelle:
             return None
         finally:
             os.close(fd)
+
+    def lies_ohne_links(self, vm_pfad: str, grenze: int) -> bytes | None:
+        """Wie :meth:`lies`, aber **kein** Glied des Pfads darf ein Symlink sein (#172, Security-Review): jeder
+        Ordner wird mit ``O_DIRECTORY|O_NOFOLLOW`` relativ zum vorigen geöffnet (``dir_fd``), die Datei mit
+        ``O_NOFOLLOW``. So lenkt kein Benutzer die Erkennung (root) über ein verlinktes Verzeichnis in der Mitte
+        des Pfads auf eine fremde Datei – auch nicht durch Austausch zwischen Prüfen und Öffnen."""
+        sauber = pruefe_pfad(vm_pfad)
+        if not sauber or not hasattr(os, "O_NOFOLLOW") or not getattr(os, "O_DIRECTORY", 0):
+            return None
+        teile = [t for t in sauber.split("/") if t]
+        if not teile:
+            return None
+        nofollow = os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+        try:
+            verz = os.open(self.wurzel, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0))
+        except OSError:
+            return None
+        try:
+            for teil in teile[:-1]:
+                neu = os.open(teil, os.O_RDONLY | os.O_DIRECTORY | nofollow, dir_fd=verz)
+                os.close(verz)
+                verz = neu
+            fd = os.open(teile[-1], os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOCTTY", 0) | nofollow,
+                         dir_fd=verz)
+        except (OSError, NotImplementedError):
+            os.close(verz)
+            return None
+        os.close(verz)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_size > grenze:
+                return None
+            teile_daten, gelesen = [], 0
+            while gelesen <= grenze:
+                stueck = os.read(fd, min(65536, grenze + 1 - gelesen))
+                if not stueck:
+                    break
+                teile_daten.append(stueck)
+                gelesen += len(stueck)
+            return None if gelesen > grenze else b"".join(teile_daten)
+        except OSError:
+            return None
+        finally:
+            os.close(fd)
+
+    def ohne_links(self, vm_pfad: str) -> bool:
+        """Enthält der Pfad (soweit vorhanden) kein verlinktes Glied? Für Hinweise, nie fürs Lesen."""
+        try:
+            wurzel = os.path.realpath(self.wurzel)
+            echt = os.path.realpath(self.pfad(vm_pfad))
+        except (OSError, ValueError):
+            return False
+        rel = os.path.relpath(echt, wurzel)
+        if rel == "." or rel == ".." or rel.startswith("../"):
+            return False
+        return "/" + rel == pruefe_pfad(vm_pfad)
 
     def eintraege(self, vm_verz: str, grenze: int = 2000) -> list[str]:
         try:
@@ -594,11 +652,14 @@ def lies_registrierung(q: Quelle, pfad: str, aus_konfig: bool = False) -> Regist
     name = PurePosixPath(pfad).name
     if not pfad or any("runner-monitor" in t.lower() for t in PurePosixPath(pfad).parts[1:]):
         return None  # nie Dateien des Monitors (z. B. Tokens unter /etc/runner-monitor/zugang)
-    if name not in (".runner", "config.toml") and not (aus_konfig and _freie_registrierung(name)):
+    fest = name in (".runner", "config.toml")
+    if not fest and not (aus_konfig and _freie_registrierung(name)):
         return None
-    daten = q.lies(pfad, MAX_REGISTRIERUNG)
+    # ein frei gewählter Name (aus einer Konfiguration, die der Benutzer des Runners schreiben kann) nur ohne
+    # verlinktes Glied im ganzen Pfad – sonst hebelte ein Ordner-Symlink die Ordnerbindung aus (Security-Review)
+    daten = q.lies(pfad, MAX_REGISTRIERUNG) if fest else q.lies_ohne_links(pfad, MAX_REGISTRIERUNG)
     if daten is None:
-        return Registrierung(pfad, "kaputt") if q.gibt_es(pfad) else None
+        return Registrierung(pfad, "kaputt") if q.gibt_es(pfad) and (fest or q.ohne_links(pfad)) else None
     return deute_gitlab_konfig(pfad, daten) if name == "config.toml" else deute_runner_datei(pfad, daten)
 
 
@@ -633,7 +694,7 @@ def _unter(pfad: str, verz: str | None) -> bool:
     return bool(verz) and verz != "/" and pfad.startswith(verz.rstrip("/") + "/")
 
 
-def konfig_runner_datei(q: Quelle, konfig: str, basis: str | None) -> list[str]:
+def konfig_runner_datei(q: Quelle, konfig: str, basis: str | None, frei: bool = True) -> list[str]:
     """Wo die Registrierung laut ``runner.file`` der Konfiguration von act_runner/forgejo-runner liegt (#172),
     wichtigster Ort zuerst; ohne ``runner.file`` gilt wie beim Runner ``.runner``.
 
@@ -641,8 +702,9 @@ def konfig_runner_datei(q: Quelle, konfig: str, basis: str | None) -> list[str]:
     ``WorkingDirectory=`` der Unit). Ist keines gesetzt (``/`` bzw. unbekannt), zusätzlich relativ zum Ordner der
     Konfiguration. Heißt die Datei nicht ``.runner``, muss sie im Ordner der Konfiguration oder im
     Arbeitsverzeichnis (nicht ``/``) liegen – eine Konfiguration, die der Benutzer des Runners schreiben darf,
-    lenkt die Erkennung (root) so nicht auf beliebige Dateien. Gelesen wird die Konfiguration wie alles andere:
-    regulär, ohne Symlink, begrenzt; ``.yml`` und ``.yaml``."""
+    lenkt die Erkennung (root) so nicht auf beliebige Dateien. ``frei=False`` (Konfiguration nur aus der
+    Befehlszeile eines Prozesses, nicht aus der root-eigenen Unit-Datei): nur ``.runner`` wie vor #172. Gelesen
+    wird die Konfiguration wie alles andere: regulär, ohne Symlink, begrenzt; ``.yml`` und ``.yaml``."""
     if not KONFIG_NAME.fullmatch(PurePosixPath(konfig).name):
         return []
     daten = q.lies(konfig, MAX_REGISTRIERUNG)
@@ -662,9 +724,98 @@ def konfig_runner_datei(q: Quelle, konfig: str, basis: str | None) -> list[str]:
         if not pfad:
             continue
         name = PurePosixPath(pfad).name
-        if name == ".runner" or (_freie_registrierung(name) and (_unter(pfad, konfig_verz) or _unter(pfad, basis))):
+        if name == ".runner" or (frei and _freie_registrierung(name) and (_unter(pfad, konfig_verz) or _unter(pfad, basis))):
             ergebnis.append(pfad)
     return list(dict.fromkeys(ergebnis))
+
+
+YAML_VERBINDUNG = re.compile(r"""(url|uuid):[ \t]*(?:"([^"\\]{0,512})"|'([^']{0,512})'|([^\s"'#,{}]{1,512}))?[ \t]*(?:#.*)?""")
+YAML_NAME = re.compile(r"""(?:"([^"\\]{1,64})"|'([^']{1,64})'|([^\s"'#:{}]{1,64})):(?:[ \t]+(.*))?""")
+FLUSS_FELD = re.compile(r"""(?:^|[{,\s])(url|uuid):[ \t]*["']?([^"',}\s]{1,512})""")
+MAX_VERBINDUNGEN = 20
+
+
+def verbindungen_aus_yaml(text: str) -> list[dict]:
+    """Verbindungen aus ``server.connections`` der Konfiguration von forgejo-runner (ab 12.7, #172): je Eintrag
+    ``{"name", "url", "uuid"}`` – ``url`` und ``uuid`` geprüft (``pruefe_url``/``pruefe_uuid``), alles andere
+    (``token``, ``token_url``, ``labels``, ``fetch_interval``) wird **nicht** gelesen. Format laut
+    ``internal/pkg/config/config.example.yaml`` des Runners::
+
+        server:
+          connections:
+            <name>:
+              url: https://git.example.org/
+              uuid: <uuid>
+              token: …            # oder token_url: file:…
+
+    Block-Schreibweise; ``<name>: {url: …, uuid: …}`` in einer Zeile ebenfalls. Kein allgemeiner YAML-Leser:
+    Anker, mehrzeilige Werte u. Ä. ergeben einfach keine Verbindung. Einträge ohne gültige UUID fallen weg."""
+    roh: list[dict] = []
+    im_server = in_conn = False
+    tiefe_kind = tiefe_conn = tiefe_name = tiefe_feld = None
+    aktuell: dict | None = None
+    for zeile in text.splitlines()[:2000]:
+        inhalt = zeile.strip()
+        if not inhalt or inhalt.startswith("#") or inhalt in ("---", "..."):
+            continue
+        tiefe = len(zeile) - len(zeile.lstrip(" "))
+        if tiefe == 0:
+            im_server = bool(re.fullmatch(r"server:[ \t]*(?:#.*)?", zeile.rstrip()))
+            in_conn, tiefe_kind, aktuell = False, None, None
+            continue
+        if not im_server:
+            continue
+        if tiefe_kind is None:
+            tiefe_kind = tiefe
+        if not in_conn:
+            if tiefe == tiefe_kind and re.fullmatch(r"connections:[ \t]*(?:#.*)?", inhalt):
+                in_conn, tiefe_conn, tiefe_name, aktuell = True, tiefe, None, None
+            continue
+        if tiefe <= tiefe_conn:
+            in_conn, aktuell = False, None
+            continue
+        if tiefe_name is None:
+            tiefe_name = tiefe
+        if tiefe == tiefe_name:
+            treffer = YAML_NAME.fullmatch(inhalt)
+            if not treffer or len(roh) >= MAX_VERBINDUNGEN:
+                aktuell = None
+                continue
+            aktuell = {"name": next(n for n in treffer.groups()[:3] if n), "url": None, "uuid": None}
+            roh.append(aktuell)
+            tiefe_feld = None
+            rest = (treffer.group(4) or "").strip()
+            if rest.startswith("{"):
+                for feld, wert in FLUSS_FELD.findall(rest):
+                    aktuell.setdefault(feld, None)
+                    aktuell[feld] = aktuell[feld] or wert
+            continue
+        if aktuell is None or tiefe < tiefe_name:
+            continue
+        if tiefe_feld is None:
+            tiefe_feld = tiefe
+        if tiefe != tiefe_feld:
+            continue
+        treffer = YAML_VERBINDUNG.fullmatch(inhalt)
+        if treffer and aktuell[treffer.group(1)] is None:
+            aktuell[treffer.group(1)] = next((w for w in treffer.groups()[1:] if w), None)
+    ergebnis = []
+    for v in roh:
+        uuid = pruefe_uuid(v.get("uuid"))
+        if uuid:
+            ergebnis.append({"name": pruefe_name(v.get("name")), "url": pruefe_url(v.get("url")), "uuid": uuid})
+    return ergebnis
+
+
+def konfig_verbindungen(q: Quelle, konfig: str) -> list[dict]:
+    """``server.connections`` aus einer Konfiguration (#172), wie :func:`konfig_runner_datei` gelesen; jede
+    Verbindung mit ``datei`` (Pfad der Konfiguration, für die Begründung)."""
+    if not KONFIG_NAME.fullmatch(PurePosixPath(konfig).name):
+        return []
+    daten = q.lies(konfig, MAX_REGISTRIERUNG)
+    if daten is None:
+        return []
+    return [{**v, "datei": konfig} for v in verbindungen_aus_yaml(daten.decode("utf-8", "replace"))]
 
 
 def standard_orte(q: Quelle, runner_verz: str | None) -> list[str]:
@@ -696,6 +847,7 @@ class Gruppe:
     registrierungen: list[Registrierung] = field(default_factory=list)
     stichwort: str | None = None
     fehlt: str | None = None     # Registrierung, die die Konfiguration der Unit nennt, aber nicht da ist (#172)
+    verbindungen: list[dict] = field(default_factory=list)  # server.connections der Unit-Konfiguration (#172)
 
 
 def dienst_aus(muster: tuple, text: str) -> str | None:
@@ -713,7 +865,8 @@ def stichwort(unit_name: str) -> str | None:
     return None
 
 
-def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None) -> list[tuple[str, bool]]:
+def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None,
+                    verbindungen: list[dict] | None = None) -> list[tuple[str, bool]]:
     """Wo neben Unit und Prozess eine Registrierung liegen kann: ``(pfad, aus_konfig)`` – ``aus_konfig``, wenn
     ``runner.file`` einer Konfiguration den Pfad nennt (#172; dann auch unter anderem Namen als ``.runner``).
     Die Konfiguration kommt aus ``-c``/``--config`` im ExecStart bzw. der Befehlszeile; fehlt die Angabe bei
@@ -721,10 +874,12 @@ def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None) -> list[
 
     ``aus_unit=True``: nur was die Unit-Datei vorgibt (``--config`` im ExecStart, Programmordner,
     WorkingDirectory); ``False``: nur was Prozesse vorgeben (argv[0], ``--config``, cwd) – die kann
-    jeder Prozess in der cgroup der Unit frei wählen (``exec -a``). ``None``: beides."""
+    jeder Prozess in der cgroup der Unit frei wählen (``exec -a``). ``None``: beides. Andere Dateinamen als
+    ``.runner`` und ``server.connections`` (in ``verbindungen``) nur aus einer Konfiguration, die die
+    **Unit-Datei** vorgibt (root-eigen), nie aus der Befehlszeile eines Prozesses (Security-Review #172)."""
     verz: list[str] = []
     programmverz: list[str] = []   # Ordner des Programms: verlässlicher als das Arbeitsverzeichnis (#109)
-    konfig: list[tuple[str, str | None]] = []
+    konfig: list[tuple[str, str | None, bool]] = []
     befehle = []
     if g.unit and aus_unit is not False:
         if g.unit.arbeitsverz:
@@ -754,20 +909,23 @@ def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None) -> list[
             if wert:
                 if not wert.startswith("/") and basis:
                     wert = f"{basis.rstrip('/')}/{wert}"
-                konfig.append((wert, basis))
+                konfig.append((wert, basis, von_unit))
         if von_unit and len(konfig) == vorher and basis and basis != "/" \
                 and dienst_aus(BEKANNT_PROGRAMM, PurePosixPath(argv[0]).name) in ("forgejo", "gitea"):
             # ohne --config: config.yml bzw. config.yaml im Arbeitsverzeichnis der Unit (üblicher Ort, #172)
-            konfig += [(f"{basis}/config.yml", basis), (f"{basis}/config.yaml", basis)]
+            konfig += [(f"{basis}/config.yml", basis, True), (f"{basis}/config.yaml", basis, True)]
     dateien: list[tuple[str, bool]] = []
-    for pfad, basis in konfig:
+    for pfad, basis, von_unit in konfig:
         pfad = pruefe_pfad(pfad)
         if not pfad:
             continue
         if PurePosixPath(pfad).name == "config.toml":
             dateien.append((pfad, False))
         else:
-            dateien += [(datei, True) for datei in konfig_runner_datei(q, pfad, basis)]
+            dateien += [(datei, True) for datei in konfig_runner_datei(q, pfad, basis, frei=von_unit)]
+            if von_unit and verbindungen is not None:
+                verbindungen += [v for v in konfig_verbindungen(q, pfad)
+                                 if (v["url"], v["uuid"]) not in {(w["url"], w["uuid"]) for w in verbindungen}]
     dateien += [(f"{v}/.runner", False) for v in programmverz + verz if pruefe_pfad(v)]
     if g.unit_name and aus_unit is not False and dienst_aus(BEKANNT_UNIT, g.unit_name) == "gitlab" or (
             aus_unit is not True and any(dienst_aus(BEKANNT_PROGRAMM, p.programm) == "gitlab" for p in g.prozesse)):
@@ -815,7 +973,8 @@ def sammle(q: Quelle, runner_verz: str | None = None) -> list[Gruppe]:
             if aus_unit and not g.unit:
                 continue
             try:
-                orte = orte_der_gruppe(q, g, aus_unit if g.unit else None)
+                orte = orte_der_gruppe(q, g, aus_unit if g.unit else None,
+                                       verbindungen=g.verbindungen if aus_unit and g.unit else None)
             except Exception:  # noqa: BLE001
                 orte = []
             erwartet: list[str] = []   # Orte laut Konfiguration der Unit, die es nicht gibt
@@ -830,7 +989,7 @@ def sammle(q: Quelle, runner_verz: str | None = None) -> list[Gruppe]:
                     reg.nur_prozess = bool(g.unit) and not aus_unit
                     g.registrierungen.append(reg)
                     gefunden = gefunden or aus_konfig
-                elif aus_konfig and aus_unit and g.unit and not q.gibt_es(pfad):
+                elif aus_konfig and aus_unit and g.unit and not q.gibt_es(pfad) and q.ohne_links(pfad):
                     erwartet.append(pfad)
             if erwartet and not gefunden:
                 g.fehlt = erwartet[0]
@@ -1071,7 +1230,24 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
                 merkmale.append(f"{reg.anzahl} Runner in {PurePosixPath(reg.pfad).name}")
         if reg.name is None:
             merkmale.append("Name in der Registrierung fehlt oder enthält ungültige Zeichen")
-    if g.fehlt and not any(r.art != "kaputt" and not r.nur_prozess for r in g.registrierungen):
+    eigene = any(r.art != "kaputt" and not r.nur_prozess for r in g.registrierungen)
+    verbindungen: list[dict] = []
+    if not eigene and g.verbindungen:
+        # forgejo-runner ab 12.7 (#172): ohne Registrierungsdatei steht die Anmeldung in server.connections der
+        # Konfiguration (UUID beim Server, url; der Token wird nie gelesen). Eine Verbindung gilt wie .runner,
+        # bei mehreren entscheidet später der Server aus runner.json (waehle_verbindung).
+        dienste.append("forgejo")
+        aus_registrierung.append("forgejo")
+        if len(g.verbindungen) == 1:
+            v = g.verbindungen[0]
+            server = v["url"]
+            kennung = {"name": None, "uuid": v["uuid"]}
+            merkmale.append(f"{v['datei']} mit server.connections, url {v['url']}" if v["url"]
+                            else f"{v['datei']} mit server.connections ohne gültige url")
+        else:
+            verbindungen = [{"url": v["url"], "uuid": v["uuid"]} for v in g.verbindungen]
+            merkmale.append(f"{g.verbindungen[0]['datei']} mit {len(verbindungen)} Verbindungen in server.connections")
+    elif g.fehlt and not eigene:
         merkmale.append(f"{g.fehlt} laut Konfiguration erwartet, nicht gefunden")  # Hinweis für die Suche (#172)
     if not runner_verz:
         for p in g.prozesse:
@@ -1153,6 +1329,7 @@ def baue_fund(q: Quelle, g: Gruppe, speicher: dict, token_da: bool) -> dict:
         "kennung": kennung if dienst in ("forgejo", "gitea") else None,
         "_grund": grund,
         "_widerspruch": widerspruch,
+        "_verbindungen": verbindungen if dienst in ("forgejo", "gitea") else [],
     }
 
 
@@ -1169,6 +1346,7 @@ def wende_zuordnung_an(funde: list[dict], zuordnung: dict[str, dict], q: Quelle 
         if eintrag.get("unit") and eintrag["unit"] != fund["unit"]:
             fund["aktiv"] = q.aktiv(eintrag["unit"]) if q else None  # andere Unit → deren Zustand
             fund["kennung"] = None  # .runner gehört zur erkannten Unit, nicht zur zugeordneten
+            fund["_verbindungen"] = []  # ebenso server.connections ihrer Konfiguration (#172)
         for schluessel in ("name", "unit", "log", "stand"):
             if schluessel in eintrag:
                 fund[schluessel] = eintrag[schluessel]
@@ -1239,6 +1417,21 @@ def pruefe_zuordnung_server(funde: list[dict], zuordnung: dict[str, dict], q: Qu
 GRUND_NAME_UNBEKANNT = "Name beim Server unbekannt – Zuordnung ändern"
 
 
+def waehle_verbindung(funde: list[dict], zuordnung: dict[str, dict]) -> list[dict]:
+    """Mehrere Verbindungen in ``server.connections`` (#172): die UUID der Verbindung, deren ``url`` dem Server
+    aus ``runner.json`` entspricht, wird zur Kennung – passt keine oder mehr als eine, gibt es keine eindeutige."""
+    for fund in funde:
+        verbindungen = fund.get("_verbindungen") or []
+        server = (zuordnung.get(fund["id"]) or {}).get("server")
+        if not verbindungen or fund.get("kennung") or not server:
+            continue
+        passend = {v["uuid"] for v in verbindungen if v.get("url") == server}
+        if len(passend) == 1:
+            fund["kennung"] = {"name": None, "uuid": passend.pop()}
+            fund["merkmale"].append("Verbindung in server.connections passt zum Server aus runner.json")
+    return funde
+
+
 def pruefe_kennung_bekannt(funde: list[dict], zuordnung: dict[str, dict]) -> list[dict]:
     """„sicher“ heißt bei Forgejo und Gitea auch: der Monitor weiß, **wer** der Runner beim Server ist (#172) –
     UUID oder Name aus der Registrierung (``kennung``) bzw. ``name_beim_dienst`` aus ``runner.json``. Sonst
@@ -1289,6 +1482,7 @@ def erkenne(wurzel: Path | str = "/", runner_verz: Path | str | None = None, zuo
         funde = pruefe_zuordnung_server(funde, zuordnung, q, speicher)
     except Exception:  # noqa: BLE001 – die Prüfung darf die Erkennung nie beenden
         pass
+    funde = waehle_verbindung(funde, zuordnung)
     funde = pruefe_kennung_bekannt(funde, zuordnung)
     return {"zeit": time.time(), "geprueft": GEPRUEFT, "runner": [{k: v for k, v in f.items() if not k.startswith("_")} | {"grund": f.get("_grund")} for f in funde]}
 

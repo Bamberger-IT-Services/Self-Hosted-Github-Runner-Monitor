@@ -1045,6 +1045,125 @@ class RegistrierungAusKonfigTest(Basis):
         self.assertEqual(lies("runner: # Abschnitt\n  file: x.json\nlog:\n  file: y.json\n"), "x.json")
         self.assertIsNone(lies("runner:\n  capacity: 1\nfile: x.json\n"))            # oberste Ebene, kein runner.file
 
+    def test_symlink_verzeichnis_im_pfad(self):
+        """Security-Review #172: ein frei gewählter Name wird nur gelesen, wenn kein Glied des Pfads ein Symlink
+        ist – sonst lenkte ein verlinkter Ordner im Arbeitsverzeichnis die Erkennung (root) auf fremde Dateien."""
+        unit = self.runner("runner:\n  file: link/reg.json\n", "/etc/geheim/reg.json")
+        (self.vm.w / "var/lib/forgejo-runner").mkdir(parents=True, exist_ok=True)
+        (self.vm.w / "var/lib/forgejo-runner/link").symlink_to(self.vm.w / "etc/geheim")
+        f = self.fund(unit)
+        self.assertIsNone(f["kennung"])
+        self.assertNotIn(REG_UUID, json.dumps(self.ergebnis))
+        self.assertFalse([m for m in f["merkmale"] if "link/reg.json" in m], f["merkmale"])
+        q = erkennung.Quelle(self.vm.w)
+        self.assertIsNone(q.lies_ohne_links("/var/lib/forgejo-runner/link/reg.json", 4096))
+        self.assertIsNotNone(q.lies_ohne_links("/etc/geheim/reg.json", 4096))
+        self.assertFalse(q.ohne_links("/var/lib/forgejo-runner/link/fehlt.json"))
+        self.assertTrue(q.ohne_links("/etc/geheim/fehlt.json"))
+        # ohne Link im Pfad wird dieselbe Datei gelesen
+        self.frisch()
+        unit = self.runner("runner:\n  file: unter/reg.json\n", "/var/lib/forgejo-runner/unter/reg.json")
+        self.assertEqual(self.fund(unit)["kennung"]["uuid"], REG_UUID)
+
+    def test_konfiguration_nur_aus_der_befehlszeile(self):
+        """Security-Review #172: Nennt nur ein Prozess (argv, frei wählbar) die Konfiguration, gilt ein anderer Name
+        als .runner nicht und server.connections wird nicht gelesen – nur die Unit-Datei (root-eigen) zählt."""
+        self.vm.unit("forgejo-runner.service", "[Service]\nExecStart=/usr/local/bin/forgejo-runner daemon\n")
+        self.vm.datei("/home/evil/config.yml", f"runner:\n  file: reg.json\nserver:\n  connections:\n    x:\n"
+                                              f"      url: https://192.0.2.9/\n      uuid: {REG_UUID}\n      token: {GEHEIM_FORGEJO}\n")
+        self.vm.datei("/home/evil/reg.json", json.dumps({"uuid": REG_UUID, "name": "fremd", "address": "https://192.0.2.9"}))
+        self.vm.prozess(1999, ["/usr/local/bin/forgejo-runner", "daemon", "--config", "/home/evil/config.yml"],
+                        unit="forgejo-runner.service", cwd="/home/evil")
+        funde = self.erkenne(aktiv={"forgejo-runner.service": True}, antworten=FORGEJO_ANTWORT)
+        self.assertNotIn(REG_UUID, json.dumps(self.ergebnis))
+        self.assertNotIn("/home/evil/reg.json", json.dumps(self.ergebnis))
+        self.assertFalse([a for a in self.q.abfragen if "192.0.2." in a], self.q.abfragen)
+        f = next(x for x in funde.values() if x["unit"] == "forgejo-runner.service")
+        self.assertIsNone(f["kennung"])
+
+
+VERBINDUNG_UUID_2 = "00000000-0000-4000-8000-000000000173"
+
+
+class VerbindungenTest(Basis):
+    """#172: forgejo-runner ab 12.7 kann ohne .runner auskommen – die Anmeldung steht dann in der Konfiguration
+    unter ``server.connections.<name>`` (url, uuid, token bzw. token_url, labels, fetch_interval; laut
+    ``internal/pkg/config/config.example.yaml`` des Runners). Gelesen werden nur url und uuid, nie der Token."""
+
+    KONFIG = ("log:\n  level: info\n  job_level: info\nrunner:\n  file: .runner\n  capacity: 1\n"
+              "server:\n  # Verbindungen\n  connections:\n    beispiel:\n      url: https://git.example.org/\n"
+              f"      uuid: {REG_UUID}\n      token: {GEHEIM_FORGEJO}\n      fetch_interval: 30s\n"
+              "      labels:\n        - debian:docker://docker.io/library/node:lts-trixie\n")
+
+    def unit(self, konfig: str) -> str:
+        self.vm.unit("forgejo-runner.service", "[Service]\nUser=root\nWorkingDirectory=/root\n"
+                                               "ExecStart=/usr/local/bin/forgejo-runner daemon -c /etc/forgejo-runner/config.yaml\n")
+        self.vm.datei("/etc/forgejo-runner/config.yaml", konfig)
+        return "forgejo-runner.service"
+
+    def fund(self, **quelle) -> dict:
+        funde = self.erkenne(aktiv={"forgejo-runner.service": True}, **quelle)
+        return next(f for f in funde.values() if f["unit"] == "forgejo-runner.service")
+
+    def test_lesen(self):
+        lies = erkennung.verbindungen_aus_yaml
+        self.assertEqual(lies(self.KONFIG), [{"name": "beispiel", "url": "https://git.example.org", "uuid": REG_UUID}])
+        zwei = ("server:\n  connections:\n    eins:\n      url: 'https://git.example.org'\n      uuid: \"" + REG_UUID + "\"\n"
+                "      token_url: file:$CREDENTIALS_DIRECTORY/token.txt\n"
+                "    zwei: { url: https://git2.example.org/, uuid: " + VERBINDUNG_UUID_2 + ", token: " + GEHEIM_FORGEJO + " }\n")
+        self.assertEqual([(v["name"], v["url"], v["uuid"]) for v in lies(zwei)],
+                         [("eins", "https://git.example.org", REG_UUID), ("zwei", "https://git2.example.org", VERBINDUNG_UUID_2)])
+        self.assertNotIn(GEHEIM_FORGEJO, json.dumps(lies(zwei) + lies(self.KONFIG)))
+        self.assertEqual(lies("server:\n  connections:\n    x:\n      url: https://git.example.org\n      uuid: keine-uuid\n"), [])
+        self.assertEqual(lies("cache:\n  connections:\n    x:\n      uuid: " + REG_UUID + "\n"), [])       # anderer Abschnitt
+        self.assertEqual(lies("server:\n  connections:\n    x:\n      labels:\n        uuid: " + REG_UUID + "\n"), [])  # tiefer
+        self.assertEqual(lies("server:\n  connections:\n"), [])
+        self.assertEqual(lies("server:\n  connections:\n    x:\n      token_url: file:/x\n      uuid: " + REG_UUID + "\n")[0]["url"], None)
+        viele = "server:\n  connections:\n" + "".join(f"    c{i}:\n      uuid: {REG_UUID}\n" for i in range(50))
+        self.assertEqual(len(lies(viele)), erkennung.MAX_VERBINDUNGEN)
+
+    def test_eine_verbindung_ohne_runner_datei(self):
+        """Aufbau wie auf einer echten Forgejo-VM mit forgejo-runner 13: keine /root/.runner, Anmeldung in config.yaml."""
+        self.unit(self.KONFIG)
+        f = self.fund(antworten=FORGEJO_ANTWORT, journal=FORGEJO_JOURNAL)
+        self.assertEqual(f["kennung"], {"name": None, "uuid": REG_UUID})
+        self.assertEqual((f["dienst"], f["server"], f["grad"], f["grund"]), ("forgejo", "https://git.example.org", "sicher", None))
+        self.assertIn("/etc/forgejo-runner/config.yaml mit server.connections, url https://git.example.org", f["merkmale"])
+        self.assertFalse([m for m in f["merkmale"] if "laut Konfiguration erwartet" in m])  # .runner wird nicht vermisst
+        self.assertNotIn(GEHEIM_FORGEJO, self.alles)
+        # die Kennung erreicht den Adapter
+        from runner_monitor import anbieter
+        k = anbieter.konfig_aus(erkennung.pruefe_ergebnis(json.dumps(self.ergebnis).encode())["runner"][0], {}, None)
+        self.assertEqual((k.uuid, k.name_beim_dienst), (REG_UUID, None))
+
+    def test_registrierungsdatei_geht_vor(self):
+        self.unit(self.KONFIG)
+        self.vm.datei("/root/.runner", json.dumps({"uuid": VERBINDUNG_UUID_2, "name": "runner-vm-01", "address": "https://git.example.org"}))
+        f = self.fund(antworten=FORGEJO_ANTWORT)
+        self.assertEqual(f["kennung"], {"name": "runner-vm-01", "uuid": VERBINDUNG_UUID_2})
+        self.assertFalse([m for m in f["merkmale"] if "server.connections" in m])
+
+    def test_mehrere_verbindungen_nach_server_aus_runner_json(self):
+        zwei = ("server:\n  connections:\n    eins:\n      url: https://git.example.org/\n      uuid: " + REG_UUID + "\n"
+                "      token: " + GEHEIM_FORGEJO + "\n    zwei:\n      url: https://git2.example.org/\n      uuid: "
+                + VERBINDUNG_UUID_2 + "\n      token: " + GEHEIM_FORGEJO + "\n")
+        self.unit(zwei)
+        f = self.fund(antworten=FORGEJO_ANTWORT)
+        self.assertIsNone(f["kennung"])  # ohne Server aus runner.json keine eindeutige Kennung
+        self.assertIn("/etc/forgejo-runner/config.yaml mit 2 Verbindungen in server.connections", f["merkmale"])
+        rid = f["id"]
+        antworten = {**FORGEJO_ANTWORT, "https://git2.example.org/api/forgejo/v1/version": (200, b'{"version":"13.0.1+gitea-1.22.0"}')}
+        for server, uuid in (("https://git2.example.org", VERBINDUNG_UUID_2), ("https://git.example.org", REG_UUID),
+                             ("https://git3.example.org", None)):
+            self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"version": 1, "runner": {rid: {"server": server, "org": "beispiel-org"}}}))
+            f = self.fund(antworten=antworten)
+            self.assertEqual((f["kennung"] or {}).get("uuid"), uuid, server)
+            self.assertEqual(f["grad"] == "sicher", uuid is not None, server)
+            if uuid:
+                self.assertIn("Verbindung in server.connections passt zum Server aus runner.json", f["merkmale"])
+            else:
+                self.assertEqual(f["grund"], "Server nicht erreichbar")
+
 
 class ErgebnisPruefungTest(unittest.TestCase):
     FUND = {"id": "runner-vm-01", "name": "runner-vm-01", "dienst": "github", "server": None, "version": None,

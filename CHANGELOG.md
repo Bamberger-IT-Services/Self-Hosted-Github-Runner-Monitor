@@ -16,8 +16,12 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   Konfiguration (`-c`/`--config` der Unit, `config.yml` oder `config.yaml`, ohne Angabe die im
   `WorkingDirectory`), relativ zum `WorkingDirectory` der Unit, auch unter anderem Dateinamen als `.runner`
   (dann nur im Ordner der Konfiguration bzw. im Arbeitsverzeichnis, nie `.credentials*` oder Dateien des
-  Monitors). Gelesen wird nur der Schlüssel `file` unter `runner:`. Fehlt die Datei, nennt die Begründung den
-  erwarteten Ort.
+  Monitors; ein frei gewählter Name nur aus der Konfiguration der Unit-Datei und ohne Symlink in irgendeinem
+  Glied des Pfads). Gelesen wird nur der Schlüssel `file` unter `runner:`. Fehlt die Datei, nennt die Begründung
+  den erwarteten Ort.
+- Erkennung (#172): forgejo-runner ab 12.7 ohne `.runner` – die Anmeldung steht in der Konfiguration unter
+  `server.connections`. Der Monitor liest dort nur `url` (Server-Vorschlag) und `uuid` (Kennung), nie den Token.
+  Bei mehreren Verbindungen gilt die, deren `url` zum Server in `runner.json` passt.
 - Info › Runner (#172): Der Sicherheitsgrad ist bei Forgejo und Gitea nur noch „sicher“, wenn UUID oder Name
   beim Server bekannt sind; sonst „wahrscheinlich – Name beim Server unbekannt – Zuordnung ändern“ (übersetzt).
   Bisher stand dort „sicher“, sobald der Server aus `runner.json` antwortete.

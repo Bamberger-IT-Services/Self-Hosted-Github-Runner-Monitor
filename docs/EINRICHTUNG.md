@@ -210,6 +210,9 @@ aus seiner Registrierung, nicht über die ID im Monitor – der Name beim Server
 die Unit. Die Registrierung sucht der Monitor dort, wo der Runner sie selbst erwartet: `runner.file` in
 dessen Konfiguration (`-c`/`--config` im ExecStart der Unit, `config.yml` oder `config.yaml`), relativ zum
 `WorkingDirectory` der Unit – z. B. `WorkingDirectory=/root` mit `file: .runner` → `/root/.runner` (#172).
+Ab forgejo-runner 12.7 kann die Anmeldung statt in `.runner` in der Konfiguration unter `server: connections:`
+stehen (`url`, `uuid`, `token`); dann nimmt der Monitor die `uuid` von dort (den Token liest er nie). Bei
+mehreren Verbindungen gilt die, deren `url` zum Server in `runner.json` passt.
 
 Findet der Monitor sie nicht (Info › Runner: Sicherheitsgrad „wahrscheinlich – keine Registrierung
 gefunden“ bzw. „wahrscheinlich – Name beim Server unbekannt – Zuordnung ändern“; die Begründung nennt dann

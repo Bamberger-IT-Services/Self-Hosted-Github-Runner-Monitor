@@ -173,6 +173,7 @@ const EINR = (() => {
     if (x) return t('{pfad} antwortet: {v}', { pfad: x[1], v: x[2] });
     x = /^(\/\S+) laut Konfiguration erwartet, nicht gefunden$/.exec(s);  // #172
     if (x) return t('{pfad} laut Konfiguration erwartet, nicht gefunden', { pfad: x[1] });
+    if (s === 'Verbindung in server.connections passt zum Server aus runner.json') return t('Verbindung in server.connections passt zum Server aus runner.json');
     if (s === 'Server aus runner.json bestätigt') return t('Server aus runner.json bestätigt');
     if (s === 'Server aus runner.json: nicht bestätigt') return t('Server aus runner.json: nicht bestätigt');
     if (s === 'Anmeldeseite meldet GitLab') return t('Anmeldeseite meldet GitLab');

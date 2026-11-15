@@ -165,8 +165,32 @@ Ein relativer Pfad gilt ab dem `WorkingDirectory` der Unit (ohne Angabe wie bei 
 neben der Konfiguration). Beispiel: `WorkingDirectory=/root`, `-c /etc/forgejo-runner/config.yaml`,
 `runner: file: .runner` → `/root/.runner`. Heißt die Datei nicht `.runner`, wird sie nur im Ordner der
 Konfiguration oder im Arbeitsverzeichnis (nicht `/`) gelesen, nie `.credentials*`, nie eine Konfiguration und
-nie in Ordnern des Monitors – die Konfiguration kann der Benutzer des Runners schreiben. Fehlt die Datei,
-nennt die Begründung den erwarteten Ort („/root/.runner laut Konfiguration erwartet, nicht gefunden“).
+nie in Ordnern des Monitors – die Konfiguration kann der Benutzer des Runners schreiben. Solche Namen gelten
+nur, wenn die **Unit-Datei** (root-eigen) die Konfiguration vorgibt, nicht die Befehlszeile eines Prozesses, und
+sie werden gliedweise ohne Symlink geöffnet (`O_DIRECTORY|O_NOFOLLOW` je Ordner, `dir_fd`): ein verlinkter Ordner
+in der Mitte des Pfads hebelt die Ordnerbindung nicht aus (Security-Review). Fehlt die Datei, nennt die
+Begründung den erwarteten Ort („/root/.runner laut Konfiguration erwartet, nicht gefunden“).
+
+**`server.connections` (#172):** Seit forgejo-runner 12.7 kann die Anmeldung statt in `.runner` in der
+Konfiguration stehen (belegt an `internal/pkg/config/config.example.yaml` und `config.go` des Runners, Tags
+v12.7.0 bis v13.2.1; in v12.6.0 fehlt der Abschnitt):
+
+```yaml
+server:
+  connections:
+    beispiel:                       # Name der Verbindung (frei)
+      url: https://git.example.org/
+      uuid: 00000000-0000-4000-8000-000000000001
+      token: …                      # oder token_url: file:… – liest der Monitor nie
+      labels: [ … ]                 # optional, ebenso fetch_interval
+```
+
+Findet die Erkennung für eine Unit keine Registrierungsdatei, liest sie aus der Konfiguration der Unit (nicht
+aus der Befehlszeile eines Prozesses) nur `url` und `uuid` je Verbindung (geprüft, höchstens 20; Block-Schreibweise
+und `name: {url: …, uuid: …}`). Eine Verbindung gilt wie `.runner`: `url` als Server-Vorschlag (Probe ohne
+Zugangsdaten), `uuid` als Kennung (`kennung.name` bleibt `null` – der Server ordnet über die UUID zu). Bei mehreren
+Verbindungen wird die UUID der Verbindung genommen, deren `url` dem Server aus `runner.json` entspricht; passt
+keine (oder keiner), gibt es keine Kennung und der Grad bleibt „wahrscheinlich“.
 
 **IDs (E-18):** aus dem Namen, eindeutig (gleicher Name → `-2`, `-3`) und **zuerst an Funde mit
 Unit** vergeben – ein nachgemachter Fund (z. B. eine `.runner` in `/home`) bekommt so nie die ID
@@ -266,7 +290,8 @@ Unit-Dateien in den root-eigenen systemd-Verzeichnissen – also nicht bei `.run
 reguläre Datei ist (keine FIFO, kein Gerät); geöffnet wird mit `O_NOFOLLOW`, `O_NONBLOCK` und
 `O_NOCTTY`, danach muss es dieselbe Datei sein; gelesen wird bis zu einer Grenze (64 KB, `deps.json`
 4 MB). Registrierungen nur unter festen Dateinamen (`.runner`, `config.toml`) – oder unter dem Namen aus
-`runner.file` der Konfiguration, dann nur in deren Ordner bzw. im Arbeitsverzeichnis (#172). `token` aus
+`runner.file` einer Konfiguration aus der Unit-Datei, dann nur in deren Ordner bzw. im Arbeitsverzeichnis und
+ohne Symlink in irgendeinem Glied des Pfads (#172). Aus `server.connections` nur `url` und `uuid`, nie `token`. `token` aus
 `.runner`/`config.toml` wird nie übernommen, `.credentials` nie gelesen, vom GitHub-Token wird nur
 geprüft, ob die Datei da ist. Namen, Unit-Namen, Pfade und Adressen werden streng geprüft (Adressen
 ohne Zugangsdaten, Abfrage und Anker); die Textausgabe ersetzt Steuerzeichen. Die Server-Probe

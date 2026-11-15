@@ -169,6 +169,7 @@ const I18N = (() => {
     "Server in runner.json weicht von der .runner-Datei ab": "server in runner.json differs from the .runner file",
     "Name beim Server unbekannt – Zuordnung ändern": "name on the server unknown – change assignment",
     "{pfad} laut Konfiguration erwartet, nicht gefunden": "{pfad} expected according to the configuration, not found",
+    "Verbindung in server.connections passt zum Server aus runner.json": "connection in server.connections matches the server from runner.json",
     "Server aus runner.json bestätigt": "server from runner.json confirmed",
     "Server aus runner.json bestätigt: {grund}": "server from runner.json confirmed: {grund}",
     "Server aus runner.json: {grund}": "server from runner.json: {grund}",
