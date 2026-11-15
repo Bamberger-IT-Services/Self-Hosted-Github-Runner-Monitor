@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.8.4] – 15.11.2026
+
 ### Behoben
 - Forgejo/Gitea, globaler Runner ohne gefundene Registrierung (#172): Der dokumentierte Ausweg griff seit #152
   nicht mehr – der unter „Zuordnung ändern“ eingetragene Name galt als Anzeigename und damit als Ersatzname, der
