@@ -1096,6 +1096,9 @@ def wende_zuordnung_an(funde: list[dict], zuordnung: dict[str, dict], q: Quelle 
     return funde
 
 
+GRUND_SERVER_ABWEICHUNG = "Server in runner.json weicht von der .runner-Datei ab"
+
+
 def pruefe_zuordnung_server(funde: list[dict], zuordnung: dict[str, dict], q: Quelle, speicher: dict) -> list[dict]:
     """Server aus ``runner.json`` in den Fund übernehmen und dagegen prüfen (#145): Info › Runner zeigt dann
     den Server, den die Adapter wirklich nutzen (E-18), und der Grad beruht auf dessen Antwort – nicht nur auf
@@ -1109,7 +1112,10 @@ def pruefe_zuordnung_server(funde: list[dict], zuordnung: dict[str, dict], q: Qu
             continue  # GitHub nutzt runner.json › server nicht (Server fest bzw. aus .runner)
         if server == fund.get("server") and fund["grad"] == "sicher":
             continue  # schon bestätigt (gleiche Adresse wie in .runner)
+        abweichend = bool(fund.get("server")) and fund["server"] != server  # .runner nennt einen anderen Server (#152)
         fund["server"] = server
+        if abweichend:
+            fund["merkmale"].append(GRUND_SERVER_ABWEICHUNG)
         echt, server_version, text = probe(q, fund["dienst"], server, speicher)
         familie = {echt, fund["dienst"]} <= {"forgejo", "gitea"}
         if echt and (echt == fund["dienst"] or familie):
@@ -1118,14 +1124,18 @@ def pruefe_zuordnung_server(funde: list[dict], zuordnung: dict[str, dict], q: Qu
                 fund["einstufung"] = EINSTUFUNG[echt]
                 fund["faehig"] = dict(FAEHIG[echt])
             fund["merkmale"].append(f"Server aus runner.json bestätigt{': ' + text if text else ''}")
-            if not fund.get("_widerspruch"):
+            if abweichend:
+                fund["grad"], fund["_grund"] = "wahrscheinlich", GRUND_SERVER_ABWEICHUNG  # nie „sicher“
+            elif not fund.get("_widerspruch"):
                 fund["grad"], fund["_grund"] = "sicher", None
             version = fund.get("version") or ""
             if server_version and (not version or version.startswith("Runner ")):
                 fund["version"] = " / ".join(v for v in (server_version, version) if v)
         else:
             fund["merkmale"].append(f"Server aus runner.json: {text or 'nicht bestätigt'}")
-            if fund["grad"] != "sicher":
+            if abweichend:
+                fund["grad"], fund["_grund"] = "wahrscheinlich", GRUND_SERVER_ABWEICHUNG  # .runner-Server gilt nicht mehr
+            elif fund["grad"] != "sicher":
                 fund["_grund"] = text or fund.get("_grund")
     return funde
 

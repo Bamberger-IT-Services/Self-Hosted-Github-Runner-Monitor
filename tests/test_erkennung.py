@@ -857,6 +857,28 @@ class KennungTest(Basis):
         self.erkenne(aktiv={"forgejo-runner.service": True}, antworten=FORGEJO_ANTWORT)
         self.assertEqual(self.q.abfragen, [])
 
+    def test_abweichender_server_aus_runner_json_ist_nicht_sicher(self):
+        """#152: .runner nennt einen anderen Server als runner.json – das Merkmal steht im Fund, der Grad ist
+        nicht „sicher“, auch wenn der Server aus runner.json antwortet."""
+        unit = self.vm.forgejo()
+        self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"version": 1, "runner": {
+            "runner-vm-02": {"server": "https://git2.example.org", "org": "beispiel-org"}}}))
+        antworten = {**FORGEJO_ANTWORT, "https://git2.example.org/api/forgejo/v1/version": (200, b'{"version":"13.0.1+gitea-1.22.0"}')}
+        f = self.erkenne(aktiv={unit: True}, antworten=antworten, journal=FORGEJO_JOURNAL)["runner-vm-02"]
+        self.assertEqual(f["server"], "https://git2.example.org")
+        self.assertIn(erkennung.GRUND_SERVER_ABWEICHUNG, f["merkmale"])
+        self.assertEqual((f["grad"], f["grund"]), ("wahrscheinlich", erkennung.GRUND_SERVER_ABWEICHUNG))
+        # auch wenn der Server aus runner.json nicht antwortet: nicht „sicher“
+        f = self.erkenne(aktiv={unit: True}, antworten=FORGEJO_ANTWORT, journal=FORGEJO_JOURNAL)["runner-vm-02"]
+        self.assertEqual(f["grad"], "wahrscheinlich")
+        self.assertIn(erkennung.GRUND_SERVER_ABWEICHUNG, f["merkmale"])
+        # gleicher Server: wie bisher sicher, ohne Merkmal
+        self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"version": 1, "runner": {
+            "runner-vm-02": {"server": "https://git.example.org"}}}))
+        f = self.erkenne(aktiv={unit: True}, antworten=FORGEJO_ANTWORT, journal=FORGEJO_JOURNAL)["runner-vm-02"]
+        self.assertEqual(f["grad"], "sicher")
+        self.assertNotIn(erkennung.GRUND_SERVER_ABWEICHUNG, f["merkmale"])
+
     def test_server_aus_runner_json_entscheidet_forgejo_gegen_gitea(self):
         self.vm.unit("act_runner.service", "[Service]\nExecStart=/usr/local/bin/act_runner daemon\n")
         self.vm.datei("/etc/runner-monitor/runner.json", json.dumps({"version": 1, "runner": {

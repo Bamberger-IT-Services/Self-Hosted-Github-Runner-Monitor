@@ -362,7 +362,9 @@ auch dann richtig zugeordnet werden, wenn der Runner nur dort steht. Jede Anfrag
 dem Ende der Runde; Zeitüberschreitung und 429 kosten die Runde nichts, 403/404 oder ein älterer Server
 ohne den Pfad auch nicht; war keine Liste lesbar, gilt der Runner als „nicht lesbar“, sonst als
 (dann „nicht sichtbar“, nächster Versuch nach der Pause). Bei einer Instanz mit 7 Repositories ohne laufende
-Jobs waren das 11 Anfragen in 0,2 s, in der Runde danach 6.
+Jobs waren das 11 Anfragen in 0,2 s, in der Runde danach 6. In diesen fremden Listen gilt ohne UUID nur der
+Name aus `.runner`; Ersatznamen (Monitor-ID, Unit) passen nur in der eigenen Liste (#152) – sonst könnte ein
+gleichnamiger Runner einer anderen Organisation angezeigt werden.
 
 Ergebnis je Runner in `/run/runner-monitor/anbieter.json` (0644, ohne Token):
 
