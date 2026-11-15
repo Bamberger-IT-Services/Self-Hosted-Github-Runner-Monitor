@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "15.11.2026 08:09",
+  stand: "15.11.2026 10:10",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -25,27 +25,27 @@ window.RUNNER_MONITOR = {
     {
       titel: "Monitor lokal starten",
       wann: "Im Klon auf dem Mac. Bindet nur an 127.0.0.1 und schaltet die Anmeldung ab. Demo unter 127.0.0.1:8090/?demo (Leiste zum Umschalten der Zustände). Strg+C beendet.",
-      code: "cd ~/Desktop/git/DEV/proj-self-hosted-github-runner-monitor/Self-Hosted-Github-Runner-Monitor\nMONITOR_ENTWICKLUNG=1 MONITOR_DATEN_VERZ=./daten MONITOR_LAUF_VERZ=./lauf python3 -m runner_monitor",
+      code: "cd ~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted\nMONITOR_ENTWICKLUNG=1 MONITOR_DATEN_VERZ=./daten MONITOR_LAUF_VERZ=./lauf python3 -m runner_monitor",
     },
     {
       titel: "Tests",
       wann: "Vor jedem Commit. Nur Python-Standardbibliothek (unittest), keine Pakete nötig.",
-      code: "cd ~/Desktop/git/DEV/proj-self-hosted-github-runner-monitor/Self-Hosted-Github-Runner-Monitor\npython3 -m unittest discover -s tests -t .",
+      code: "cd ~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted\npython3 -m unittest discover -s tests -t .",
     },
     {
       titel: "Shell-Skripte prüfen (shellcheck)",
       wann: "Wenn ein Skript geändert wurde. Die CI prüft dasselbe auf ubuntu-latest.",
-      code: "cd ~/Desktop/git/DEV/proj-self-hosted-github-runner-monitor/Self-Hosted-Github-Runner-Monitor\nshellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh",
+      code: "cd ~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted\nshellcheck einrichten.sh deploy/runner-einrichten.sh werkzeuge/paket.sh",
     },
     {
       titel: "Bildschirmfotos fürs Handbuch",
       wann: "Nach Änderungen an der Oberfläche. Nicht als root ausführen. Die erste Zeile nur einmal (Playwright). Bilder landen in docs/handbuch/bilder/ – nur Demo-Daten.",
-      code: "cd ~/Desktop/git/DEV/proj-self-hosted-github-runner-monitor/Self-Hosted-Github-Runner-Monitor\nnpm i --no-save playwright@1 && npx playwright install chromium\nnode werkzeuge/bilder.mjs",
+      code: "cd ~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted\nnpm i --no-save playwright@1 && npx playwright install chromium\nnode werkzeuge/bilder.mjs",
     },
     {
       titel: "Release-Paket bauen",
       wann: "Baut dist/runner-monitor-X.Y.Z.tar.gz und die .sha256 (Version aus VERSION). Veröffentlichen macht der Release-Workflow am GitHub-Release – nur nach OK von Tobias.",
-      code: "cd ~/Desktop/git/DEV/proj-self-hosted-github-runner-monitor/Self-Hosted-Github-Runner-Monitor\nwerkzeuge/paket.sh",
+      code: "cd ~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted\nwerkzeuge/paket.sh",
     },
     {
       titel: "Zeitstempel für das Dashboard",
@@ -147,7 +147,7 @@ window.RUNNER_MONITOR = {
     { anzeichen: "CI auf dem eigenen Runner: „Instanz ci existiert schon“", tun: "Reste eines abgebrochenen Laufs: docker ps -a, die Container des Projekts mit docker rm -f <name> entfernen; gründlich: sudo runner-aufraeumen. Der nächste Lauf legt sie neu an.", datei: "docs/RUNNER.md" },
     { anzeichen: "CI auf dem eigenen Runner: Node fehlt", tun: "Auf dem eigenen Runner ist Node nicht vorinstalliert: actions/setup-node mit node-version-file: .nvmrc." },
     { anzeichen: "Lokal: 127.0.0.1:8090 – „This site can't be reached“", tun: "Der Entwicklungsserver läuft nicht: „Monitor lokal starten“. Unter macOS zeigt 127.0.0.1:8090/ ohne /proc nur die Oberfläche – für Inhalte ?demo nutzen, z. B. ?demo&zustand=gestoppt&github=kein-token." },
-    { anzeichen: "Dashboard per file:// → ERR_BLOCKED_BY_CLIENT", tun: "Der Browser in der Claude-App blockiert lokale Dateien. In Chrome öffnen: ~/Desktop/git/DEV/proj-self-hosted-github-runner-monitor/Self-Hosted-Github-Runner-Monitor/entwickler-dashboard/index.html (am besten als Lesezeichen)." },
+    { anzeichen: "Dashboard per file:// → ERR_BLOCKED_BY_CLIENT", tun: "Der Browser in der Claude-App blockiert lokale Dateien. In Chrome öffnen: ~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted/entwickler-dashboard/index.html (am besten als Lesezeichen)." },
     { anzeichen: "Befehl mit <Platzhalter> eingefügt → „syntax error near unexpected token“", tun: "Platzhalter in spitzen Klammern immer durch den echten Wert ersetzen; im Zweifel Claude nach dem fertigen Befehl fragen – echte Werte aber nie ins Repository." },
   ],
 
@@ -205,20 +205,21 @@ window.RUNNER_MONITOR = {
     { id: "E-28", thema: "Ziel der Doku-Links", frage: "Wohin zeigen die Doku-Links in Oberfläche und einrichten.sh nach dem Einfrieren von GitHub (#132)?", optionen: ["(a) Öffentliches Forgejo-Repo", "(b) Kopie der Doku im Paket", "(c) Auf GitHub bleiben (die Forgejo-Spiegelung schiebt main, develop, release/* und alle Tags), aber auf den Tag der laufenden Version statt main"], datei: "DECISIONS.md", status: "entschieden", antwort: "(c): blob/v<VERSION>/docs/… (Version aus /api/health bzw. VERSION), ohne bekannte Release-Version main als Rückfall; Test prüft Dateien und Anker gegen die Überschriften (Claude im Auftrag von Tobias, Auftrag zu #132, 29.10.2026; jederzeit widerrufbar – bitte bestätigen)" },
     { id: "E-31", thema: "Aufräumen: Timer, schonend, Update", frage: "Wie räumt die VM auf (#144): Timer alle 15 Min. überall oder nur ohne Hook, und was während eines Jobs?", optionen: ["Timer auf jeder VM (auch neben dem GitHub-Hook); während eines Jobs schonend, Images aber auch dann, wenn kein Container sie nutzt und sie seit ≥ 30 Min. auf der VM liegen und nicht frisch gebaut/geladen/gezogen sind; sonst gründlich; Update über den Monitor ändert das Skript nicht (a)", "Timer nur ohne GitHub-Hook (b)", "Auch während eines Jobs gründlich (c)", "Während eines Jobs nur Images ohne Namen (erster Vorschlag)"], datei: "DECISIONS.md", status: "entschieden", antwort: "(a) – Tobias, 29.10.2026: Images auch während eines Jobs, nach 30 Minuten, nie in Benutzung oder frisch geladen; umgesetzt im Review von #150" },
     { id: "E-32", thema: "Globale Forgejo-Runner", frage: "Wie findet der Monitor einen Forgejo-/Gitea-Runner, der auf Instanz-Ebene registriert ist oder beim Server anders heißt als seine Unit (#145), und darf er dafür read:admin nutzen?", optionen: ["Organisation → (freiwillig, nicht empfohlen) /admin mit read:admin → Repositories; Zuordnung über UUID/Name aus .runner; nur Runner fehlt → „Dienst aktiv“ + „nicht sichtbar“ (a)", "read:admin als Vorgabe für Forgejo-Tokens (b)", "Nur die Organisation, sonst „unbekannt“ wie bisher (c)"], datei: "DECISIONS.md", status: "entschieden", antwort: "Option (a) umgesetzt (PR zu #145): read:admin bleibt freiwillig mit Abwägung in EINRICHTUNG und S-FORGEJO-02, 403/404 still und erst nach einer Stunde erneut; Zuordnung über UUID aus .runner, „Dienst aktiv“ statt „unbekannt“, solange die Abfrage gelingt und aktuell ist (Claude im Auftrag von Tobias; bitte bestätigen)" },
+    { id: "E-33", thema: "Name des Repositorys", frage: "Repository umbenennen in „Git-Runner-Monitor-Self-Hosted“ (#162) – wo gilt der neue Name, und was wird aus Update-Quelle und Links, die auf GitHub zeigen?", optionen: ["Forgejo umbenennen, GitHub (eingefroren, Update-Quelle) behält den alten Namen; Forgejo-Pfad der Updates aus eigenem Schlüssel MONITOR_UPDATE_FORGEJO_REPO (a)", "Beide umbenennen (b)", "MONITOR_RELEASE_REPO auf den neuen Namen setzen (c, bricht die Herkunftsprüfung gegen GitHub)"], datei: "DECISIONS.md", status: "entschieden", antwort: "(a) – Umbenennung nur auf Forgejo, GitHub bleibt Self-Hosted-Github-Runner-Monitor (Tobias, Auftrag zu #162, 15.11.2026). Eigener Schlüssel MONITOR_UPDATE_FORGEJO_REPO mit Vorgabe Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted, weil MONITOR_RELEASE_REPO in jeder konfig.env steht und für die Attestierung das GitHub-Repository bleiben muss; nichts baut auf die Weiterleitung von Forgejo (Claude; Schlüssel von Tobias am 15.11.2026 bestätigt)" },
   ],
 
   /* Aufgaben stehen seit 23.10.2026 als Issues im GitHub-Project (Anweisung 08), nicht mehr hier.
    * Die alte Liste A-01 … A-24 liegt in der Git-Historie; jedes Issue nennt seine alte Nummer („früher A-nn“). */
   board: {
     url: "https://github.com/orgs/Bamberger-IT-Services/projects/5",
-    titel: "Self-Hosted-Github-Runner-Monitor Roadmap",
+    titel: "GitHub-Project (eingefroren) – Aufgaben jetzt als Issues in Git-Runner-Monitor-Self-Hosted auf Forgejo",
     issues: "https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/issues",
     neu: "mailto:info@bamberger-it-services.de",
   },
 
   /* Wo finde ich was: lokal, im Repository, auf der VM, im Monitor. Keine echten Adressen oder Rechnernamen. */
   orte: [
-    { gruppe: "Lokal auf dem Mac", titel: "Lokaler Klon", wo: "~/Desktop/git/DEV/proj-self-hosted-github-runner-monitor/Self-Hosted-Github-Runner-Monitor", was: "Arbeitskopie des Repositorys; dieses Dashboard liegt darin unter entwickler-dashboard/." },
+    { gruppe: "Lokal auf dem Mac", titel: "Lokaler Klon", wo: "~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted", was: "Arbeitskopie des Repositorys; dieses Dashboard liegt darin unter entwickler-dashboard/." },
     { gruppe: "Lokal auf dem Mac", titel: "Design 0.4.0 (Entwürfe)", wo: "../Runner-Monitor-Design-v0.4.0/", was: "Entpackte Fassung neben dem Klon (mit Bildschirmfotos aus dem Betrieb); die Entwürfe ohne Fotos liegen im Repository unter docs/design/v0.4.0/.", datei: "../Runner-Monitor-Design-v0.4.0/" },
     { gruppe: "Lokal auf dem Mac", titel: "Entwicklungsdaten", wo: "daten/ und lauf/", was: "Entstehen beim lokalen Start (MONITOR_DATEN_VERZ, MONITOR_LAUF_VERZ): Zugang, Sitzungen, Einstellungen bzw. Ergebnisse des Sammlers. Stehen in .gitignore – nie committen.", datei: "daten/" },
     { gruppe: "Lokal auf dem Mac", titel: "Release-Paket", wo: "dist/", was: "runner-monitor-X.Y.Z.tar.gz und .sha256 nach werkzeuge/paket.sh. Steht in .gitignore.", datei: "dist/" },
@@ -266,6 +267,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "15.11.2026 09:57", text: "#162 vorbereitet (PR offen, Opus): Repository auf Forgejo heißt künftig Git-Runner-Monitor-Self-Hosted (E-33). Befund: Die Forgejo-Update-Quelle bildete ihren Pfad aus MONITOR_RELEASE_REPO, das zugleich das GitHub-Repository der Attestierung ist und in jeder konfig.env mit dem alten Namen steht – nach der Umbenennung hätte Forgejo nur weitergeleitet, der Monitor folgt dem nicht. Neu: MONITOR_UPDATE_FORGEJO_REPO (Vorgabe neuer Name), einrichten.sh quelle nutzt ihn; GitHub-Adressen, Doku-Links, systemd Documentation= und alte Release-Notizen unverändert. Doku (README, CLAUDE.md, AGENTS.md, UPDATE, EINRICHTUNG, FUNKTIONSWEISE, ADR-0007, Bericht, Runbook), lokale Pfade im Dashboard auf ~/_Forgejo/…/Git-Runner-Monitor-Self-Hosted. Offen: Umbenennung auf Forgejo erst nach einem Release mit dieser Änderung (VMs mit Forgejo-Quelle und 0.8.2 fänden sonst kein Update), danach git remote set-url und Ordner umbenennen." },
     { datum: "15.11.2026 08:09", text: "#163 umgesetzt (PR offen, Opus): Forgejo 17 beachtet limit bei /actions/runs nur mit page und lieferte alle Läufe (über 4 MB) – die ganze Runde wurde „nicht erreichbar“. Jetzt status=running&status=waiting&status=blocked seitenweise (gemessen: status mehrfach = Oder, unbekannter Wert = 400), Gitea bzw. Server mit 400 auf den Filter ohne Filter (page=1, limit=30, eine Stunde gemerkt); zu große oder ungültige Antwort eines Repositorys zählt nur dieses als laeufeNichtLesbar. Tests mit nachgebautem Forgejo-17-Server (159 Läufe). Offen: Gitea-Verhalten nicht an echtem Server geprüft." },
     { datum: "30.10.2026 00:30", text: "Release 0.8.2 vorbereitet: #132, #133, #138, #144, #145 gemergt; E-29, E-31, E-32 von Tobias entschieden; CLAUDE.md shellcheck-Zeile um die Aufräum-Skripte ergänzt. Folge-Issues #151, #152." },
     { datum: "30.10.2026 00:11", text: "Review PR #150 (#144, Opus): E-31 von Tobias entschieden – runner-aufraeumen entfernt während eines Jobs auch Images, aber nur unbenutzte, seit ≥ 30 Min. bekannte und nicht frisch gebaute/geladene/gezogene (/var/lib/runner-aufraeumen/images, LastTagTime, Docker-Ereignisse; image prune --filter until bezieht sich auf die Bauzeit). Dazu: systemd-run für den Runner-Neustart bricht das Einrichten nicht mehr ab (reset-failed), volume prune mit Rückfall für Docker < 23, Unit gehärtet, runner-neustart in den Ausnahmen der Erkennung, Tests auch unter dash. shellcheck 0.11 sauber." },

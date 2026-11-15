@@ -4,6 +4,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Geändert
+- Das Repository auf Forgejo heißt jetzt `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` (#162, E-33) – der
+  Monitor überwacht auch Forgejo-, Gitea- und GitLab-Runner. Das eingefrorene GitHub-Repository behält
+  den alten Namen; Updates von GitHub, Herkunftsprüfung und Doku-Links bleiben unverändert.
+- Update-Quelle Forgejo: Der Pfad des Repositorys kommt aus dem neuen Schlüssel
+  `MONITOR_UPDATE_FORGEJO_REPO` (Vorgabe `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted`) statt aus
+  `MONITOR_RELEASE_REPO`, das das GitHub-Repository für die Herkunftsprüfung bleibt. Ohne den neuen
+  Schlüssel fände eine VM nach der Umbenennung nur noch eine Weiterleitung, der der Monitor nicht folgt.
+  VMs mit Forgejo als Quelle sollten diese Version **vor** der Umbenennung installieren (docs/UPDATE.md).
+
 ### Behoben
 - Forgejo: „Forgejo nicht erreichbar“, obwohl der Server antwortet (#163). Forgejo 17 beachtet `limit` bei
   `/actions/runs` nur zusammen mit `page` und lieferte alle Läufe eines Repositorys (über 4 MB), die Antwort

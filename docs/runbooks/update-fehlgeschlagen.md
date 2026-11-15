@@ -19,7 +19,8 @@ es läuft nichts Kaputtes.
    |---|---|
    | Download fehlgeschlagen | Netz/GitHub bzw. Forgejo – später erneut versuchen |
    | Quelle verlangt Anmeldung / Forgejo verlangt eine Anmeldung | Forgejo-Repository nicht ohne Anmeldung lesbar – öffentlich machen oder zurück zu GitHub: `einrichten.sh quelle` |
-   | Weiterleitung / Forgejo leitet weiter | Adresse in `MONITOR_UPDATE_FORGEJO` stimmt nicht genau (z. B. http statt https, fehlender Pfad) – `einrichten.sh quelle` |
+   | Weiterleitung / Forgejo leitet weiter | Adresse in `MONITOR_UPDATE_FORGEJO` stimmt nicht genau (z. B. http statt https, fehlender Pfad) – `einrichten.sh quelle`; oder das Repository wurde auf Forgejo umbenannt – `MONITOR_UPDATE_FORGEJO_REPO` prüfen, bei Version 0.8.2 und älter siehe [UPDATE](../UPDATE.md#quelle-github-oder-forgejo) |
+   | Repository oder Release auf Forgejo nicht gefunden (404) | `MONITOR_UPDATE_FORGEJO_REPO` stimmt nicht (Vorgabe: Name des Repositorys auf Forgejo, nicht der auf GitHub) |
    | Release-Information stammt noch von der vorigen Update-Quelle | nach `einrichten.sh quelle`: Info › Updates › „Jetzt prüfen“, dann erneut |
    | Herkunft nicht bestätigt | keine GitHub-Attestierung zu diesem Paket (z. B. nur auf Forgejo veröffentlicht oder verändert) – **nicht** von Hand installieren |
    | Paket enthält Version … statt … | Paket passt nicht zur angebotenen Version – verworfen, Quelle prüfen |

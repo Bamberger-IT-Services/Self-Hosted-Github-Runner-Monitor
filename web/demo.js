@@ -72,7 +72,7 @@ window.RM_DEMO = (() => {
       : upd === 'fehler' ? { zustand: 'fehler', schritt: 5, version: NEU, zeit: t - 300, meldung: 'die neue Version hat nach dem Neustart nicht geantwortet' } : {};
     // Update-Quelle (#138): ?quelle=forgejo zeigt Forgejo per http im LAN (Platzhalter-Adresse)
     const quelle = updQuelle === 'forgejo'
-      ? { art: 'forgejo', name: 'Forgejo', adresse: 'http://192.0.2.10:3000', http: true, releases: 'http://192.0.2.10:3000/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases' }
+      ? { art: 'forgejo', name: 'Forgejo', adresse: 'http://192.0.2.10:3000', http: true, releases: 'http://192.0.2.10:3000/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted/releases' }
       : { art: 'github', name: 'GitHub', adresse: 'https://github.com', http: false, releases: 'https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases' };
     return { installiert: INST, neueste, status: st, auto: false, quelle };
   };
