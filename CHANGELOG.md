@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.9.0] – 16.11.2026
+
 ### Neu
 - Dashboard (#171): **Laufende und wartende Jobs je Repository** auf einen Blick. Ein Repository in „Jobs je Repository“ lässt
   sich aufklappen: je laufendem Job Workflow und Job, Branch/PR, Runner, **läuft seit** (live), **aktueller Schritt „n von m“**
@@ -30,7 +32,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   3 s ab dem zuletzt gelesenen Byte (Range), mit harten Grenzen; das Token bleibt beim Sammler, der Webdienst
   bekommt nur Zeilen (`/run/runner-monitor/joblog.json`, 0640 root:runner-monitor). Ohne Rechte oder auf
   älteren Servern bleibt das Live-Log beim Journal, Info › Verbindungen nennt den Grund („Job-Log“).
-  Sicherheitsbericht S-JOBLOG-01.
+  Sicherheitsbericht S-JOBLOG-01. Das Job-Log zeigt nur Jobs, die diesem Runner zugeordnet sind – ist er nicht
+  erkennbar, bleibt das Live-Log beim Journal, auch wenn „Letzte Jobs“ die Jobs der Organisation zeigt.
 
 ## [0.8.4] – 15.11.2026
 

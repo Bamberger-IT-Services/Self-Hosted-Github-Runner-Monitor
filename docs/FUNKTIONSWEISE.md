@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 15.11.2026 · Version 0.8.4**
+**Stand: 16.11.2026 · Version 0.9.0**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -625,7 +625,7 @@ Momentaufnahme nur als ersten Schwall von `/events`; jetzt auch als ein JSON-Obj
 { "format": 2,
   "status": { … wie bisher … }, "system": { …, "verlauf": {…} }, "prozesse": […], "platten": […],
   "container": […], "workflows": { … wie bisher … }, "update": { … },
-  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.8.4",
+  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.9.0",
           "auslastung": { …Bereich system… }, "verlauf": { "cpu": [], "ram": [], "netz": [], "start": 0 },
           "prozesse": […], "platten": […], "container": […] },
   "runner": [ …Einträge… ],
@@ -863,6 +863,8 @@ flowchart LR
 
 - **Wann:** nur für Runner mit Adapter-Fähigkeit `JOB_LOG` (Forgejo, Gitea), angebunden, mit Fähigkeit
   `jobs`, und nur für den einen Job, den die Abfrage (30-s-Runde) dem Runner zuordnet (`speicher.jobLogZiel`).
+  Ist der Runner nicht erkennbar (Organisations-Modus der „Letzten Jobs“, #171), gibt es kein Ziel: Das Job-Log
+  entsteht nie aus den Jobs der Organisation, sonst stünde im Live-Log die Ausgabe eines fremden Runners.
   Nur solange ein Browser das Live-Log dieses Runners offen hat: Der Webdienst legt dann höchstens alle 10 s
   den Auftrag `joblog-bedarf` (`{zeit, runner: [IDs]}`, 0600) ab; der Sammler holt ihn ab (umbenennen, streng
   lesen, löschen), nimmt nur IDs seiner Anbindungen und liest höchstens 30 s nach dem letzten Auftrag (eigene
