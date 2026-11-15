@@ -823,21 +823,29 @@ flowchart LR
   die letzten 256 KiB, nimmt davon nur, was hinter dem schon Gelesenen liegt, und fragt nur noch alle 15 s;
   größer → Ende mit Hinweis `zu-gross`. Wird das Log kürzer (neuer Versuch des Jobs), beginnt er neu. Gitea und
   Forgejo ohne `/actions/jobs/{id}` (vor 17): das ganze Log ohne `?step=` und ohne Trenner (der Chip zeigt den
-  Schritt aus der Schrittliste, falls es eine gibt). 401/403 → Hinweis `keine-rechte`, eine Stunde Pause;
-  dreimal 404 auf das Log, ohne je eines bekommen zu haben → `nicht-unterstuetzt`, eine Stunde Pause; 429 →
-  60 s warten; nicht erreichbar → 15 s, nach dem vierten Mal Ende. In allen Fällen bleibt das Live-Log beim
-  Journal, `runner[].jobLog.hinweis` nennt den Grund (Info › Verbindungen, Zeile „Job-Log“).
-- **Zeilen:** Zeitstempel abgetrennt (wird `zeit`), Steuerzeichen und ANSI-Folgen außer Farben (SGR) entfernt
-  (Cursor-Bewegung, Titel, Hyperlinks), bekannte Token-Muster wie im Journal durch `***` ersetzt (auch hier
+  Schritt aus der Schrittliste, falls es eine gibt). 401/403 → Hinweis `keine-rechte`, eine Stunde Pause – eine
+  geänderte Token-Datei (Inode, Zeit, Größe) hebt sie auf. 404 aufs Log, während das Job-Detail kommt (Schritt
+  übersprungen oder noch nicht geschrieben) → still 10 s Pause, nie ein Hinweis; ohne Job-Detail dreimal 404
+  (je Schritt neu gezählt), ohne je ein Log bekommen zu haben → `nicht-unterstuetzt`, eine Stunde Pause. 429 →
+  60 s warten; nicht erreichbar → 15 s, nach dem vierten Mal Ende. Endet ein Leser, weil ihn der Sammler
+  anhält (kein Browser mehr, anderer Job), gibt es weder Pause noch Hinweis. In allen Fällen bleibt das
+  Live-Log beim Journal, `runner[].jobLog.hinweis` nennt den Grund (Info › Verbindungen, Zeile „Job-Log“).
+- **Zeilen:** Zeitstempel abgetrennt (wird `zeit`). Entfernt werden OSC-, DCS-, SOS-, PM- und APC-Folgen samt
+  Nutzlast (Titel, Hyperlinks, Sixel; auch nicht abgeschlossene bis zum Zeilenende), alle anderen CSI-Folgen
+  außer Farben (SGR), einzelne ESC, Steuerzeichen, C1-Zeichen (U+0080–U+009F, auch 8-Bit-CSI) und
+  Bidi-Steuerzeichen (U+202A–U+202E, U+2066–U+2069); eine beim Kürzen angeschnittene Farbfolge am Zeilenende
+  fällt weg. Bekannte Token-Muster wie im Journal durch `***` ersetzt (auch hier
   vollständige Commit-SHAs), höchstens 4000 Zeichen; eine Zeile ohne Zeilenende wartet aufs nächste Stück
   (höchstens 64 KiB). Je Runner die letzten 400 Zeilen bzw. 300 000 Zeichen mit fortlaufender Nummer `seq`.
 - **`joblog.json`** (`/run/runner-monitor`, **0640 root:runner-monitor**, nicht 0644 wie die übrigen
   Ergebnisse – Job-Logs privater Repositories sollen andere Benutzer der VM nicht lesen; fehlt die Gruppe,
   0600 und kein Job-Log): `{version: 1, zeit, runner: {<id>: {lauf, job, aktiv, schritt{nr, von, name},
   seq, zeilen[{seq, zeit, text} | {seq, zeit, art: "schritt", nr, von, name} | {seq, zeit, art: "gekuerzt",
-  bytes}], hinweis}}}`. Der Sammler schreibt sie bei Änderung und alle 20 s, solange er liest, nach seinem
-  Start einmal leer.
-- **Webdienst** (`runner_monitor/joblog.py` › `JobLogs`): liest die Datei jede Sekunde bei Änderung streng
+  bytes}], hinweis}}}`. Der Sammler schreibt sie bei Änderung und – unabhängig davon, ob ein Leser gerade
+  wartet (z. B. 60 s nach 429) – alle 20 s, solange einer läuft, nach seinem Start einmal leer. Beim Beenden
+  des Sammlers (`Sammler.laufe`) hält er die Leser an; es sind Daemon-Fäden, sie enden auch so mit dem Prozess.
+- **Webdienst** (`runner_monitor/joblog.py` › `JobLogs`): liest die Datei jede Sekunde bei Änderung (Inode,
+  mtime in ns und Größe – der Sammler ersetzt sie atomar) streng
   (regulär, ohne Symlink, höchstens 4 MiB), prüft jede Zeile noch einmal (Typen, Länge, Bereinigung) und
   schickt Fenstern, die genau diesen Runner zeigen, zuerst den Stand (`neu`), dann nur Zeilen mit höherer
   `seq`; fehlen dazwischen welche (mehr, als die Datei hält), steht dort `{art: "luecke", n}`. Ein anderer

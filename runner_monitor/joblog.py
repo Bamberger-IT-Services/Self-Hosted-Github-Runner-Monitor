@@ -83,6 +83,17 @@ def schreibe_fuer_monitor(pfad: Path, daten: object, gruppe: str = GRUPPE) -> No
         raise
 
 
+def datei_kennung(pfad: Path | None) -> tuple | None:
+    """(Inode, mtime in ns, Größe) ohne Symlink zu folgen; None, wenn die Datei fehlt."""
+    if pfad is None:
+        return None
+    try:
+        st = os.lstat(pfad)
+    except OSError:
+        return None
+    return (st.st_ino, st.st_mtime_ns, st.st_size)
+
+
 # ---------------------------------------------------------------- Sammler (root)
 
 
@@ -111,6 +122,7 @@ class Verwaltung:
         self._erledigt: dict[str, int] = {}       # Runner → Job, der zu Ende gelesen ist (nicht neu starten)
         self._pause: dict[str, float] = {}        # Runner → nicht vor (monoton)
         self._hinweis: dict[str, str] = {}        # Runner → Hinweis für Info
+        self._pause_token: dict[str, tuple | None] = {}  # Runner → Token-Datei bei 401/403 (neues Token hebt die Pause auf)
         self._geschrieben: object = None
         self._geschrieben_um = float("-inf")
         self._alle: list[_Lauf] = []  # auch angehaltene Leser, bis ihr Faden endet (für beenden)
@@ -151,6 +163,11 @@ class Verwaltung:
                 geaendert = True
             for rid in [r for r in self._erledigt if not self._gleich(kandidaten.get(r), self._erledigt[r])]:
                 del self._erledigt[rid]  # anderer Job: wieder lesen dürfen
+            for rid, (a, _) in kandidaten.items():
+                if rid in self._pause_token and datei_kennung(getattr(a.k, "token_datei", None)) != self._pause_token[rid]:
+                    del self._pause_token[rid]  # Token-Datei geändert: die Stunde Pause nach 401/403 gilt nicht mehr
+                    self._pause.pop(rid, None)
+                    self._erledigt.pop(rid, None)  # auch den Job, an dem es scheiterte, wieder versuchen
             for rid, (a, ziel) in kandidaten.items():
                 if len(self._laeufe) >= MAX_FOLGER:
                     break
@@ -174,8 +191,9 @@ class Verwaltung:
                     del self._laeufe[rid]
                     LOG.warning("Job-Log von %s nicht gelesen (kein Faden frei)", rid)
                     break
-        if geaendert:
-            self.schreibe()
+        # immer: schreibt nur bei Änderung oder als Lebenszeichen (LEBENSZEICHEN), solange ein Leser läuft – auch
+        # wenn er selbst gerade wartet (z. B. 60 s nach 429), sonst hielte der Webdienst die Datei für veraltet
+        self.schreibe(erzwingen=geaendert)
 
     @staticmethod
     def _gleich(kandidat, jid: int) -> bool:
@@ -226,14 +244,18 @@ class Verwaltung:
                     break
                 lauf.halt.wait(warte)
         finally:
-            self._beendet(lauf, ende_grund)
+            self._beendet(lauf, ende_grund, a)
 
-    def _beendet(self, lauf: _Lauf, grund: str | None) -> None:
+    def _beendet(self, lauf: _Lauf, grund: str | None, a=None) -> None:
         mono = time.monotonic()
         with self._sperre:
             lauf.fertig = True
             if self._laeufe.get(lauf.rid) is lauf:
                 del self._laeufe[lauf.rid]  # der Platz wird frei; ein beendeter Job fehlt in der Datei = nicht aktiv
+            if lauf.halt.is_set():
+                grund = None  # angehalten (kein Browser mehr, Job gewechselt): ein Fehler danach zählt nicht
+            if grund == "keine-rechte" and a is not None:
+                self._pause_token[lauf.rid] = datei_kennung(getattr(a.k, "token_datei", None))
             if grund in HINWEISE:
                 self._hinweis[lauf.rid] = grund
                 self._erledigt[lauf.rid] = lauf.jid
@@ -243,7 +265,7 @@ class Verwaltung:
                 self._pause[lauf.rid] = mono + PAUSE_FEHLER
             elif grund == "nicht-erreichbar":
                 self._pause[lauf.rid] = mono + PAUSE_ERREICHBAR * 4
-            elif grund == "weg" or (grund is None and not lauf.folger.aktiv):
+            elif grund == "weg" or (grund is None and not lauf.folger.aktiv and not lauf.halt.is_set()):
                 self._erledigt[lauf.rid] = lauf.jid  # zu Ende gelesen (oder Job weg): diesen Job nicht noch einmal
             if grund == "keine-rechte":
                 LOG.info("Job-Log von %s: keine Berechtigung – bleibt beim Journal", lauf.rid)
@@ -262,12 +284,14 @@ class Verwaltung:
                 runner.setdefault(rid, {"lauf": "", "job": None, "aktiv": False, "schritt": None, "seq": 0, "zeilen": [], "hinweis": h})
         return {"version": 1, "runner": runner}
 
-    def schreibe(self) -> None:
-        """Stand aller Leser schreiben (nur bei Änderung). Stand bilden und Schreiben unter einer Sperre: Wer
-        zuletzt schreibt, schreibt auch den neuesten Stand (ein Leser endet nie mit einem veralteten)."""
+    def schreibe(self, erzwingen: bool = False) -> None:
+        """Stand aller Leser schreiben (bei Änderung, alle ``LEBENSZEICHEN`` Sekunden, solange einer läuft, oder
+        ``erzwingen``). Stand bilden und Schreiben unter einer Sperre: Wer zuletzt schreibt, schreibt auch den
+        neuesten Stand (ein Leser endet nie mit einem veralteten)."""
         with self._schreib_sperre:
             daten = self.daten()
-            if daten == self._geschrieben and (not daten["runner"] or time.monotonic() - self._geschrieben_um < LEBENSZEICHEN):
+            if not erzwingen and daten == self._geschrieben \
+                    and (not daten["runner"] or time.monotonic() - self._geschrieben_um < LEBENSZEICHEN):
                 return
             try:
                 schreibe_fuer_monitor(self.datei, {**daten, "zeit": time.time()}, self._gruppe)
@@ -276,7 +300,8 @@ class Verwaltung:
                 LOG.warning("%s nicht geschrieben: %s", DATEI, type(fehler).__name__)
 
     def beenden(self, warten: float = 0.0) -> None:
-        """Alle Leser anhalten; mit ``warten`` auf ihr Ende warten (höchstens so viele Sekunden je Leser)."""
+        """Alle Leser anhalten; mit ``warten`` auf ihr Ende warten (höchstens so viele Sekunden je Leser). Der Sammler
+        ruft es beim Beenden (``Sammler.laufe``); die Fäden sind ohnehin Daemon-Fäden und enden mit dem Prozess."""
         with self._sperre:
             laeufe = list(self._laeufe.values()) + list(self._alle)
             self._laeufe.clear()
@@ -343,7 +368,7 @@ class JobLogs:
         self._sperre = threading.Lock()
         self._staende: dict[str, dict] = {}
         self._schlangen: dict[str, set] = {}
-        self._mtime: float | None = None
+        self._kennung: tuple | None = None  # (st_ino, st_mtime_ns, st_size) der zuletzt gelesenen Datei
         self._datei_zeit = 0.0  # „zeit“ in joblog.json (Uhr des Sammlers)
         self._bedarf_zeit = float("-inf")
         self._bedarf_ids: tuple = ()
@@ -426,14 +451,13 @@ class JobLogs:
             LOG.warning("Auftrag %s nicht abgelegt: %s", AUFTRAG, type(fehler).__name__)
 
     def lies(self) -> None:
-        try:
-            mtime = os.lstat(self.datei).st_mtime
-        except OSError:
-            mtime = None
-        if mtime == self._mtime:
+        # Änderung an Inode, Zeit (ns) und Größe erkennen: der Sammler ersetzt die Datei atomar (neue Inode), eine
+        # grobe mtime allein könnte zwei Stände in derselben Zeitspanne nicht unterscheiden
+        kennung = datei_kennung(self.datei)
+        if kennung == self._kennung:
             return
-        self._mtime = mtime
-        roh = erkennung.Quelle("/").lies(str(self.datei.absolute()), MAX_DATEI) if mtime is not None else None
+        self._kennung = kennung
+        roh = erkennung.Quelle("/").lies(str(self.datei.absolute()), MAX_DATEI) if kennung is not None else None
         try:
             daten = json.loads(roh.decode("utf-8")) if roh else {}
         except (UnicodeDecodeError, ValueError):

@@ -756,12 +756,15 @@ class Sammler:
         self.auto_update()
 
     def laufe(self) -> None:  # pragma: no cover – Endlosschleife
-        while True:
-            try:
-                self.ein_takt(time.time())
-            except Exception:  # noqa: BLE001 – der Sammler darf nie stehen bleiben
-                LOG.exception("Fehler im Sammler")
-            time.sleep(TAKT_DOCKER)
+        try:
+            while True:
+                try:
+                    self.ein_takt(time.time())
+                except Exception:  # noqa: BLE001 – der Sammler darf nie stehen bleiben
+                    LOG.exception("Fehler im Sammler")
+                time.sleep(TAKT_DOCKER)
+        finally:
+            self.joblog.beenden(warten=1.0)  # Job-Log-Leser anhalten (#176)
 
 
 def main() -> None:  # pragma: no cover

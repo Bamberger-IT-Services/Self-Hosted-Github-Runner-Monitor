@@ -142,8 +142,29 @@ class ZeilenTest(unittest.TestCase):
 
     def test_ansi_nur_farben_steuerzeichen_weg(self):
         roh = "\x1b[90m8:29PM\x1b[0m \x1b[31mERR\x1b[0m \x1b[2K\x1b[1A\x1b]8;;https://x.example\x07link\x1b]8;;\x07 \x00\x08ok\r"
-        self.assertEqual(fl.bereinige(roh), "\x1b[90m8:29PM\x1b[0m \x1b[31mERR\x1b[0m ]8;;https://x.examplelink]8;; ok")
+        self.assertEqual(fl.bereinige(roh), "\x1b[90m8:29PM\x1b[0m \x1b[31mERR\x1b[0m link ok")
         self.assertNotIn("\x07", fl.bereinige("a\x07b"))
+
+    def test_osc_dcs_samt_nutzlast_weg(self):
+        self.assertEqual(fl.bereinige("\x1b]8;;https://x.example\x07link\x1b]8;;\x07 ok"), "link ok")
+        self.assertEqual(fl.bereinige("\x1b]8;;https://x.example\x1b\\link\x1b]8;;\x1b\\"), "link")  # ST statt BEL
+        self.assertEqual(fl.bereinige("\x1b]0;Titel\x07rest"), "rest")
+        self.assertEqual(fl.bereinige("a\x1bP1;2q#0;2;0;0;0\x1b\\b"), "ab")       # DCS (Sixel)
+        self.assertEqual(fl.bereinige("a\x1b_apc\x1b\\b\x1b^pm\x1b\\c\x1bXsos\x1b\\d"), "abcd")
+        self.assertEqual(fl.bereinige("vorher\x1b]0;nie beendet"), "vorher")      # offen bis zum Zeilenende
+        self.assertNotIn("\x1b", fl.bereinige("\x1b]0;" + "x" * 5000))
+
+    def test_c1_und_bidi_weg(self):
+        self.assertEqual(fl.bereinige("a\x9b31mb\x85c"), "a31mbc")                   # 8-Bit-CSI, NEL
+        self.assertEqual(fl.bereinige("if x\u202e\u2066 ok\u2069\u202a\u202c"), "if x ok")
+        self.assertEqual(fl.bereinige("äöü € – ✓"), "äöü € – ✓")                      # normales Unicode bleibt
+
+    def test_angeschnittene_farbe_am_ende_weg(self):
+        for rest in ("\x1b[31m", "\x1b[1;3", "\x1b["):
+            text = fl.bereinige("y" * (fl.journal.MAX_ZEILE - 2) + rest + "z")
+            self.assertNotIn("\x1b", text, repr(rest))
+            self.assertTrue(text.startswith("y" * (fl.journal.MAX_ZEILE - 2)))
+        self.assertEqual(fl.bereinige("\x1b[32mOK\x1b[0m"), "\x1b[32mOK\x1b[0m")    # vollständige Farbe bleibt
 
     def test_tokens_maskiert_und_gekuerzt(self):
         self.assertEqual(fl.bereinige(f"token {TOKEN} ghp_{'a' * 36}"), "token *** ***")
@@ -330,11 +351,31 @@ class FolgerTest(MitServer):
 
     def test_ohne_log_endpunkt_nicht_unterstuetzt(self):
         self.a.codes[JOB + "/logs"] = 404
+        self.a.detail = False  # weder Job-Detail noch Log: Server ohne Endpunkt
         f, k = self.folger(), self.klient()
         with self.assertRaises(fl.LogFehler) as fehler:
             for _ in range(fl.MAX_FEHLT):
                 f.takt(k)
         self.assertEqual(fehler.exception.art, "nicht-unterstuetzt")
+
+    def test_404_aufs_log_bei_vorhandenem_job_still_kurz_pausieren(self):
+        self.a.codes[JOB + "/logs"] = 404  # Schritt übersprungen oder noch nicht geschrieben
+        f, k = self.folger(), self.klient()
+        for _ in range(fl.MAX_FEHLT * 3):
+            f.takt(k)
+        self.assertTrue(f.aktiv)
+        self.assertEqual(f.pause(), fl.TAKT_FEHLT)
+        del self.a.codes[JOB + "/logs"]
+        f.takt(k)
+        self.assertEqual(texte(f)[-1], "Syncing repository")
+        self.assertEqual(f.pause(), fl.TAKT)
+
+    def test_fehlt_zaehlt_je_schritt_neu(self):
+        f, k = self.folger(), self.klient()
+        f.fehlt = fl.MAX_FEHLT - 1
+        self.a.schritte[1][1], self.a.schritte[2][1] = "success", "running"
+        f.takt(k)
+        self.assertEqual(f.fehlt, 0)
 
     def test_lange_zeile_begrenzt(self):
         self.a.schritte[1][2] = b"2026-11-15T20:29:41.0Z " + b"x" * (fl.MAX_REST + 100) + b"\n" + zeile("danach")
@@ -365,8 +406,8 @@ class FolgerTest(MitServer):
 
 
 class _K:
-    def __init__(self, server):
-        self.server, self.org, self.http_erlaubt = server, "beispiel-org", True
+    def __init__(self, server, token_datei=None):
+        self.server, self.org, self.http_erlaubt, self.token_datei = server, "beispiel-org", True, token_datei
 
 
 class _Adapter:
@@ -458,6 +499,50 @@ class VerwaltungTest(MitServer):
         self.v.takt(jetzt + 5, self.kandidaten())
         time.sleep(0.2)
         self.assertEqual(len(self.a.gesehen), n)  # eine Stunde Pause
+
+    def test_neues_token_hebt_die_pause_auf(self):
+        self.a.codes[JOB] = 403
+        token = self.d / "runner-vm-02.token"
+        token.write_text("alt\n")
+        a = _Adapter(self.adresse)
+        a.k.token_datei = token
+        kand = {"runner-vm-02": (a, self.ziel)}
+        einrichtung.lege_auftrag_einfach(self.d / "auftraege", joblog.AUFTRAG, {"runner": ["runner-vm-02"]})
+        jetzt = time.monotonic()
+        self.v.takt(jetzt, kand)
+        self.assertTrue(self.warte(lambda: "runner-vm-02" in self.v._pause))
+        self.v.takt(jetzt + 2, kand)
+        self.assertNotIn("runner-vm-02", self.v._laeufe)  # Pause gilt
+        del self.a.codes[JOB]
+        neu = self.d / "neu.token"
+        neu.write_text("neues token\n")
+        os.replace(neu, token)  # wie zugang schreibt: atomar, neue Inode
+        einrichtung.lege_auftrag_einfach(self.d / "auftraege", joblog.AUFTRAG, {"runner": ["runner-vm-02"]})
+        self.v.takt(jetzt + 4, kand)
+        self.assertIn("runner-vm-02", self.v._laeufe)
+        self.assertTrue(self.warte(lambda: (self.datei().get("runner", {}).get("runner-vm-02") or {}).get("seq")))
+        self.assertIsNone(self.datei()["runner"]["runner-vm-02"]["hinweis"])
+
+    def test_angehalten_kein_hinweis_und_keine_pause(self):
+        lauf = joblog._Lauf("runner-vm-02", 7, fl.LogFolger("beispiel-org", "web-portal", 7))
+        lauf.halt.set()
+        self.v._beendet(lauf, "keine-rechte", _Adapter(self.adresse))
+        self.assertEqual((self.v._pause, self.v._hinweis, self.v._erledigt), ({}, {}, {}))
+
+    def test_lebenszeichen_auch_wenn_der_leser_wartet(self):
+        self.a.codes[JOB] = 429  # Leser wartet danach PAUSE_KONTINGENT (60 s)
+        einrichtung.lege_auftrag_einfach(self.d / "auftraege", joblog.AUFTRAG, {"runner": ["runner-vm-02"]})
+        jetzt = time.monotonic()
+        self.v.takt(jetzt, self.kandidaten())
+        self.assertTrue(self.warte(lambda: any(p == JOB for p, *_ in self.a.gesehen)))
+        self.assertTrue(self.warte(lambda: "runner-vm-02" in self.datei().get("runner", {})))
+        vorher = self.datei()["zeit"]
+        self.v._geschrieben_um -= joblog.LEBENSZEICHEN + 1
+        einrichtung.lege_auftrag_einfach(self.d / "auftraege", joblog.AUFTRAG, {"runner": ["runner-vm-02"]})
+        self.v.takt(jetzt + 2, self.kandidaten())
+        self.assertGreater(self.datei()["zeit"], vorher)
+        self.assertIn("runner-vm-02", self.v._laeufe)  # der Leser wartet noch, keine zweite Anfrage
+        self.assertGreater(joblog.VERALTET, joblog.LEBENSZEICHEN + 2 * 2)
 
     def test_beendeter_job_wird_nicht_neu_gelesen(self):
         for s in self.a.schritte:
@@ -591,12 +676,24 @@ class JobLogsTest(unittest.TestCase):
         self.j.anmelden("runner-vm-02", self.q)
         n = self.nachrichten()[0]
         self.assertEqual(len(n["zeilen"]), 3)
-        self.assertTrue(n["zeilen"][0]["text"].startswith("ok ]0;titel "))
+        self.assertTrue(n["zeilen"][0]["text"].startswith("ok  yyy"))  # OSC samt Nutzlast und CSI weg
         self.assertEqual(len(n["zeilen"][0]["text"]), fl.journal.MAX_ZEILE)
         self.assertEqual(n["zeilen"][1], {"zeit": n["zeilen"][1]["zeit"], "art": "schritt", "nr": 1, "von": None, "name": ""})
         self.assertEqual(n["zeilen"][2]["text"], "Token ***")
         self.assertIsNone(n["hinweis"])
         self.assertEqual(set(self.j._staende), {"runner-vm-02"})
+
+    def test_aenderung_auch_bei_gleicher_zeit(self):
+        pfad = self.d / "lauf" / joblog.DATEI
+        self.schreibe({"runner-vm-02": self.stand(1, [{"seq": 1, "zeit": 1.0, "text": "a"}])})
+        st = os.stat(pfad)
+        self.j.anmelden("runner-vm-02", self.q)
+        self.nachrichten()
+        joblog.schreibe_fuer_monitor(pfad, {"version": 1, "zeit": time.time(), "runner": {
+            "runner-vm-02": self.stand(2, [{"seq": 1, "zeit": 1.0, "text": "a"}, {"seq": 2, "zeit": 2.0, "text": "b"}])}})
+        os.utime(pfad, ns=(st.st_atime_ns, st.st_mtime_ns))  # gleiche mtime, aber neue Inode und Größe
+        self.j.lies()
+        self.assertEqual([z["text"] for z in self.nachrichten()[0]["zeilen"]], ["b"])
 
     def test_symlink_wird_nicht_gelesen(self):
         echt = self.d / "echt.json"

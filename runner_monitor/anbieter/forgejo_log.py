@@ -38,6 +38,7 @@ from . import forgejo as fj
 
 TAKT = 3.0                     # Sekunden zwischen zwei Takten, solange ein Browser zusieht
 TAKT_OHNE_RANGE = 15.0         # Server ignoriert Range: jeder Takt lädt das ganze Log – seltener
+TAKT_FEHLT = 10.0              # Log eines Schritts (noch) nicht da (404, Job-Detail vorhanden): kurz pausieren
 ZEITLIMIT = 5.0                # harte Frist je Anfrage
 FRIST = 10.0                   # harte Frist je Takt (alle Anfragen zusammen)
 MAX_ABSCHNITT = 256 * 1024     # Byte je Log-Anfrage
@@ -54,9 +55,15 @@ MAX_SCHRITTE = 200
 INHALT = re.compile(r"bytes (\d{1,15})-(\d{1,15})/(\d{1,15}|\*)")
 UNERFUELLBAR = re.compile(r"bytes \*/(\d{1,15})")
 ZEIT = re.compile(r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2}) ")
+# OSC (Titel, Hyperlinks: ESC ] … BEL bzw. ESC \\) und DCS/SOS/PM/APC (ESC P|X|^|_ … ESC \\) samt Nutzlast;
+# eine nicht abgeschlossene Folge bis zum Zeilenende
+STRING_FOLGE = re.compile(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\|$)|\x1b[PX^_].*?(?:\x1b\\|$)", re.S)
 CSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SGR = re.compile(r"\x1b\[[0-9;]*m")
 ESC_FREMD = re.compile(r"\x1b(?!\[[0-9;]*m)")
+# C1-Steuerzeichen (u. a. 8-Bit-CSI \x9b) und Bidi-Steuerzeichen (Text umdrehen, „Trojan Source“)
+C1_BIDI = re.compile("[\x80-\x9f\u202a-\u202e\u2066-\u2069]")
+SGR_REST = re.compile(r"\x1b(?:\[[0-9;]*)?$")  # beim Kürzen abgeschnittene Farbfolge am Zeilenende
 
 
 class LogFehler(Exception):
@@ -82,11 +89,14 @@ class Stueck:
 
 
 def bereinige(text: str) -> str:
-    """Wie das Journal (Tokens, Steuerzeichen, Länge), dazu ANSI-Folgen außer Farben (SGR) entfernen –
-    Cursor-Bewegung, Titel, Hyperlinks (OSC) kämen sonst als Text an."""
+    """Wie das Journal (Tokens, Steuerzeichen, Länge), dazu alle Escape-Folgen außer Farben (SGR) entfernen:
+    OSC/DCS/SOS/PM/APC samt Nutzlast (Titel, Hyperlinks), andere CSI-Folgen (Cursor, Löschen), einzelne ESC,
+    C1- und Bidi-Steuerzeichen; eine beim Kürzen angeschnittene Farbfolge am Ende fällt weg."""
+    text = STRING_FOLGE.sub("", text)
     text = CSI.sub(lambda m: m.group(0) if SGR.fullmatch(m.group(0)) else "", text)
     text = ESC_FREMD.sub("", text)
-    return journal.bereinige(text)
+    text = C1_BIDI.sub("", text)
+    return SGR_REST.sub("", journal.bereinige(text))
 
 
 def zeit_aus(text: str) -> tuple[float | None, str]:
@@ -242,6 +252,8 @@ class LogFolger:
         self.lauf = lauf or f"{jid}-{time.monotonic_ns()}"
         self.mit_schritten = schritte
         self.detail = True        # /actions/jobs/{id} vorhanden (Forgejo ab 17, Gitea)
+        self.detail_da = False    # im letzten Takt ein Job-Detail bekommen
+        self.fehlt_pause = False  # im letzten Takt 404 aufs Log bei vorhandenem Job-Detail
         self.idx: int | None = None  # Schritt, dessen Ausschnitt gelesen wird (nur mit Schritten)
         self.offset: int | None = None
         self.rest = b""
@@ -261,7 +273,8 @@ class LogFolger:
     # ------------------------------------------------------------ Ergebnis
 
     def pause(self) -> float:
-        return TAKT if self.range_ok else TAKT_OHNE_RANGE
+        takt = TAKT if self.range_ok else TAKT_OHNE_RANGE
+        return max(takt, TAKT_FEHLT) if self.fehlt_pause else takt
 
     def stand(self) -> dict:
         return {"lauf": self.lauf, "job": self.jid, "aktiv": self.aktiv, "schritt": self.schritt, "seq": self.seq,
@@ -353,7 +366,12 @@ class LogFolger:
         except fj.ForgejoFehler as fehler:
             if fehler.art != "fehlt":
                 raise
-            self.fehlt += 1  # noch nicht ausgeführt, Schritt (noch) nicht da, Job gelöscht, Server ohne Endpunkt
+            if self.detail_da:
+                # Den Job gibt es (Detail kam eben): Schritt übersprungen oder noch nicht geschrieben – kein Zeichen
+                # für einen Server ohne Endpunkt, also still kurz pausieren
+                self.fehlt_pause = True
+                return False
+            self.fehlt += 1  # noch nicht ausgeführt, Job gelöscht, Server ohne Endpunkt
             if self.fehlt >= MAX_FEHLT:
                 raise LogFehler("nicht-unterstuetzt" if not self.gelesen else "weg") from None
             return False
@@ -362,6 +380,7 @@ class LogFolger:
 
     def _job(self, klient: LogKlient) -> tuple[list[dict], bool]:
         """Schrittliste und „Job beendet?“ aus ``/actions/jobs/{id}``."""
+        self.detail_da = False
         if not self.detail:
             return [], False
         self.anfragen += 1
@@ -376,6 +395,7 @@ class LogFolger:
             return [], False
         if not isinstance(daten, dict):
             return [], False
+        self.detail_da = True
         zustand = fj.status(daten)
         fertig = zustand in fj.ERLEDIGT or bool(fj.status(daten, "conclusion"))
         schritte = [s for s in (daten.get("steps") if isinstance(daten.get("steps"), list) else []) if isinstance(s, dict)]
@@ -383,7 +403,7 @@ class LogFolger:
 
     def takt(self, klient: LogKlient) -> None:
         """Ein Takt: Schritte lesen, neue Ausgabe nachlesen (höchstens ``MAX_ANFRAGEN`` Anfragen)."""
-        self.anfragen = 0
+        self.anfragen, self.fehlt_pause = 0, False
         schritte, fertig = self._job(klient)
         if self.mit_schritten:
             if schritte:
@@ -411,6 +431,7 @@ class LogFolger:
         self.schritt = {"nr": laufend + 1, "von": len(schritte), "name": self.namen[laufend]}
         if self.idx is None or self.idx > ziel:
             self.idx, self.offset, self.rest, self.verwerfen = ziel, None, b"", False  # Einstieg (oder neuer Versuch)
+            self.fehlt = 0
             self._trenner()
         mehr = False
         while self.anfragen < MAX_ANFRAGEN:
@@ -420,7 +441,7 @@ class LogFolger:
             if self.idx >= ziel:
                 break
             self._abschluss()  # Schritt zu Ende (ein späterer läuft schon): weiter zum nächsten
-            self.idx, self.offset = self.idx + 1, None
+            self.idx, self.offset, self.fehlt = self.idx + 1, None, 0
             self._trenner()
         if fertig and self.idx >= ziel and not mehr:
             self._abschluss()
