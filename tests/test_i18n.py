@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / "web"
-SEITEN = ["gemeinsam.js", "dashboard.js", "mail.js", "info.js", "dashboard.html", "anmelden.js", "anmelden.html", "einrichtung.js", "einrichtung.html"]
+SEITEN = ["gemeinsam.js", "dashboard.js", "mail.js", "info.js", "dashboard.html", "anmelden.js", "anmelden.html", "einrichtung.js", "einrichtung-runner.js", "einrichtung.html"]
 WURZEL = WEB.parent
 
 
@@ -61,6 +61,7 @@ def server_meldungen() -> list[str]:
     texte += re.findall(r'\(None, None, "([^"]+)"\)', er)
     texte += re.findall(r'grund = "([^"]+)"', er)
     texte += re.findall(r'grund = "[^"]+" if widerspruch else "([^"]+)"', er)
+    texte += re.findall(r'^GRUND_\w+ = "([^"]+)"', er, re.M)
     fj = (WURZEL / "runner_monitor" / "anbieter" / "forgejo.py").read_text(encoding="utf-8")
     texte += re.findall(r'^GRUND_\w+ = "([^"]+)"', fj, re.M)
     texte += [f"Das Passwort braucht mindestens {zugang.PASSWORT_MIN} Zeichen.",

@@ -5,6 +5,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 ## [Unveröffentlicht]
 
 ### Behoben
+- Forgejo-Erkennung (#152, Review zu PR #149): Ersatznamen (Monitor-ID, Unit) passen nur noch in der eigenen
+  Runner-Liste. In `/admin/actions/runners` und in den Listen der Repositories zählt ohne UUID nur der Name
+  aus `.runner` – ein gleichnamiger Runner einer anderen Organisation wird dort nicht mehr angezeigt.
+- Info › Runner: Weicht der Server in `runner.json` von dem in `.runner` ab, steht das jetzt als Merkmal im
+  Fund, und der Sicherheitsgrad ist „wahrscheinlich“ statt „sicher“, auch wenn der Server aus `runner.json`
+  antwortet.
+- Die Begründung (Merkmale) eines Funds in der Einrichtung ist übersetzt, auch die Sätze der Server-Probe mit
+  Pfad, Version und Dienst; dazu der neue Grund zur Server-Abweichung.
 - Forgejo: Die erweiterte Runner-Suche (`/admin` und die Listen der Repositories, #145) läuft jetzt erst nach
   Läufen und Jobs (#151). Auf einem langsamen Server reichte die Rundenfrist danach nicht mehr, die Runde
   endete als „nicht erreichbar“ und die Karte zeigte „unbekannt“. Jede Anfrage der Suche endet 2 s vor dem

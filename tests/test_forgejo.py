@@ -556,6 +556,27 @@ class GlobalerRunnerTest(unittest.TestCase):
         self.assertEqual(erg["runner"]["zustand"], "online")
         self.assertEqual(erg["job"]["name"], "build")  # UUID aus der Liste
 
+    def test_ersatzname_nur_in_der_eigenen_liste(self):
+        """#152: Ohne UUID passen Ersatznamen (Monitor-ID, Unit) nur in der eigenen Liste; in der Liste der
+        Instanz und in Repository-Listen zählt nur die UUID oder der Name aus .runner."""
+        fremd = dict(self.global_liste[0], name="forgejo-runner", uuid="")
+        k = kennung(None, "anderer-name", "forgejo-runner")
+        self.assertEqual(fj.passt(fremd, k), 1 + 1)                       # eigene Liste: Ersatzname gilt
+        self.assertIsNone(fj.passt(fremd, k, streng=True))                # /admin, Repo-Liste: nicht
+        self.assertEqual(fj.passt(dict(fremd, name="anderer-name"), k, streng=True), 1)  # Name aus .runner gilt
+        self.assertEqual(fj.passt(dict(fremd, name="x", uuid=UUID_02), kennung(UUID_02, "anderer-name"), streng=True), 0)
+        self.assertIsNone(fj.bester([fremd], k, streng=True))
+        self.assertEqual(fj.bester([fremd], k), fremd)
+        # Ende zu Ende: gleichnamiger Runner nur in /admin und in einer Repo-Liste → nicht gefunden
+        self.antworten["/admin/actions/runners"] = [fremd]
+        self.antworten["/repos/beispiel-org/api-dienst/actions/runners"] = [fremd]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, {})
+        self.assertEqual(erg["runner"]["zustand"], "unbekannt")
+        # in der eigenen Liste dagegen gefunden
+        self.antworten["/orgs/beispiel-org/actions/runners"] = [dict(fremd, status="online")]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, {})
+        self.assertEqual(erg["runner"]["zustand"], "online")
+
     def test_admin_alter_server_ohne_pfad(self):
         """Ein älterer Server antwortet auf /admin/actions/runners mit 405: kein Fehler der Runde."""
         k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("fehler", "Server antwortet mit 405")})

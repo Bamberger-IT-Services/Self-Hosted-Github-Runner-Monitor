@@ -364,26 +364,32 @@ GRUND_NICHT_LESBAR = "Runner-Liste nicht lesbar (Besitzerrechte an der Organisat
 GRUND_NICHT_SICHTBAR = "Runner beim Dienst nicht sichtbar (globaler Runner? Token-Rechte)"
 
 
-def passt(r: dict, kennung: Kennung) -> int | None:
+def passt(r: dict, kennung: Kennung, streng: bool = False) -> int | None:
     """Rang eines Eintrags der Runner-Liste (0 = UUID, 1 … = Name in der Reihenfolge der Kennung) oder None.
     Kennt der Monitor die UUID und nennt der Dienst eine, zählt nur sie – ein gleichnamiger, neu
-    registrierter Runner ist ein anderer."""
+    registrierter Runner ist ein anderer. ``streng`` (Liste der Instanz, Repository-Listen; #152): ohne
+    UUID zählt nur der Name aus der ``.runner``-Datei – Ersatznamen (Monitor-ID, Unit) könnten dort einen
+    gleichnamigen Runner einer anderen Organisation treffen."""
     ruuid = erkennung.pruefe_uuid(r.get("uuid"))
     if kennung.uuid and ruuid:
         return 0 if ruuid == kennung.uuid else None
     name = r.get("name")
-    return 1 + kennung.namen.index(name) if isinstance(name, str) and name in kennung.namen else None
+    if not isinstance(name, str) or name not in kennung.namen:
+        return None
+    if streng and name != kennung.name_aus_datei:
+        return None
+    return 1 + kennung.namen.index(name)
 
 
-def bester(liste: list[dict], kennung: Kennung) -> dict | None:
-    raenge = [(rang, i) for i, r in enumerate(liste) if (rang := passt(r, kennung)) is not None]
+def bester(liste: list[dict], kennung: Kennung, streng: bool = False) -> dict | None:
+    raenge = [(rang, i) for i, r in enumerate(liste) if (rang := passt(r, kennung, streng)) is not None]
     return liste[min(raenge)[1]] if raenge else None
 
 
-def _durchsuche(klient: Klient, pfad: str, kennung: Kennung) -> dict | None:
+def _durchsuche(klient: Klient, pfad: str, kennung: Kennung, streng: bool = False) -> dict | None:
     for seite in range(1, MAX_SEITEN + 1):
         liste = liste_aus(klient.hole(pfad, {"visible": "true", "page": seite, "limit": SEITE}).daten, "runners")
-        treffer = bester(liste, kennung)
+        treffer = bester(liste, kennung, streng)
         if treffer or len(liste) < SEITE:
             return treffer
     return None
@@ -429,7 +435,7 @@ class RunnerSuche:
         if not pfad:
             return None
         try:
-            treffer = _durchsuche(self.klient, pfad, self.kennung)
+            treffer = _durchsuche(self.klient, pfad, self.kennung, streng=ort != "eigen")
         except ForgejoFehler as fehler:
             # die eigene Liste wie bisher; die zusätzlichen Listen sind freiwillig – ein älterer Server ohne
             # den Pfad (400/405) kostet dort nicht die ganze Runde, „nicht erreichbar“ aber schon (vor Läufen

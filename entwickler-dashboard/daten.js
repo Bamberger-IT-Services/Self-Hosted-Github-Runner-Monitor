@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "15.11.2026 09:55",
+  stand: "15.11.2026 10:03",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -267,6 +267,7 @@ window.RUNNER_MONITOR = {
 
   verlauf: [
     { datum: "15.11.2026 08:09", text: "#163 umgesetzt (PR offen, Opus): Forgejo 17 beachtet limit bei /actions/runs nur mit page und lieferte alle Läufe (über 4 MB) – die ganze Runde wurde „nicht erreichbar“. Jetzt status=running&status=waiting&status=blocked seitenweise (gemessen: status mehrfach = Oder, unbekannter Wert = 400), Gitea bzw. Server mit 400 auf den Filter ohne Filter (page=1, limit=30, eine Stunde gemerkt); zu große oder ungültige Antwort eines Repositorys zählt nur dieses als laeufeNichtLesbar. Tests mit nachgebautem Forgejo-17-Server (159 Läufe). Offen: Gitea-Verhalten nicht an echtem Server geprüft." },
+    { datum: "15.11.2026 10:03", text: "#152 umgesetzt (Branch fix/152-ersatznamen, baut auf #151 auf): Ersatznamen nur in der eigenen Runner-Liste (RunnerSuche: /admin und Repo-Listen streng, passt(streng=True)); abweichender Server aus runner.json wird als Merkmal vermerkt und der Grad ist dann nicht sicher; Merkmale der Erkennung in Einrichtung übersetzbar (EINR.merkmalText). Tests ergänzt." },
     { datum: "15.11.2026 09:55", text: "#151 umgesetzt (PR offen): erweiterte Runner-Suche (/admin, Repository-Listen) jetzt erst nach Läufen und Jobs (Klasse RunnerSuche: eigene() vor, erweitert() nach den Jobs); jede Anfrage dort endet SUCHE_RESERVE (2 s) vor der Rundenfrist (Klient.begrenze), Zeitüberschreitung und 429 still, wenn die eigene Liste gelesen wurde; SUCHE_MIN_REST 12 s auf 6 s. Tests mit langsamem HTTP-Fake-Server (/admin antwortet nach 5 s)." },
     { datum: "30.10.2026 00:30", text: "Release 0.8.2 vorbereitet: #132, #133, #138, #144, #145 gemergt; E-29, E-31, E-32 von Tobias entschieden; CLAUDE.md shellcheck-Zeile um die Aufräum-Skripte ergänzt. Folge-Issues #151, #152." },
     { datum: "30.10.2026 00:11", text: "Review PR #150 (#144, Opus): E-31 von Tobias entschieden – runner-aufraeumen entfernt während eines Jobs auch Images, aber nur unbenutzte, seit ≥ 30 Min. bekannte und nicht frisch gebaute/geladene/gezogene (/var/lib/runner-aufraeumen/images, LastTagTime, Docker-Ereignisse; image prune --filter until bezieht sich auf die Bauzeit). Dazu: systemd-run für den Runner-Neustart bricht das Einrichten nicht mehr ab (reset-failed), volume prune mit Rückfall für Docker < 23, Unit gehärtet, runner-neustart in den Ausnahmen der Erkennung, Tests auch unter dash. shellcheck 0.11 sauber." },
