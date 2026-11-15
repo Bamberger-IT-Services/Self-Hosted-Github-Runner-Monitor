@@ -7,9 +7,11 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 ### Behoben
 - Forgejo: Die erweiterte Runner-Suche (`/admin` und die Listen der Repositories, #145) läuft jetzt erst nach
   Läufen und Jobs (#151). Auf einem langsamen Server reichte die Rundenfrist danach nicht mehr, die Runde
-  endete als „nicht erreichbar“ und die Karte zeigte „unbekannt“. Jede Anfrage der Suche endet 2 s vor dem
-  Ende der Runde; Zeitüberschreitung oder 429 dort sind still (Runde bleibt „ok“, Runner „nicht sichtbar“),
-  sobald die eigene Runner-Liste gelesen wurde. Die Suche braucht noch 6 s Rest der Runde (bisher 12 s).
+  endete als „nicht erreichbar“ und die Karte zeigte „unbekannt“. Auch ein gemerkter Fundort (z. B. `/admin`)
+  wird erst nach den Jobs gelesen; UUID und Name des letzten Funds merkt der Sammler, damit die Jobs vorher
+  richtig zugeordnet werden. Jede Anfrage der Suche endet 2 s vor dem Ende der Runde; Zeitüberschreitung
+  und 429 dort sind still (Runde bleibt „ok“, Runner „nicht sichtbar“ bzw. „nicht lesbar“), scheitert
+  `/admin`, geht es mit den Repository-Listen weiter. Die Suche braucht noch 6 s Rest der Runde (bisher 12 s).
 - Forgejo: „Forgejo nicht erreichbar“, obwohl der Server antwortet (#163). Forgejo 17 beachtet `limit` bei
   `/actions/runs` nur zusammen mit `page` und lieferte alle Läufe eines Repositorys (über 4 MB), die Antwort
   wurde verworfen und die ganze Abfrage galt als Fehler. Der Monitor fragt jetzt nur nach laufenden und

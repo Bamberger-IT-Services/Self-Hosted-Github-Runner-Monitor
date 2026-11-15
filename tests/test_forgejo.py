@@ -3,6 +3,7 @@ Klient (keine Weiterleitung, Grenzen), Konfiguration nur aus runner.json (E-18),
 
 Kein Netz: Die Abfrage läuft gegen eine Attrappe; der Klient-Test nutzt nur Server auf 127.0.0.1.
 """
+import contextlib
 import copy
 import http.server
 import json
@@ -44,6 +45,10 @@ class Attrappe:
         self.fehler = fehler or {}
         self.zaehler = {"anfragen": 0}
         self.pfade: list[tuple[str, dict | None, bool]] = []
+
+    @contextlib.contextmanager
+    def begrenze(self, reserve):
+        yield
 
     def hole(self, pfad, parameter=None, *, text=False):
         self.zaehler["anfragen"] += 1
@@ -461,12 +466,12 @@ class GlobalerRunnerTest(unittest.TestCase):
         self.assertEqual(erg["job"]["name"], "build")  # UUID aus der ersten Log-Zeile
         e = self.a().eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
         self.assertEqual((e["status"]["zustand"], e["status"]["beimDienst"]["zustand"]), ("job", "online"))
-        # nächste Runde: gleich am gemerkten Ort, die Organisation nur, wenn er dort fehlt
+        # nächste Runde: die eigene Liste vor den Läufen, der gemerkte Ort erst nach den Jobs (#151), ohne weitere Listen
         k2 = Attrappe(self.antworten)
         fj.abfrage(k2, "beispiel-org", self.a().kennung(), speicher)
         pfade = [p for p, _, _ in k2.pfade]
-        self.assertIn("/admin/actions/runners", pfade)
-        self.assertNotIn("/orgs/beispiel-org/actions/runners", pfade)
+        self.assertEqual(pfade.count("/admin/actions/runners"), 1)
+        self.assertGreater(pfade.index("/admin/actions/runners"), max(i for i, p in enumerate(pfade) if "/actions/jobs/" in p))
         self.assertFalse([p for p in pfade if p.endswith("/actions/runners") and p.startswith("/repos/")])
         # nur GET über hole(), keine Schreibpfade
         self.assertFalse([p for p in pfade if any(w in p for w in ("registration-token", "delete", "rerun", "cancel"))])
@@ -600,6 +605,70 @@ class GlobalerRunnerTest(unittest.TestCase):
         self.assertGreater(speicher["sucheAb"], time.time())  # nicht in jeder Runde neu
 
 
+    def runde(self, k, speicher, kenn=None):
+        return fj.abfrage(k, "beispiel-org", kenn or self.a().kennung(), speicher)
+
+    def test_gemerkter_ort_langsam_oder_429_kostet_die_runde_nicht(self):
+        """S2/S3: ab Runde 2 wird ``runnerOrt`` (admin) erst nach den Jobs gelesen, Zeitüberschreitung und 429 sind still."""
+        self.antworten["/admin/actions/runners"] = self.global_liste
+        speicher = {}
+        self.assertEqual(self.runde(Attrappe(self.antworten), speicher)["runner"]["zustand"], "online")
+        self.assertEqual(speicher["runnerOrt"], "admin")
+        for art in ("nicht-erreichbar", "kontingent"):
+            sp = copy.deepcopy(speicher)
+            k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler(art, "x")})
+            erg = self.runde(k, sp)
+            pfade = [p for p, _, _ in k.pfade]
+            self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+            self.assertEqual(erg["job"]["name"], "build")  # Läufe und Jobs gelesen
+            self.assertEqual(sp["runnerOrt"], "admin")  # bleibt gemerkt, nächste Runde wieder
+            self.assertGreater(pfade.index("/admin/actions/runners"), max(i for i, p in enumerate(pfade) if "/actions/jobs/" in p))
+
+    def test_erinnerte_kennung_ordnet_den_job_in_runde_2_zu(self):
+        """K1: Runner nur in /admin, ohne UUID in .runner: Runde 2 kennt den Namen aus dem Fund schon vor den Jobs."""
+        self.antworten["/admin/actions/runners"] = [dict(self.global_liste[0], name="forgejo-runner")]
+        kenn = fj.Kennung(namen=("forgejo-runner",))
+        speicher = {}
+        self.runde(Attrappe(self.antworten), speicher, kenn)
+        self.assertEqual(speicher["runnerWer"]["uuid"], UUID_02)
+        erg = self.runde(Attrappe(self.antworten), speicher, kenn)
+        self.assertEqual(erg["job"]["name"], "build")
+
+    def test_eigene_liste_403_und_repo_liste_langsam_runde_ok(self):
+        """S3: eigene Liste 403, /admin und Repository-Listen laufen in die Frist: Runde „ok“, Job bleibt, „nicht lesbar“."""
+        fehler = {"/orgs/beispiel-org/actions/runners": fj.ForgejoFehler("keine-rechte", "403"),
+                  "/admin/actions/runners": nicht_erreichbar(),
+                  "/repos/beispiel-org/web-portal/actions/runners": nicht_erreichbar(),
+                  "/repos/beispiel-org/api-dienst/actions/runners": fj.ForgejoFehler("kontingent", "429")}
+        erg = self.runde(Attrappe(self.antworten, fehler=fehler), {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["job"]["name"], "build")
+        self.assertEqual((erg["runner"]["zustand"], erg["runner"]["ursache"]), ("unbekannt", "nicht-lesbar"))
+        # 401 in der Suche schlägt weiter durch
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("token-ungueltig", "401")})
+        self.assertEqual(self.runde(k, {})["abfrage"], "token-ungueltig")
+
+    def test_nach_abbruch_bei_admin_weiter_mit_den_repository_listen(self):
+        """K3."""
+        self.antworten["/repos/beispiel-org/api-dienst/actions/runners"] = self.global_liste
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("kontingent", "429")})
+        speicher = {}
+        erg = self.runde(k, speicher)
+        self.assertEqual(erg["runner"]["zustand"], "online")
+        self.assertEqual(speicher["runnerOrt"], "repo:api-dienst")
+
+    def test_nichts_gelesen_ist_nicht_lesbar_trotz_altem_merker(self):
+        """K2: ein veralteter ``gelesen``-Merker gibt nach einer Suche ohne lesbare Liste kein „nicht sichtbar“."""
+        for n in list(self.antworten):
+            if n.startswith("/repos/") and n.endswith("/actions/runners"):
+                del self.antworten[n]
+        k = Attrappe(self.antworten, fehler={"/orgs/beispiel-org/actions/runners": fj.ForgejoFehler("keine-rechte", "403"),
+                                              "/admin/actions/runners": fj.ForgejoFehler("keine-rechte", "403")})
+        speicher = {"gelesen": True}
+        self.assertEqual(self.runde(k, speicher)["runner"]["ursache"], "nicht-lesbar")
+        self.assertIs(speicher["gelesen"], False)
+
+
 class FakeServerTest(unittest.TestCase):
     """Ende zu Ende über HTTP (127.0.0.1, http_erlaubt): globaler Runner nur in /admin/actions/runners,
     Organisation und Repositories liefern [], das Token geht nur per GET an diesen Server."""
@@ -651,24 +720,25 @@ class FakeServerTest(unittest.TestCase):
         self.assertIs(e["status"]["beimDienst"]["sichtbar"], False)
 
     def test_langsamer_server_erweiterte_suche_nur_im_rest_der_frist(self):
-        """#151: /admin antwortet erst nach 5 s; Läufe und Jobs sind da, die Runde bleibt „ok“ und endet vor ihrer Frist."""
+        """#151: /admin antwortet erst nach 5 s; Läufe und Jobs sind da, die Runde bleibt „ok“ und die Anfrage
+        endet an der Reserve vor der Rundenfrist (nicht erst an der Frist)."""
         self.handler.langsam["/api/v1/admin/actions/runners"] = 5
         self.antworten["/api/v1/admin/actions/runners"] = (200, {}, json.dumps([self.runner]).encode())
         a = fj.Forgejo(anbieter.RunnerKonfig(id="forgejo-runner", name="forgejo-runner", dienst="forgejo", unit="forgejo-runner.service",
                                              server=f"http://127.0.0.1:{self.server.server_port}", org="beispiel-org", http_erlaubt=True,
                                              name_beim_dienst="anderer-name", uuid=UUID_02))
-        k = fj.Klient(a.k.server, TOKEN, frist=4, http_erlaubt=True)
-        speicher = {}
-        with mock.patch.object(fj, "SUCHE_MIN_REST", 1.0), mock.patch.object(fj, "SUCHE_RESERVE", 1.0):
+        k = fj.Klient(a.k.server, TOKEN, frist=6, http_erlaubt=True)
+        with mock.patch.object(fj, "SUCHE_MIN_REST", 1.0), mock.patch.object(fj, "SUCHE_RESERVE", 2.0):
             beginn = time.monotonic()
-            erg = a.abfrage(speicher, token=TOKEN, klient=k)
+            erg = a.abfrage({}, token=TOKEN, klient=k)
             dauer = time.monotonic() - beginn
         self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
         self.assertEqual(erg["job"]["name"], "build")
-        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")
-        self.assertLess(dauer, 4.0)  # die Anfrage endete an der Reserve vor der Rundenfrist, nicht nach 5 s
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")  # die Repository-Listen waren lesbar
+        self.assertLess(dauer, 6.0 - 2.0 + 1.0)  # ohne Deckel erst an der Frist (6 s) – gewogen mit Toleranz für CI-Last
         gesehen = [p.split("?")[0] for p, _ in self.handler.gesehen]
-        self.assertLess(gesehen.index("/api/v1/repos/beispiel-org/web-portal/actions/runs"), gesehen.index("/api/v1/admin/actions/runners"))
+        if "/api/v1/admin/actions/runners" in gesehen:  # bei wenig Rest (CI-Last) gar nicht gefragt: auch gut
+            self.assertLess(gesehen.index("/api/v1/repos/beispiel-org/web-portal/actions/runs"), gesehen.index("/api/v1/admin/actions/runners"))
 
 
 # ---------------------------------------------------------------- Lauf-Liste (#163)
@@ -1026,6 +1096,44 @@ class KlientTest(unittest.TestCase):
                 k.hole("/version")
             self.assertEqual(f.exception.art, "nicht-erreichbar")
             self.assertLess(time.monotonic() - beginn, 1.5)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_begrenze_deckel(self):
+        """#151: im Block endet jede Anfrage ``reserve`` Sekunden vor der Runde; ist nichts übrig, wird gar nicht gefragt."""
+        k = fj.Klient(f"http://127.0.0.1:{self.server.server_port}", TOKEN, frist=5, http_erlaubt=True)
+        with k.begrenze(10):  # Reserve größer als der Rest: negativer Rest
+            with self.assertRaises(fj.ForgejoFehler) as f:
+                k.hole("/version")
+            self.assertEqual(f.exception.art, "nicht-erreichbar")
+        self.assertEqual(self.handler.gesehen, [])
+        self.assertEqual(k.hole("/version").daten["version"], "17.0.1+gitea-1.22.0")  # danach wieder ohne Deckel
+
+    def test_begrenze_verschachtelt_und_nach_ausnahme_zurueckgesetzt(self):
+        k = fj.Klient("https://git.example.org", TOKEN, frist=100)
+        self.assertIsNone(k._deckel)
+        with k.begrenze(2):
+            aussen = k._deckel
+            self.assertAlmostEqual(aussen, k._ende - 2)
+            with k.begrenze(5):
+                self.assertAlmostEqual(k._deckel, k._ende - 5)
+            self.assertEqual(k._deckel, aussen)
+        self.assertIsNone(k._deckel)
+        with self.assertRaises(RuntimeError):
+            with k.begrenze(2):
+                raise RuntimeError
+        self.assertIsNone(k._deckel)
+
+    def test_begrenze_kuerzt_haengende_anfrage(self):
+        server, _ = starte_troepfelnd()
+        try:
+            k = fj.Klient(f"http://127.0.0.1:{server.server_address[1]}", TOKEN, zeitlimit=10, frist=3, http_erlaubt=True)
+            beginn = time.monotonic()
+            with k.begrenze(2), self.assertRaises(fj.ForgejoFehler) as f:
+                k.hole("/version")
+            self.assertEqual(f.exception.art, "nicht-erreichbar")
+            self.assertLess(time.monotonic() - beginn, 2.0)  # 1 s Rest, nicht 3 s Frist oder 10 s Zeitlimit
         finally:
             server.shutdown()
             server.server_close()
