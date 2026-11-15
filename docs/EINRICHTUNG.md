@@ -206,11 +206,23 @@ Anwendungen › „Zugriffstoken erstellen“ (Gitea: „Neues Token generieren�
 **Globale Runner und `read:admin` (#145).** Ein Runner auf **Instanz-Ebene** (registriert mit einem
 Token aus der Administration, nicht aus der Organisation) steht in der Runner-Liste der Organisation mit
 (der Monitor fragt mit `visible=true`), aber nur für deren Besitzer. Zugeordnet wird er über UUID und Name
-aus seiner `.runner`-Datei, nicht über die ID im Monitor – der Name beim Server darf also anders lauten als
-die Unit. Findet der Monitor die `.runner` nicht (Info › Runner: Sicherheitsgrad „wahrscheinlich – keine
-Registrierung gefunden“), tragen Sie unter Einrichtung › Runner › „Zuordnung ändern“ als Namen den Namen
-beim Server ein. Fehlt der Runner in allen Listen, die das Token lesen darf, zeigt die Karte „Dienst
-aktiv“ mit „Forgejo: nicht sichtbar“ – Dienst, Log und laufende Jobs (über die UUID) bleiben sichtbar.
+aus seiner Registrierung, nicht über die ID im Monitor – der Name beim Server darf also anders lauten als
+die Unit. Die Registrierung sucht der Monitor dort, wo der Runner sie selbst erwartet: `runner.file` in
+dessen Konfiguration (`-c`/`--config` im ExecStart der Unit, `config.yml` oder `config.yaml`), relativ zum
+`WorkingDirectory` der Unit – z. B. `WorkingDirectory=/root` mit `file: .runner` → `/root/.runner` (#172).
+
+Findet der Monitor sie nicht (Info › Runner: Sicherheitsgrad „wahrscheinlich – keine Registrierung
+gefunden“ bzw. „wahrscheinlich – Name beim Server unbekannt – Zuordnung ändern“; die Begründung nennt dann
+den erwarteten Ort), tragen Sie unter **Info & Hilfe › Runner › „Zuordnung ändern“** im Feld **Name beim
+Server** den Namen ein, unter dem der Runner in der Runner-Liste des Servers steht (Forgejo: Administration
+› Actions › Runner bzw. Einstellungen der Organisation › Actions › Runner). Der Monitor speichert ihn als
+`name_beim_dienst` in `/etc/runner-monitor/runner.json` (auf der VM auch von Hand möglich) und vergleicht
+ihn wie den Namen aus `.runner` – auch in `/admin/actions/runners` und den Listen der Repositories. Der
+**Anzeigename** und die Unit zählen dort bewusst nicht (#152): ein gleichnamiger Runner einer anderen
+Organisation würde sonst als dieser angezeigt. Wer den Ausweg bis 0.8.3 genutzt und den Namen beim Server als
+Anzeigenamen eingetragen hat, trägt ihn jetzt im Feld „Name beim Server“ ein. Fehlt der Runner in allen
+Listen, die das Token lesen darf, zeigt die Karte „Dienst aktiv“ mit „Forgejo: nicht sichtbar“ – Dienst, Log
+und laufende Jobs (über die UUID) bleiben sichtbar.
 
 Wer den Online-Status eines globalen Runners **ohne Besitzerrechte** sehen will, kann einem Token eines
 **Administrators** zusätzlich `read:admin` geben; dann liest der Monitor `/admin/actions/runners` (nur

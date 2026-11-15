@@ -105,13 +105,16 @@ alle nicht ignorierten Funde in `runner[]` (siehe „Anbieter-Adapter“); das D
 |---|---|---|
 | systemd-Units | Unit-Dateien in `/etc/systemd/system`, `/run/systemd/system`, `/usr/local/lib/systemd/system`, `/usr/lib/systemd/system`, `/lib/systemd/system` samt Drop-ins; `ExecStart`, `WorkingDirectory`; aktiviert über `*.wants/`, aktiv über `systemctl is-active` | „systemd-Unit forgejo-runner.service“ |
 | Prozesse | `/proc/<pid>/cmdline`, `cgroup` (welche Unit, Container?), `cwd` – nur bekannte Programme (`Runner.Listener`, `forgejo-runner`, `act_runner`, `gitlab-runner`) | „Prozess forgejo-runner daemon“ |
-| Registrierungen | `.runner` (GitHub: `agentName`, `gitHubUrl`; Forgejo/Gitea: `name`, `address`) neben Unit und Prozess, laut `config.yml` (`runner.file`) und an üblichen Orten (`/opt/*`, `/srv/*`, `/var/lib/*`, `/home/*`, `/root`); GitLab: `config.toml` (`name`, `url`) | „/opt/actions-runner/.runner mit gitHubUrl“ |
+| Registrierungen | `.runner` (GitHub: `agentName`, `gitHubUrl`; Forgejo/Gitea: `name`, `address`) neben Unit und Prozess, laut `runner.file` der Runner-Konfiguration (`config.yml`/`config.yaml` aus `-c`/`--config` der Unit, ohne Angabe die im `WorkingDirectory`; auch unter anderem Dateinamen, #172) und an üblichen Orten (`/opt/*`, `/srv/*`, `/var/lib/*`, `/home/*`, `/root`); GitLab: `config.toml` (`name`, `url`) | „/opt/actions-runner/.runner mit gitHubUrl“ |
 | Server-API ohne Zugangsdaten | nur für Funde mit systemd-Unit (E-17): Forgejo `/api/forgejo/v1/version`, Gitea `/api/v1/version`, GitLab-Anmeldeseite, GitHub Enterprise `/api/v3/meta` (github.com gilt als bekannt) | „/api/forgejo/v1/version antwortet: 13.0“ |
 | Runner-Version | GitHub aus `bin/Runner.Listener.deps.json`, sonst aus dem Journal der Unit („with version: v9.1.0“, „version=17.5.2“) | – |
 
 **Grad:** `sicher` – eindeutige Merkmale (Registrierung und systemd-Unit) **und** Server
-bestätigt; `wahrscheinlich` – Dienst erkannt, aber Server nicht erreichbar, ohne Netz, nicht geprüft
-(Fund ohne Unit, E-17), ohne Registrierung oder mit widersprüchlichen Merkmalen; `unklar` – nur allgemeine Hinweise (Name der
+bestätigt, bei Forgejo und Gitea zudem UUID oder Name des Runners beim Server bekannt (aus der
+Registrierung oder `runner.json` › `name_beim_dienst`, #172); `wahrscheinlich` – Dienst erkannt, aber Server
+nicht erreichbar, ohne Netz, nicht geprüft (Fund ohne Unit, E-17), ohne Registrierung, mit widersprüchlichen
+Merkmalen oder – Forgejo/Gitea – ohne Namen beim Server (`grund` „Name beim Server unbekannt – Zuordnung
+ändern“); `unklar` – nur allgemeine Hinweise (Name der
 Unit enthält „runner“, „agent“, „build“ …, startet Container). Bekannte Nicht-Runner
 (`qemu-guest-agent`, `runner-monitor*` …) zählen nicht; unbekannte Units nur, wenn sie aktiviert
 oder aktiv sind. Zwischen Forgejo und Gitea entscheidet die Antwort des Servers.
@@ -150,7 +153,20 @@ Heimatordner des `User=` (aus `/etc/passwd`). **Server aus `runner.json` (#145):
 für einen Fund mit Unit einen Server, steht er im Fund (`server`) und die Erkennung prüft ihn ohne
 Zugangsdaten wie eine Adresse aus `.runner` – bestätigt er den Dienst, wird der Grad `sicher` (außer bei
 widersprüchlichen Merkmalen), sonst nennt `grund` die Antwort („Server nicht erreichbar“). Info › Runner
-zeigt so den Server, den der Adapter wirklich nutzt. Die Datei hat außerdem `zeit` und `geprueft`.
+zeigt so den Server, den der Adapter wirklich nutzt. Ohne UUID und Namen beim Server bleibt der Grad bei
+Forgejo/Gitea trotzdem `wahrscheinlich` (#172, siehe **Grad**). Die Datei hat außerdem `zeit` und `geprueft`.
+
+**Ort der Registrierung (#172):** forgejo-runner und act_runner nennen ihre Registrierung in der
+Konfiguration (`runner.file`, Vorgabe `.runner`), relativ zum Arbeitsverzeichnis des Runners. Die Erkennung
+liest die Konfiguration aus `-c`/`--config` im ExecStart der Unit (`config.yml` oder `config.yaml`, auch
+anderer schlichter `*.yml`/`*.yaml`-Name; fehlt die Angabe, `config.yml`/`config.yaml` im
+`WorkingDirectory`), daraus nur den Schlüssel `file` direkt unter `runner:` (kein allgemeiner YAML-Leser).
+Ein relativer Pfad gilt ab dem `WorkingDirectory` der Unit (ohne Angabe wie bei systemd `/`, dann zusätzlich
+neben der Konfiguration). Beispiel: `WorkingDirectory=/root`, `-c /etc/forgejo-runner/config.yaml`,
+`runner: file: .runner` → `/root/.runner`. Heißt die Datei nicht `.runner`, wird sie nur im Ordner der
+Konfiguration oder im Arbeitsverzeichnis (nicht `/`) gelesen, nie `.credentials*`, nie eine Konfiguration und
+nie in Ordnern des Monitors – die Konfiguration kann der Benutzer des Runners schreiben. Fehlt die Datei,
+nennt die Begründung den erwarteten Ort („/root/.runner laut Konfiguration erwartet, nicht gefunden“).
 
 **IDs (E-18):** aus dem Namen, eindeutig (gleicher Name → `-2`, `-3`) und **zuerst an Funde mit
 Unit** vergeben – ein nachgemachter Fund (z. B. eine `.runner` in `/home`) bekommt so nie die ID
@@ -172,6 +188,8 @@ Runner folgt mit #97) oder von Hand auf der VM:
     "buildagent":   { "stand": "grund", "dienst": "unbekannt", "name": "Build-Agent",
                       "unit": "buildagent.service", "log": "/var/log/buildagent/agent.log" },
     "runner-vm-02": { "server": "https://git.example.org", "org": "beispiel-org" },
+    "forgejo-runner": { "server": "https://git.example.org", "org": "beispiel-org",
+                        "name_beim_dienst": "runner-vm-01" },
     "runner-vm-03": { "stand": "ignoriert" },
     "runner-vm-04": { "http_erlaubt": true } } }
 ```
@@ -183,6 +201,11 @@ verworfen. Ein Eintrag mit `unit`, der nicht gefunden wurde, erscheint als „vo
 und `org` (Organisation oder Benutzer beim Dienst, `A-Z a-z 0-9 . _ -`) binden einen Forgejo- oder
 Gitea-Runner an (#93); sie sind die **einzige** Quelle, wohin der Sammler mit Token fragt (E-18).
 Mit Token nur `https://`; `http://` nur mit `"http_erlaubt": true` beim selben Runner (E-21).
+`name` ist der Anzeigename im Monitor. `name_beim_dienst` (#172, geprüft wie `name`) ist der **Name des
+Runners beim Server**, von Hand eingetragen (Info › Runner › „Zuordnung ändern“ oder auf der VM): Forgejo
+und Gitea vergleichen ihn wie den Namen aus `.runner` – auch in `/admin/actions/runners` und den Listen der
+Repositories, wo Anzeigename und Unit als Ersatznamen nicht zählen (#152). Er geht dem Namen aus `.runner`
+vor; die UUID aus `.runner` bleibt vorrangig, wenn der Server eine nennt. Er ist nie Ziel einer Anfrage.
 Die Oberfläche setzt `server`, `org` und `http_erlaubt` nie (E-22). Gesetzt werden sie auf der VM mit
 `sudo einrichten.sh zugang <runner>` (#120) oder von Hand.
 
@@ -242,7 +265,8 @@ Unit-Dateien in den root-eigenen systemd-Verzeichnissen – also nicht bei `.run
 `config.yml`, `deps.json`, `runner.json` und `/proc`. Vor dem Öffnen prüft `lstat`, dass es eine
 reguläre Datei ist (keine FIFO, kein Gerät); geöffnet wird mit `O_NOFOLLOW`, `O_NONBLOCK` und
 `O_NOCTTY`, danach muss es dieselbe Datei sein; gelesen wird bis zu einer Grenze (64 KB, `deps.json`
-4 MB). Registrierungen nur unter festen Dateinamen (`.runner`, `config.toml`). `token` aus
+4 MB). Registrierungen nur unter festen Dateinamen (`.runner`, `config.toml`) – oder unter dem Namen aus
+`runner.file` der Konfiguration, dann nur in deren Ordner bzw. im Arbeitsverzeichnis (#172). `token` aus
 `.runner`/`config.toml` wird nie übernommen, `.credentials` nie gelesen, vom GitHub-Token wird nur
 geprüft, ob die Datei da ist. Namen, Unit-Namen, Pfade und Adressen werden streng geprüft (Adressen
 ohne Zugangsdaten, Abfrage und Anker); die Textausgabe ersetzt Steuerzeichen. Die Server-Probe
@@ -637,7 +661,7 @@ Logik ohne DOM, geprüft mit `tests/js/info.test.mjs`).
   die vorher fehlten, erscheinen sofort in der Liste als „neu gefunden“ mit der Hinweisleiste „1 neuer Runner
   gefunden“. „Übernehmen“ nimmt sie zur Kenntnis (es ändert sich nichts in `runner.json`) und öffnet
   „Zugangsdaten ändern“, „Ignorieren“ schickt `stand: "ignoriert"`; „Wieder anzeigen“ schickt `stand: null` (= wie erkannt) – eine frühere Wahl `grund` geht dabei verloren.
-- **Zuordnung ändern** (Dienst, Anzeigename, systemd-Unit, Log-Pfad; Speichern/Abbrechen) und **Ignorieren /
+- **Zuordnung ändern** (Dienst, Anzeigename, systemd-Unit, Log-Pfad, bei Forgejo/Gitea „Name beim Server“ – #172; Speichern/Abbrechen) und **Ignorieren /
   Wieder anzeigen** nutzen `POST /api/einrichtung/runner/zuordnung` – nur angemeldet, `Origin` = Host (CSRF),
   Auftrag an den Sammler, der `runner.json` schreibt (E-22). Gesendet wird nur, was sich gegenüber dem Fund
   ändert (`INFO.formEintrag`), der Stand `grund`/`ignoriert` bleibt wie er ist; die Eingabe wird vorab wie im

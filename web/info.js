@@ -59,8 +59,13 @@ const INFO = (() => {
 
   const hatZugang = (f) => !!NAMEN[f.dienst];
 
+  /* Feld „Name beim Server“ (#172): nur Forgejo und Gitea ordnen ihre Runner-Listen über den Namen zu, wenn die
+     Registrierung (.runner) mit UUID und Name fehlt. */
+  const mitNameBeimServer = (f) => f.dienst === 'forgejo' || f.dienst === 'gitea';
+
   /* Eintrag für POST /api/einrichtung/runner/zuordnung aus dem Formular „Zuordnung ändern“: nur, was sich
-     gegenüber dem Fund ändert; der Stand (grund/ignoriert) bleibt, wie er ist. Nur Felder der Oberfläche (E-22). */
+     gegenüber dem Fund ändert; der Stand (grund/ignoriert) bleibt, wie er ist. Nur Felder der Oberfläche (E-22).
+     Der Name beim Server wird mit dem gespeicherten Wert verglichen (nie mit Anzeigename oder Unit, #172). */
   function formEintrag(f, w, dienstWahl) {
     const z = f.zuordnung || {};
     const e = { id: f.id, stand: z.stand === 'grund' || z.stand === 'ignoriert' ? z.stand : null };
@@ -68,14 +73,17 @@ const INFO = (() => {
     const neu = { dienst: dienstWahl.includes(w.dienst) ? w.dienst : 'unbekannt', name: leer(w.name), unit: leer(w.unit), log: leer(w.log) };
     const jetzt = { dienst: f.dienst, name: f.name, unit: f.unit || null, log: z.log || null };
     for (const k of ['dienst', 'name', 'unit', 'log']) if (neu[k] !== jetzt[k]) e[k] = neu[k];
+    if ('name_beim_dienst' in w && leer(w.name_beim_dienst) !== (z.name_beim_dienst || null)) e.name_beim_dienst = leer(w.name_beim_dienst);
     return e;
   }
   const geaendert = (e) => Object.keys(e).length > 2;
 
-  /* Startwerte des Formulars. */
+  /* Startwerte des Formulars; „Name beim Server“ nur bei Forgejo und Gitea. */
   function formStart(f) {
     const z = f.zuordnung || {};
-    return { dienst: f.dienst || 'unbekannt', name: f.name || '', unit: f.unit || '', log: z.log || '' };
+    const w = { dienst: f.dienst || 'unbekannt', name: f.name || '', unit: f.unit || '', log: z.log || '' };
+    if (mitNameBeimServer(f)) w.name_beim_dienst = z.name_beim_dienst || '';
+    return w;
   }
 
   /* Statuszeile über der Liste. z = { erk: 'ruhe'|'laeuft'|'keine'|'zeit', zeit, erkZeit, anzahl, ignoriert }. */
@@ -318,7 +326,7 @@ const INFO = (() => {
   }
 
   return { SKRIPT, AUFRAEUMEN, NAMEN, dienstName, befehlZugang, tokenDatei, serverBasis, ohneSchema, einheit, einstufung, fundeAusRunner, neueFunde,
-    hatZugang, formEintrag, geaendert, formStart, erkennenText, runnerZeilen, verbindungen, naechste, aufraeumenLage, anleitungen, updateQuelle };
+    hatZugang, mitNameBeimServer, formEintrag, geaendert, formStart, erkennenText, runnerZeilen, verbindungen, naechste, aufraeumenLage, anleitungen, updateQuelle };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = INFO;
