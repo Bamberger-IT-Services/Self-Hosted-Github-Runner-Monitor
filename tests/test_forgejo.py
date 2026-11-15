@@ -561,6 +561,43 @@ class GlobalerRunnerTest(unittest.TestCase):
         self.assertEqual(erg["runner"]["zustand"], "online")
         self.assertEqual(erg["job"]["name"], "build")  # UUID aus der Liste
 
+    def test_ersatzname_nur_in_der_eigenen_liste(self):
+        """#152: Ohne UUID passen Ersatznamen (Monitor-ID, Unit) nur in der eigenen Liste; in der Liste der
+        Instanz und in Repository-Listen zählt nur die UUID oder der Name aus .runner."""
+        fremd = dict(self.global_liste[0], name="forgejo-runner", uuid="")
+        k = kennung(None, "anderer-name", "forgejo-runner")
+        self.assertEqual(fj.passt(fremd, k), 1 + 1)                       # eigene Liste: Ersatzname gilt
+        self.assertIsNone(fj.passt(fremd, k, streng=True))                # /admin, Repo-Liste: nicht
+        self.assertEqual(fj.passt(dict(fremd, name="anderer-name"), k, streng=True), 1)  # Name aus .runner gilt
+        self.assertEqual(fj.passt(dict(fremd, name="x", uuid=UUID_02), kennung(UUID_02, "anderer-name"), streng=True), 0)
+        self.assertIsNone(fj.bester([fremd], k, streng=True))
+        self.assertEqual(fj.bester([fremd], k), fremd)
+        # Ende zu Ende: gleichnamiger Runner nur in /admin und in einer Repo-Liste → nicht gefunden
+        self.antworten["/admin/actions/runners"] = [fremd]
+        self.antworten["/repos/beispiel-org/api-dienst/actions/runners"] = [fremd]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, {})
+        self.assertEqual(erg["runner"]["zustand"], "unbekannt")
+        # in der eigenen Liste dagegen gefunden
+        self.antworten["/orgs/beispiel-org/actions/runners"] = [dict(fremd, status="online")]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, {})
+        self.assertEqual(erg["runner"]["zustand"], "online")
+
+    def test_gemerkter_ort_admin_ist_streng_und_runner_wer_ohne_ersatzname(self):
+        """#152: Der in /admin gemerkte Ort bleibt streng (Ersatzname eines Fremden passt nicht), und
+        ``runnerWer`` hält den Namen aus .runner, nie einen Ersatznamen."""
+        k = kennung(None, "anderer-name", "forgejo-runner")
+        self.antworten["/admin/actions/runners"] = self.global_liste  # Name = anderer-name (aus .runner)
+        speicher = {}
+        fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, speicher)
+        self.assertEqual((speicher["runnerOrt"], speicher["runnerWer"]["name"]), ("admin", "anderer-name"))
+        # nächste Runde: nur noch ein gleichnamiger Fremder mit Ersatznamen in /admin → nicht gefunden, nichts gemerkt
+        fremd = dict(self.global_liste[0], name="forgejo-runner", uuid="")
+        self.antworten["/admin/actions/runners"] = [fremd]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, speicher)
+        self.assertEqual(erg["runner"]["zustand"], "unbekannt")
+        self.assertNotIn("runnerOrt", speicher)
+        self.assertNotIn("runnerWer", speicher)
+
     def test_admin_alter_server_ohne_pfad(self):
         """Ein älterer Server antwortet auf /admin/actions/runners mit 405: kein Fehler der Runde."""
         k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("fehler", "Server antwortet mit 405")})
@@ -627,7 +664,7 @@ class GlobalerRunnerTest(unittest.TestCase):
     def test_erinnerte_kennung_ordnet_den_job_in_runde_2_zu(self):
         """K1: Runner nur in /admin, ohne UUID in .runner: Runde 2 kennt den Namen aus dem Fund schon vor den Jobs."""
         self.antworten["/admin/actions/runners"] = [dict(self.global_liste[0], name="forgejo-runner")]
-        kenn = fj.Kennung(namen=("forgejo-runner",))
+        kenn = fj.Kennung(namen=("forgejo-runner",), name_aus_datei="forgejo-runner")  # Name aus .runner (#152: streng)
         speicher = {}
         self.runde(Attrappe(self.antworten), speicher, kenn)
         self.assertEqual(speicher["runnerWer"]["uuid"], UUID_02)
