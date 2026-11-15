@@ -593,6 +593,22 @@ class SammlerZielTest(unittest.TestCase):
         self.assertEqual((ziel["repo"], ziel["art"]), ("web-portal", "forgejo"))
         self.assertIsInstance(ziel["id"], int)
 
+    def test_im_organisations_modus_nie_ein_fremder_job(self):
+        """#171 + #176: Lässt sich der Runner nicht erkennen, zeigen „Letzte Jobs“ die Jobs der Organisation – das
+        Job-Log-Ziel aber bleibt leer, sonst stünde im Live-Log die Ausgabe eines fremden Runners."""
+        from tests.test_forgejo import Attrappe as FjAttrappe
+        from tests.test_forgejo import lade
+        speicher: dict = {}
+        fj.abfrage(FjAttrappe(lade("forgejo-17.json")), "beispiel-org", "runner-vm-02", speicher)
+        self.assertIsNotNone(speicher["jobLogZiel"])          # eigener Job: Ziel gesetzt
+        speicher.pop("runnerWer", None)
+        erg = fj.abfrage(FjAttrappe(lade("forgejo-17.json")), "beispiel-org", "runner-vm-99", speicher)
+        self.assertEqual(erg["abfrage"], "ok")
+        self.assertEqual(speicher["laufendModus"], "org")      # Organisations-Modus: fremde Jobs werden gemerkt …
+        self.assertTrue(speicher["laufend"])
+        self.assertIsNone(speicher["jobLogZiel"])             # … das Job-Log-Ziel nie, auch kein altes bleibt stehen
+        self.assertIsNone(erg["job"])
+
 
 # ---------------------------------------------------------------- Webdienst: Verteilung
 
