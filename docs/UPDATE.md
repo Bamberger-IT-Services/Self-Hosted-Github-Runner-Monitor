@@ -1,6 +1,6 @@
 # Update und Rückweg
 
-**Stand: 30.10.2026 · Version 0.8.2**
+**Stand: 15.11.2026 · Version 0.8.3**
 
 Der Monitor prüft alle 6 Stunden, ob es in der Update-Quelle (Vorgabe GitHub, wählbar Forgejo –
 siehe [Quelle](#quelle-github-oder-forgejo)) ein neueres Release gibt – sofort geht es mit
@@ -54,6 +54,7 @@ ohne `/api/v1`), fragt dort das neueste Release ab und schreibt `/etc/runner-mon
 MONITOR_UPDATE_QUELLE=forgejo
 MONITOR_UPDATE_FORGEJO=https://git.example.org
 #MONITOR_UPDATE_HTTP_ERLAUBT=1   # nur für http:// im LAN, setzt das Skript nach Rückfrage
+#MONITOR_UPDATE_FORGEJO_REPO=Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted   # Vorgabe, nur für einen Fork ändern
 ```
 
 Info › Updates zeigt die Quelle in der Zeile „Quelle“ (bei `http://` gelb mit „unverschlüsselt“),
@@ -63,8 +64,12 @@ Info › Updates zeigt die Quelle in der Zeile „Quelle“ (bei `http://` gelb 
   Forgejo `REQUIRE_SIGNIN_VIEW` aus). Ein Token wird nicht hinterlegt. Sonst meldet der Monitor
   „Forgejo verlangt eine Anmeldung“ bzw. „Quelle verlangt Anmeldung“.
 - **Nur diese Adresse:** Der Monitor folgt keiner Weiterleitung und lädt nur
-  `<adresse>/<repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz` und `….sha256`. Das
-  Repository ist dasselbe wie auf GitHub (`MONITOR_RELEASE_REPO`), der Tag muss `vX.Y.Z` heißen.
+  `<adresse>/<repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz` und `….sha256`. Der Tag
+  muss `vX.Y.Z` heißen.
+- **Repository auf Forgejo:** `MONITOR_UPDATE_FORGEJO_REPO`, Vorgabe
+  `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted`. Es heißt seit #162 anders als auf GitHub
+  (`MONITOR_RELEASE_REPO`, weiter `Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor`, E-33). Den alten Namen
+  leitet Forgejo zwar weiter, der Monitor folgt dem aber nicht („Forgejo leitet weiter“).
 - **`http://`** nur mit ausdrücklicher Freigabe. Dann kann jemand im Netz Version, Archiv und
   Prüfsumme gemeinsam austauschen – es schützt nur noch die Herkunftsprüfung. Für `http://` deshalb
   GitHub-CLI und Token einrichten und `MONITOR_UPDATE_HERKUNFT=pflicht` setzen.
@@ -74,6 +79,15 @@ Info › Updates zeigt die Quelle in der Zeile „Quelle“ (bei `http://` gelb 
   GitHub-CLI und Token das Update ab („Herkunft nicht bestätigt“).
 
 Zurück zu GitHub: `einrichten.sh quelle`, „1“ – Adresse und http-Freigabe werden entfernt.
+
+**Nach der Umbenennung auf Forgejo (#162):** Versionen bis 0.8.2 bilden den Pfad auf Forgejo noch aus
+`MONITOR_RELEASE_REPO` (alter Name) und finden nach der Umbenennung kein Update mehr („Forgejo leitet
+weiter“). Solche VMs zuerst auf 0.8.3 bringen (erste Version mit `MONITOR_UPDATE_FORGEJO_REPO`) – vor der
+Umbenennung über Forgejo, danach über GitHub (`einrichten.sh quelle`, „1“, nach dem Update wieder
+„2“) oder per Paket von Hand. `MONITOR_RELEASE_REPO` **nicht** auf den neuen Namen setzen: Damit
+scheitert die Herkunftsprüfung gegen GitHub. Umgekehrt sucht 0.8.3 schon unter dem neuen Namen: Bis
+zur Umbenennung meldet eine VM mit Forgejo-Quelle „Repository oder Release auf Forgejo nicht gefunden
+(404)“ – das verschwindet mit der Umbenennung von selbst.
 
 **Erst ab der Version, die Forgejo kennt:** Das Update installiert immer der Hilfsdienst der gerade
 laufenden Version. Eine VM mit 0.8.1 oder älter holt die erste Version mit Forgejo-Quelle deshalb noch
@@ -127,6 +141,8 @@ Von Hand prüfen:
 ```bash
 gh attestation verify runner-monitor-X.Y.Z.tar.gz --repo Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor
 ```
+
+Das ist das GitHub-Repository (alter Name, `MONITOR_RELEASE_REPO`) – auch bei Forgejo als Quelle.
 
 ## Zurück auf die vorige Version
 

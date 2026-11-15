@@ -183,7 +183,7 @@
       aktion = `<div class="aktion"><button type="button" class="knopf klein primaer" data-aktion="zuordnen" data-id="${id}">${t('Zuordnen')}</button><button type="button" class="knopf klein" data-aktion="ignorieren" data-id="${id}">${t('Ignorieren')}</button><span class="aktion-text">${t('Dienst unklar – zuordnen, dann wird er mit Grundüberwachung angezeigt.')}</span></div>`;
     }
     const begr = merk.length ? `<div><button type="button" class="link-knopf" data-aktion="begr" data-id="${id}" aria-expanded="${bo}">${IC.chev(bo)}${bo ? t('Begründung ausblenden ({n} Merkmale)', { n: merk.length }) : t('Begründung ({n} Merkmale)', { n: merk.length })}</button></div>
-      ${bo ? `<ul class="begr">${merk.map((m) => `<li>${esc(m)}</li>`).join('')}</ul>` : ''}` : '';
+      ${bo ? `<ul class="begr">${merk.map((m) => `<li>${esc(EINR.merkmalText(m, t))}</li>`).join('')}</ul>` : ''}` : '';
     return `<article class="fund${bo || fo ? ' offen-e' : ''}" aria-label="${esc(f.name)}" data-id="${id}">
       <div class="fund-kopf"><span class="fund-name">${esc(f.name)}</span>${plak(f.dienst)}<span class="pill ${EINR.GRAD[f.grad] || 'neutral'}">${esc(GRAD_TEXT()[f.grad] || f.grad || '')}</span><span class="fund-stand ${st.cls}">${STAND_TEXT()[st.art]}</span></div>
       <div class="fund-meta"><span>${t('Server')} <b>${esc((f.dienst === 'github' ? serverKurz(f.server) : f.server) || '–')}</b></span><span>${t('Version')} <b>${esc(f.version || '–')}</b></span><span>${t('Einstufung')} <b class="fund-art">${ART_TEXT()[f.einstufung] || ''}</b></span></div>

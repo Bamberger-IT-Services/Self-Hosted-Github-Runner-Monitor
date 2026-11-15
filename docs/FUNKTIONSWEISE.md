@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 30.10.2026 · Version 0.8.2**
+**Stand: 15.11.2026 · Version 0.8.3**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -300,7 +300,8 @@ angebundener Gitea-Runner meldet in `runner[]` die Fähigkeiten seines Adapters.
 „Teilweise“). **Ehrlich statt „Bereit“:** Ist der Runner beim Dienst beschäftigt, der Job aber in
 keinem Repository der Organisation zu finden, ist der Zustand `job` mit `job.zuordenbar: false`
 („Job nicht zuordenbar“); sind die Läufe eines Repositorys nicht lesbar (`laeufeNichtLesbar`, z. B. 404 auf
-`/actions/runs`), schlug die Abfrage fehl oder ist ihr letzter Erfolg älter als 10 Minuten, ist er
+`/actions/runs`, Antwort zu groß oder kein gültiges JSON – zählt nur dieses Repository, die übrige Abfrage bleibt
+`ok`, #163), schlug die Abfrage fehl oder ist ihr letzter Erfolg älter als 10 Minuten, ist er
 `unbekannt`. **Nur der Runner fehlt (#145):** Ist die Abfrage erfolgreich und aktuell, der Runner aber in
 keiner lesbaren Runner-Liste (globaler Runner ohne `read:admin`, keine Besitzerrechte, anderer Name), meldet
 `beimDienst` `{"zustand": "unbekannt", "seit": null, "sichtbar": false}` und der Zustand bleibt beim lokalen
@@ -318,7 +319,7 @@ einen laufenden Server geprüft. Alle Pfade unter `/api/v1`, Anmeldung `Authoriz
 |---|---|---|---|
 | Version | `/version` → `17.0.1+gitea-1.22.0` (nennt die Gitea-Basis) | `/version` → z. B. `1.24.6` | Art des Servers (Forgejo/Gitea), Anzeige |
 | Runner-Status | `/orgs/{org}/actions/runners?visible=true` (auch globale Runner – ohne `visible=true` fehlen sie), `/user/actions/runners`, `/repos/{o}/{r}/actions/runners`, `/admin/actions/runners` (nur Administratoren mit `read:admin`); Liste `[{id, name, uuid, owner_id, repo_id, status: offline/idle/active, labels: ["…"], version}]`, global = `owner_id` 0 und `repo_id` 0 | gleiche Pfade; `{runners: [{name, status: online/offline, busy, labels: [{name}]}]}` | Online/Offline, beschäftigt, Labels; Suche in Organisation → Instanz (`/admin`, wenn das Token es darf) → Repositories, Zuordnung über UUID/Name aus `.runner` (#145); ohne Treffer „nicht sichtbar“ |
-| Läufe je Repository | `/repos/{o}/{r}/actions/runs` → `{workflow_runs: [{id, status: running/waiting/blocked/success/failure/cancelled/skipped, workflow_id, prettyref, trigger_event, title, started}]}` | `/repos/{o}/{r}/actions/runs` wie GitHub (`in_progress`, `queued`, `completed` + `conclusion`, `head_branch`, `pull_requests`, `path`); zusätzlich `/orgs/{org}/actions/runs` und `/orgs/{org}/actions/jobs` | Jobs je Repository (läuft/wartet), ruhige Repositories seltener |
+| Läufe je Repository | `/repos/{o}/{r}/actions/runs` → `{workflow_runs: [{id, status: running/waiting/blocked/success/failure/cancelled/skipped, workflow_id, prettyref, trigger_event, title, started}]}`; **`limit` wirkt nur zusammen mit `page`**, sonst kommen alle Läufe (je Lauf rund 27 KB, bei 159 Läufen über 4 MB); `status` filtert serverseitig, mehrfach angegeben als Oder (`?status=running&status=waiting`), ein unbekannter Wert (z. B. `in_progress`) gibt 400 (gemessen an 17.0.1, #163) | `/repos/{o}/{r}/actions/runs` wie GitHub (`in_progress`, `queued`, `completed` + `conclusion`, `head_branch`, `pull_requests`, `path`); zusätzlich `/orgs/{org}/actions/runs` und `/orgs/{org}/actions/jobs` | Jobs je Repository (läuft/wartet), ruhige Repositories seltener. Forgejo: nur `?status=running&status=waiting&status=blocked&page=N&limit=50` (höchstens 4 Seiten); Gitea – und ein Server, der den Filter mit 400 ablehnt (dann eine Stunde lang) – ohne Filter `?page=1&limit=30`. Gezählt wird immer im Monitor, ein Server, der den Filter übergeht, zählt also richtig. Ist die Antwort eines Repositorys zu groß (über 4 MB) oder ungültig, gilt nur dieses als nicht lesbar (`laeufeNichtLesbar`); Token, Rechte, Erreichbarkeit betreffen weiter die ganze Runde |
 | Jobs eines Laufs | `/repos/{o}/{r}/actions/runs/{id}/jobs` → `[{id, name, status, task_id, attempt, html_url}]` – **ohne Runner, ohne Schritte, ohne Zeiten** | `{jobs: [{id, name, status, conclusion, runner_name, runner_id, started_at, completed_at, steps}]}` | aktueller Job dieses Runners |
 | Welcher Runner hat den Job? | nur in der **ersten Log-Zeile**: „Runner <uuid> (version:…) received task …“ (Forgejo Runner) bzw. „<name>(version:…) received task …“ (act_runner) | `runner_name` im Job | Forgejo: Log-Anfang (`Range: bytes=0-4095`), Vergleich mit der UUID aus `.runner` bzw. der Runner-Liste, je Job einmal |
 | Schritte | `/repos/{o}/{r}/actions/jobs/{id}` (**ab Forgejo 17**) → `steps: [{number, name, status: success/failure/running/waiting/skipped/cancelled, started, stopped}]`, von Anfang an vollständig von „Set up job“ bis „Complete job“; Forgejo 16 hat den Pfad nicht | `steps` im Job (`status` + `conclusion`) | Schritt `{nr, von, name}`; ohne Pfad `faehig.schritte: false` |
@@ -350,13 +351,20 @@ Daemon-Faden, die auch DNS und tröpfelnde Antworten abdeckt; Antworten werden s
 und `Infinity` abgelehnt, eine Antwort in unerwarteter Form wird „unerwartete Antwort“ mit dem letzten
 guten Stand): Version → Organisation oder
 Benutzer (einmal je Token) → Repositories (ohne archivierte und ohne Actions, 50 je Seite) →
-Runner-Liste (zuerst der Ort des letzten Funds, dann die eigene Liste; fehlt der Runner, höchstens alle
-10 Min. und nur mit mindestens 12 s Rest der Runde: `/admin/actions/runners` und die Listen der 10 zuletzt
-geänderten Repositories; 403/404 dort ist kein Fehler der Runde, ein älterer Server ohne den Pfad auch
-nicht) → Läufe je Repository (ruhige Repositories nur alle 5 Min., wie bei GitHub) → Jobs der
-laufenden Läufe → bei Forgejo Log-Anfang je neuem Job → Schritte des eigenen Jobs → Ergebnis der
-Jobs, die seit der letzten Runde fertig sind. Bei einer Instanz mit 7 Repositories ohne laufende
-Jobs waren das 11 Anfragen in 0,2 s, in der Runde danach 6.
+eigene Runner-Liste → Läufe je Repository (ruhige
+Repositories nur alle 5 Min., wie bei GitHub) → Jobs der laufenden Läufe → bei Forgejo Log-Anfang je
+neuem Job → Schritte des eigenen Jobs → Ergebnis der Jobs, die seit der letzten Runde fertig sind →
+erst jetzt (#151) die erweiterte Suche: der gemerkte Ort des letzten Funds (z. B. `/admin`, jede Runde),
+fehlt der Runner, höchstens alle 10 Min. und nur mit mindestens 6 s Rest der Runde `/admin/actions/runners`
+und die Listen der 10 zuletzt geänderten Repositories (scheitert `/admin`, geht es mit den Repositories
+weiter). UUID und Name des letzten Funds merkt der Sammler, damit Läufe und Jobs ab der nächsten Runde
+auch dann richtig zugeordnet werden, wenn der Runner nur dort steht. Jede Anfrage der Suche endet 2 s vor
+dem Ende der Runde; Zeitüberschreitung und 429 kosten die Runde nichts, 403/404 oder ein älterer Server
+ohne den Pfad auch nicht; war keine Liste lesbar, gilt der Runner als „nicht lesbar“, sonst als
+(dann „nicht sichtbar“, nächster Versuch nach der Pause). Bei einer Instanz mit 7 Repositories ohne laufende
+Jobs waren das 11 Anfragen in 0,2 s, in der Runde danach 6. In diesen fremden Listen gilt ohne UUID nur der
+Name aus `.runner`; Ersatznamen (Monitor-ID, Unit) passen nur in der eigenen Liste (#152) – sonst könnte ein
+gleichnamiger Runner einer anderen Organisation angezeigt werden.
 
 Ergebnis je Runner in `/run/runner-monitor/anbieter.json` (0644, ohne Token):
 
@@ -507,7 +515,7 @@ Momentaufnahme nur als ersten Schwall von `/events`; jetzt auch als ein JSON-Obj
 { "format": 2,
   "status": { … wie bisher … }, "system": { …, "verlauf": {…} }, "prozesse": […], "platten": […],
   "container": […], "workflows": { … wie bisher … }, "update": { … },
-  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.8.2",
+  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.8.3",
           "auslastung": { …Bereich system… }, "verlauf": { "cpu": [], "ram": [], "netz": [], "start": 0 },
           "prozesse": […], "platten": […], "container": […] },
   "runner": [ …Einträge… ],
@@ -906,7 +914,8 @@ dieselben Daten ohne Server (Entwicklung, Bildschirmfotos).
    `MONITOR_UPDATE_QUELLE=forgejo` – ein Forgejo-Server unter `MONITOR_UPDATE_FORGEJO`
    (`runner_monitor/quelle.py`, ADR-0007): ohne Token, ohne Weiterleitungen, `http://` nur mit
    `MONITOR_UPDATE_HTTP_ERLAUBT=1`; Archiv- und Prüfsummen-Adresse baut der Sammler selbst aus Basis,
-   Repository und Tag `vX.Y.Z`. Hängen Archiv und Prüfsumme
+   Repository (`MONITOR_UPDATE_FORGEJO_REPO` – auf Forgejo heißt es seit #162 anders als auf GitHub,
+   E-33) und Tag `vX.Y.Z`. Hängen Archiv und Prüfsumme
    noch nicht am Release (der Release-Workflow lädt sie erst nach dem Veröffentlichen hoch), steht
    dort `bereit: false`; der Sammler fragt dann nach 2 Minuten erneut, die Oberfläche zeigt
    „wird gerade bereitgestellt“ statt des Knopfs, und es gibt kein automatisches Update (#63).
@@ -914,7 +923,7 @@ dieselben Daten ohne Server (Entwicklung, Bildschirmfotos).
 3. `runner-monitor-update.path` startet den root-Hilfsdienst. Er nimmt Archiv- und
    Prüfsummen-Adresse **nur** aus `release.json` und nur von
    `https://github.com/<release-repo>/releases/download/…` bzw. bei Forgejo genau
-   `<basis>/<release-repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz[.sha256]` (ohne
+   `<basis>/<forgejo-repo>/releases/download/vX.Y.Z/runner-monitor-X.Y.Z.tar.gz[.sha256]` (ohne
    Weiterleitungen; `release.json` einer anderen Quelle wird abgelehnt), verwirft Anmeldeseiten und
    alles, was kein tar.gz ist, prüft SHA-256 und – mit GitHub-CLI – die Herkunft per
    `gh attestation verify` gegen das GitHub-Repository (ADR-0005, auch bei Forgejo), entpackt nach

@@ -115,3 +115,17 @@ test('#126: Forgejo und GitLab „voll“ erscheinen in „Anbinden“, Gitea �
   // übernommen: kein Stand „grund“ in runner.json, sonst fragte der Sammler sie nie ab (E-26)
   assert.deepEqual(E.eintraege(funde, w), [{ id: 'runner-vm-03', stand: 'grund' }]);
 });
+
+test('Merkmale der Server-Probe werden übersetzt (#152)', () => {
+  const EN = { 'Server aus runner.json bestätigt: {grund}': 'server from runner.json confirmed: {grund}',
+    '{pfad} antwortet: {v}': '{pfad} responds: {v}', '{pfad} antwortet: {v} ({dienst})': '{pfad} responds: {v} ({dienst})',
+    'Server nicht erreichbar': 'server unreachable', 'Server aus runner.json: {grund}': 'server from runner.json: {grund}',
+    '/api/v3/meta antwortet: GitHub Enterprise {v}': '/api/v3/meta responds: GitHub Enterprise {v}' };
+  const t = (text, w) => (EN[text] || text).replace(/\{(\w+)\}/g, (m, k) => (w && k in w ? String(w[k]) : m));
+  assert.equal(E.merkmalText('Server aus runner.json bestätigt: /api/forgejo/v1/version antwortet: 13.0', t),
+    'server from runner.json confirmed: /api/forgejo/v1/version responds: 13.0');
+  assert.equal(E.merkmalText('/api/v1/version antwortet: 1.24 (Gitea)', t), '/api/v1/version responds: 1.24 (Gitea)');
+  assert.equal(E.merkmalText('Server aus runner.json: Server nicht erreichbar', t), 'server from runner.json: server unreachable');
+  assert.equal(E.merkmalText('/api/v3/meta antwortet: GitHub Enterprise 3.12', t), '/api/v3/meta responds: GitHub Enterprise 3.12');
+  assert.equal(E.merkmalText('systemd-Unit forgejo-runner.service', t), 'systemd-Unit forgejo-runner.service');
+});

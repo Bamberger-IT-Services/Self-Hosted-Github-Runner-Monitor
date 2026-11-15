@@ -4,8 +4,11 @@ Es gelten die gemeinsamen Anweisungen im Repo `Public` auf Forgejo, Ordner `anwe
 (lokal `~/_Forgejo/Bamberger-IT-Services/Public/anweisungen`, 00–08, Vorlagen).
 **Seit 28.10.2026 nur noch Forgejo** (README der Anweisungen › Forgejo statt GitHub): GitHub ist
 eingefroren, Branches `develop` (Standard) / `main` / `feature/*` / `fix/*` / `release/*`, Merge
-nach `develop` per PR selbst, nach `main` nur mit Freigabe. Lokaler Ordner:
-`~/_Forgejo/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor`. Was das Programm selbst
+nach `develop` per PR selbst, nach `main` nur mit Freigabe. Repository auf Forgejo:
+`Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` (bis #162 `Self-Hosted-Github-Runner-Monitor`), lokaler Ordner:
+`~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted`. Das eingefrorene GitHub-Repository behält den alten
+Namen `Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor` – dorthin zeigen weiter Update-Quelle,
+Herkunftsprüfung, Doku-Links und Release-Adressen (E-33); diese Stellen nicht umbenennen. Was das Programm selbst
 mit GitHub macht (Runner überwachen, Updates aus GitHub-Releases), bleibt vorerst so. Deshalb
 legt Claude jedes Release zusätzlich per `gh release create` auf GitHub an (Tag und `main` kommen
 über die Forgejo-Spiegelung, Filter `main,develop,release/*`; `release.yml` baut dort Paket und
@@ -23,8 +26,9 @@ Sitzungen, die Issues abarbeiten, laufen auf **Sonnet**. Vor jedem Issue nennt C
 Im Zweifel die höhere Stufe; nach dem zweiten Fehlversuch hochstufen, nie stillschweigend herunter.
 
 **Aufgaben** stehen als Issues in diesem Repo auf Forgejo (Anweisung 08) und alle im Projekt-Board
-„Roadmap“, gepflegt mit `forgejo-board.js` aus den Anweisungen (`werkzeuge/`, 08 › Projekt-Board):
-`abgleich` zu Sitzungsbeginn, nach neuen Issues und nach dem Merge, beim Start `setze … 'arbeit'`. Nächstes Issue = offen, ohne `agent:`-Label und ohne `blocked`, höchste Priorität
+„Roadmap“, gepflegt vom Board-Bot (Anweisung 08 › Projekt-Board): Backlog, „To review“ (über
+`Closes #<nr>`) und Geschlossen setzt er selbst; `forgejo-board.js` aus den Anweisungen nur optional für
+„In progress“ oder wenn der Bot ausfällt. Nächstes Issue = offen, ohne `agent:`-Label und ohne `blocked`, höchste Priorität
 zuerst; vor dem Start `agent:claude`; Branch `feature/<nr>-<kurzname>` bzw. `fix/<nr>-<kurzname>`
 von `develop`, PR nach `develop` mit `Closes #<nr>`.
 Bereichslabels: `area:monitor`, `area:einrichtung`, `area:runner`, `area:docs`.
@@ -34,7 +38,9 @@ Bereichslabels: `area:monitor`, `area:einrichtung`, `area:runner`, `area:docs`.
 - **Öffentliches Repository:** keine echten IPs, Rechner-, Organisations- oder Personennamen,
   keine Tokens – auch nicht in Tests, Bildern, Logs. Platzhalter: `runner-vm`, `runner-vm-01`,
   `beispiel-org`, Adressen aus `192.0.2.0/24` (RFC 5737).
-- CI läuft auf `ubuntu-latest`, **nie** auf dem eigenen Runner (fremde PRs).
+- CI läuft auf Forgejo auf dem eigenen Runner (`ubuntu-latest` ist dort nur ein Label). Deshalb trägt
+  jeder Job den Fork-Schutz (`if:` mit `head.repo.full_name == github.repository`); PRs aus Forks
+  laufen nie auf dem Runner, sie prüft ein Mitglied lokal.
 - Nur Python-Standardbibliothek und Vanilla-JS. Keine Pakete ohne ADR.
 - Oberfläche: Ansprache „Sie“ in Anmeldung und Einrichtung, neutral im Dashboard, nie „du“.
 - CSP: keine Inline-Skripte, keine `style="…"`-Attribute; Werte per `element.style` setzen.

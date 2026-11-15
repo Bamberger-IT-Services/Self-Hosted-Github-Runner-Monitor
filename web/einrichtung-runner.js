@@ -154,12 +154,34 @@ const EINR = (() => {
     return s(a) === s(b);
   }
 
+  /* Merkmal der Erkennung (Begründung) in der Sprache der Oberfläche (#152). Die Server-Probe liefert feste
+     Sätze mit eingesetzten Werten (Pfad, Version, Dienst); sie werden hier zerlegt und mit den Vorlagen aus
+     i18n.js übersetzt. Alles andere bleibt, wie es ist (t() lässt unbekannte Texte unverändert). */
+  function merkmalText(m, t) {
+    const s = String(m);
+    let x = /^Server aus runner\.json bestätigt: (.+)$/.exec(s);
+    if (x) return t('Server aus runner.json bestätigt: {grund}', { grund: merkmalText(x[1], t) });
+    x = /^Server aus runner\.json: (?!nicht bestätigt$)(.+)$/.exec(s);
+    if (x) return t('Server aus runner.json: {grund}', { grund: merkmalText(x[1], t) });
+    x = /^(\/api\/[\w/.-]+) antwortet: (\S+) \((Forgejo|Gitea)\)$/.exec(s);
+    if (x) return t('{pfad} antwortet: {v} ({dienst})', { pfad: x[1], v: x[2], dienst: x[3] });
+    x = /^\/api\/v3\/meta antwortet: GitHub Enterprise ?(\S*)$/.exec(s);
+    if (x) return t('/api/v3/meta antwortet: GitHub Enterprise {v}', { v: x[1] }).trim();
+    x = /^(\/api\/[\w/.-]+) antwortet: (\S+)$/.exec(s);
+    if (x) return t('{pfad} antwortet: {v}', { pfad: x[1], v: x[2] });
+    if (s === 'Server aus runner.json bestätigt') return t('Server aus runner.json bestätigt');
+    if (s === 'Server aus runner.json: nicht bestätigt') return t('Server aus runner.json: nicht bestätigt');
+    if (s === 'Anmeldeseite meldet GitLab') return t('Anmeldeseite meldet GitLab');
+    if (s === '/api/v3/meta antwortet: GitHub Enterprise') return t('/api/v3/meta antwortet: GitHub Enterprise');
+    return t(s);
+  }
+
   /* Nächster bzw. vorheriger Schritt: ohne Runner zum Anbinden von 3 direkt zu 5 und zurück. */
   const weiterVon = (schritt, anzahlAnbinden) => (schritt === 3 && !anzahlAnbinden ? 5 : Math.min(5, schritt + 1));
   const zurueckVon = (schritt, anzahlAnbinden) => (schritt === 5 && !anzahlAnbinden ? 3 : Math.max(1, schritt - 1));
 
   return { DIENSTE, DIENST_WAHL, GRAD, dienstName, alsId, startWahl, mischeWahl, stand, summe, anbinden, orgAus,
-    tokenSeite, pruefeFormular, eintraege, zusammenfassung, gleicheFunde, weiterVon, zurueckVon };
+    tokenSeite, pruefeFormular, eintraege, zusammenfassung, gleicheFunde, merkmalText, weiterVon, zurueckVon };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = EINR;

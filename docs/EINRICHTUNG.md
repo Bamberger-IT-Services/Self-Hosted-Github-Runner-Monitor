@@ -1,6 +1,6 @@
 # Erstinstallation auf der VM
 
-**Stand: 30.10.2026 · Version 0.8.2**
+**Stand: 15.11.2026 · Version 0.8.3**
 
 Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 `beispiel-org` durch die eigenen Werte ersetzen.
@@ -15,7 +15,7 @@ Dauer: etwa 5 Minuten. Alle Befehle auf der Runner-VM (per SSH), Platzhalter wie
 ## 1. Herunterladen und entpacken
 
 ```bash
-V=0.8.2
+V=0.8.3
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz
 curl -fsSLO https://github.com/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor/releases/download/v$V/runner-monitor-$V.tar.gz.sha256
 sha256sum -c runner-monitor-$V.tar.gz.sha256     # muss „OK“ melden
@@ -297,7 +297,7 @@ leitet der Server z. B. von `http` auf `https` um, die `https`-Adresse eintragen
 ```bash
 sudo ./einrichten.sh status                       # Dienste und Version
 journalctl -u runner-monitor -u runner-monitor-sammler -n 30
-curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.8.2", "vm": "runner-vm"}
+curl -s http://127.0.0.1:8090/api/health          # {"ok": true, "version": "0.8.3", "vm": "runner-vm"}
 ```
 
 ## Einstellungen
@@ -316,10 +316,11 @@ In `/etc/runner-monitor/konfig.env` ([Vorlage](../deploy/konfig.env.example)), d
 | `MONITOR_ADRESSE` | `0.0.0.0` | `127.0.0.1`, wenn ein Proxy davor sitzt |
 | `MONITOR_UPDATE_HERKUNFT` | – | `pflicht`: Update nur mit bestätigter GitHub-Attestierung ([UPDATE.md](UPDATE.md)) |
 | `RUNNER_LABELS` | `self-hosted,linux,x64` | Labels, falls GitHub nicht abgefragt werden kann |
-| `MONITOR_RELEASE_REPO` | dieses Repository | Repository der Updates, auf GitHub und Forgejo gleich (nur für Forks ändern) |
+| `MONITOR_RELEASE_REPO` | `Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor` | Repository auf GitHub: Updates von GitHub und Herkunftsprüfung, auch bei Forgejo als Quelle (nur für Forks ändern) |
 | `MONITOR_UPDATE_QUELLE` | `github` | `forgejo`: Updates vom Forgejo-Server unter `MONITOR_UPDATE_FORGEJO` (`einrichten.sh quelle`, [UPDATE.md](UPDATE.md)) |
 | `MONITOR_UPDATE_FORGEJO` | – | Adresse des Forgejo-Servers, z. B. `https://git.example.org` (nur mit `MONITOR_UPDATE_QUELLE=forgejo`) |
 | `MONITOR_UPDATE_HTTP_ERLAUBT` | aus | `1`: `MONITOR_UPDATE_FORGEJO` darf `http://` sein (nur im vertrauenswürdigen LAN) |
+| `MONITOR_UPDATE_FORGEJO_REPO` | `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` | Repository auf Forgejo (heißt seit #162 anders als auf GitHub, E-33; nur für Forks ändern) |
 
 ## Weitere Befehle
 

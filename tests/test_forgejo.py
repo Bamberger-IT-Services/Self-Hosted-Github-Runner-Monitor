@@ -3,6 +3,7 @@ Klient (keine Weiterleitung, Grenzen), Konfiguration nur aus runner.json (E-18),
 
 Kein Netz: Die Abfrage läuft gegen eine Attrappe; der Klient-Test nutzt nur Server auf 127.0.0.1.
 """
+import contextlib
 import copy
 import http.server
 import json
@@ -14,6 +15,7 @@ import threading
 import time
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from unittest import mock
@@ -43,6 +45,10 @@ class Attrappe:
         self.fehler = fehler or {}
         self.zaehler = {"anfragen": 0}
         self.pfade: list[tuple[str, dict | None, bool]] = []
+
+    @contextlib.contextmanager
+    def begrenze(self, reserve):
+        yield
 
     def hole(self, pfad, parameter=None, *, text=False):
         self.zaehler["anfragen"] += 1
@@ -460,12 +466,12 @@ class GlobalerRunnerTest(unittest.TestCase):
         self.assertEqual(erg["job"]["name"], "build")  # UUID aus der ersten Log-Zeile
         e = self.a().eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
         self.assertEqual((e["status"]["zustand"], e["status"]["beimDienst"]["zustand"]), ("job", "online"))
-        # nächste Runde: gleich am gemerkten Ort, die Organisation nur, wenn er dort fehlt
+        # nächste Runde: die eigene Liste vor den Läufen, der gemerkte Ort erst nach den Jobs (#151), ohne weitere Listen
         k2 = Attrappe(self.antworten)
         fj.abfrage(k2, "beispiel-org", self.a().kennung(), speicher)
         pfade = [p for p, _, _ in k2.pfade]
-        self.assertIn("/admin/actions/runners", pfade)
-        self.assertNotIn("/orgs/beispiel-org/actions/runners", pfade)
+        self.assertEqual(pfade.count("/admin/actions/runners"), 1)
+        self.assertGreater(pfade.index("/admin/actions/runners"), max(i for i, p in enumerate(pfade) if "/actions/jobs/" in p))
         self.assertFalse([p for p in pfade if p.endswith("/actions/runners") and p.startswith("/repos/")])
         # nur GET über hole(), keine Schreibpfade
         self.assertFalse([p for p in pfade if any(w in p for w in ("registration-token", "delete", "rerun", "cancel"))])
@@ -555,21 +561,149 @@ class GlobalerRunnerTest(unittest.TestCase):
         self.assertEqual(erg["runner"]["zustand"], "online")
         self.assertEqual(erg["job"]["name"], "build")  # UUID aus der Liste
 
+    def test_ersatzname_nur_in_der_eigenen_liste(self):
+        """#152: Ohne UUID passen Ersatznamen (Monitor-ID, Unit) nur in der eigenen Liste; in der Liste der
+        Instanz und in Repository-Listen zählt nur die UUID oder der Name aus .runner."""
+        fremd = dict(self.global_liste[0], name="forgejo-runner", uuid="")
+        k = kennung(None, "anderer-name", "forgejo-runner")
+        self.assertEqual(fj.passt(fremd, k), 1 + 1)                       # eigene Liste: Ersatzname gilt
+        self.assertIsNone(fj.passt(fremd, k, streng=True))                # /admin, Repo-Liste: nicht
+        self.assertEqual(fj.passt(dict(fremd, name="anderer-name"), k, streng=True), 1)  # Name aus .runner gilt
+        self.assertEqual(fj.passt(dict(fremd, name="x", uuid=UUID_02), kennung(UUID_02, "anderer-name"), streng=True), 0)
+        self.assertIsNone(fj.bester([fremd], k, streng=True))
+        self.assertEqual(fj.bester([fremd], k), fremd)
+        # Ende zu Ende: gleichnamiger Runner nur in /admin und in einer Repo-Liste → nicht gefunden
+        self.antworten["/admin/actions/runners"] = [fremd]
+        self.antworten["/repos/beispiel-org/api-dienst/actions/runners"] = [fremd]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, {})
+        self.assertEqual(erg["runner"]["zustand"], "unbekannt")
+        # in der eigenen Liste dagegen gefunden
+        self.antworten["/orgs/beispiel-org/actions/runners"] = [dict(fremd, status="online")]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, {})
+        self.assertEqual(erg["runner"]["zustand"], "online")
+
+    def test_gemerkter_ort_admin_ist_streng_und_runner_wer_ohne_ersatzname(self):
+        """#152: Der in /admin gemerkte Ort bleibt streng (Ersatzname eines Fremden passt nicht), und
+        ``runnerWer`` hält den Namen aus .runner, nie einen Ersatznamen."""
+        k = kennung(None, "anderer-name", "forgejo-runner")
+        self.antworten["/admin/actions/runners"] = self.global_liste  # Name = anderer-name (aus .runner)
+        speicher = {}
+        fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, speicher)
+        self.assertEqual((speicher["runnerOrt"], speicher["runnerWer"]["name"]), ("admin", "anderer-name"))
+        # nächste Runde: nur noch ein gleichnamiger Fremder mit Ersatznamen in /admin → nicht gefunden, nichts gemerkt
+        fremd = dict(self.global_liste[0], name="forgejo-runner", uuid="")
+        self.antworten["/admin/actions/runners"] = [fremd]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, speicher)
+        self.assertEqual(erg["runner"]["zustand"], "unbekannt")
+        self.assertNotIn("runnerOrt", speicher)
+        self.assertNotIn("runnerWer", speicher)
+
     def test_admin_alter_server_ohne_pfad(self):
         """Ein älterer Server antwortet auf /admin/actions/runners mit 405: kein Fehler der Runde."""
         k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("fehler", "Server antwortet mit 405")})
         self.assertEqual(fj.abfrage(k, "beispiel-org", self.a().kennung(), {})["abfrage"], "ok")
-        # nicht erreichbar bleibt ein Fehler der Runde (kein „ok“ mit halbem Stand)
+        # nicht erreichbar in der freiwilligen Suche kostet die Runde nicht mehr (#151), solange die eigene Liste gelesen wurde
         k = Attrappe(self.antworten, fehler={"/admin/actions/runners": nicht_erreichbar()})
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")
+        # … die eigene Liste aber bleibt ein Fehler der Runde
+        k = Attrappe(self.antworten, fehler={"/orgs/beispiel-org/actions/runners": nicht_erreichbar()})
         self.assertEqual(fj.abfrage(k, "beispiel-org", self.a().kennung(), {})["abfrage"], "nicht-erreichbar")
 
     def test_wenig_zeit_in_der_runde_keine_erweiterte_suche(self):
         k = Attrappe(self.antworten)
-        k.rest = lambda: 5.0
+        k.rest = lambda: fj.SUCHE_MIN_REST - 1
         speicher = {}
         fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
         self.assertNotIn("/admin/actions/runners", [p for p, _, _ in k.pfade])
         self.assertNotIn("sucheAb", speicher)  # nächste Runde erneut versuchen
+
+    def test_erweiterte_suche_erst_nach_laeufen_und_jobs(self):
+        """#151: erst die eigene Liste, Läufe und Jobs, dann /admin und die Repositories."""
+        self.antworten["/admin/actions/runners"] = self.global_liste
+        k = Attrappe(self.antworten)
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), {})
+        pfade = [p for p, _, _ in k.pfade]
+        admin = pfade.index("/admin/actions/runners")
+        self.assertTrue(all(i < admin for i, p in enumerate(pfade) if "/actions/runs" in p or "/actions/jobs/" in p))
+        self.assertLess(pfade.index("/orgs/beispiel-org/actions/runners"), pfade.index(LAEUFE_WEB))
+        self.assertEqual(erg["runner"]["zustand"], "online")  # trotzdem gefunden
+        self.assertEqual(erg["job"]["name"], "build")
+
+    def test_kontingent_in_der_erweiterten_suche_kostet_die_runde_nicht(self):
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("kontingent", "Zu viele Anfragen (429)")})
+        speicher = {}
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["job"]["name"], "build")
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")
+        self.assertIsNotNone(erg["letzterErfolg"])
+        self.assertGreater(speicher["sucheAb"], time.time())  # nicht in jeder Runde neu
+
+
+    def runde(self, k, speicher, kenn=None):
+        return fj.abfrage(k, "beispiel-org", kenn or self.a().kennung(), speicher)
+
+    def test_gemerkter_ort_langsam_oder_429_kostet_die_runde_nicht(self):
+        """S2/S3: ab Runde 2 wird ``runnerOrt`` (admin) erst nach den Jobs gelesen, Zeitüberschreitung und 429 sind still."""
+        self.antworten["/admin/actions/runners"] = self.global_liste
+        speicher = {}
+        self.assertEqual(self.runde(Attrappe(self.antworten), speicher)["runner"]["zustand"], "online")
+        self.assertEqual(speicher["runnerOrt"], "admin")
+        for art in ("nicht-erreichbar", "kontingent"):
+            sp = copy.deepcopy(speicher)
+            k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler(art, "x")})
+            erg = self.runde(k, sp)
+            pfade = [p for p, _, _ in k.pfade]
+            self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+            self.assertEqual(erg["job"]["name"], "build")  # Läufe und Jobs gelesen
+            self.assertEqual(sp["runnerOrt"], "admin")  # bleibt gemerkt, nächste Runde wieder
+            self.assertGreater(pfade.index("/admin/actions/runners"), max(i for i, p in enumerate(pfade) if "/actions/jobs/" in p))
+
+    def test_erinnerte_kennung_ordnet_den_job_in_runde_2_zu(self):
+        """K1: Runner nur in /admin, ohne UUID in .runner: Runde 2 kennt den Namen aus dem Fund schon vor den Jobs."""
+        self.antworten["/admin/actions/runners"] = [dict(self.global_liste[0], name="forgejo-runner")]
+        kenn = fj.Kennung(namen=("forgejo-runner",), name_aus_datei="forgejo-runner")  # Name aus .runner (#152: streng)
+        speicher = {}
+        self.runde(Attrappe(self.antworten), speicher, kenn)
+        self.assertEqual(speicher["runnerWer"]["uuid"], UUID_02)
+        erg = self.runde(Attrappe(self.antworten), speicher, kenn)
+        self.assertEqual(erg["job"]["name"], "build")
+
+    def test_eigene_liste_403_und_repo_liste_langsam_runde_ok(self):
+        """S3: eigene Liste 403, /admin und Repository-Listen laufen in die Frist: Runde „ok“, Job bleibt, „nicht lesbar“."""
+        fehler = {"/orgs/beispiel-org/actions/runners": fj.ForgejoFehler("keine-rechte", "403"),
+                  "/admin/actions/runners": nicht_erreichbar(),
+                  "/repos/beispiel-org/web-portal/actions/runners": nicht_erreichbar(),
+                  "/repos/beispiel-org/api-dienst/actions/runners": fj.ForgejoFehler("kontingent", "429")}
+        erg = self.runde(Attrappe(self.antworten, fehler=fehler), {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["job"]["name"], "build")
+        self.assertEqual((erg["runner"]["zustand"], erg["runner"]["ursache"]), ("unbekannt", "nicht-lesbar"))
+        # 401 in der Suche schlägt weiter durch
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("token-ungueltig", "401")})
+        self.assertEqual(self.runde(k, {})["abfrage"], "token-ungueltig")
+
+    def test_nach_abbruch_bei_admin_weiter_mit_den_repository_listen(self):
+        """K3."""
+        self.antworten["/repos/beispiel-org/api-dienst/actions/runners"] = self.global_liste
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("kontingent", "429")})
+        speicher = {}
+        erg = self.runde(k, speicher)
+        self.assertEqual(erg["runner"]["zustand"], "online")
+        self.assertEqual(speicher["runnerOrt"], "repo:api-dienst")
+
+    def test_nichts_gelesen_ist_nicht_lesbar_trotz_altem_merker(self):
+        """K2: ein veralteter ``gelesen``-Merker gibt nach einer Suche ohne lesbare Liste kein „nicht sichtbar“."""
+        for n in list(self.antworten):
+            if n.startswith("/repos/") and n.endswith("/actions/runners"):
+                del self.antworten[n]
+        k = Attrappe(self.antworten, fehler={"/orgs/beispiel-org/actions/runners": fj.ForgejoFehler("keine-rechte", "403"),
+                                              "/admin/actions/runners": fj.ForgejoFehler("keine-rechte", "403")})
+        speicher = {"gelesen": True}
+        self.assertEqual(self.runde(k, speicher)["runner"]["ursache"], "nicht-lesbar")
+        self.assertIs(speicher["gelesen"], False)
 
 
 class FakeServerTest(unittest.TestCase):
@@ -622,6 +756,244 @@ class FakeServerTest(unittest.TestCase):
         self.assertEqual(e["status"]["zustand"], "job")
         self.assertIs(e["status"]["beimDienst"]["sichtbar"], False)
 
+    def test_langsamer_server_erweiterte_suche_nur_im_rest_der_frist(self):
+        """#151: /admin antwortet erst nach 5 s; Läufe und Jobs sind da, die Runde bleibt „ok“ und die Anfrage
+        endet an der Reserve vor der Rundenfrist (nicht erst an der Frist)."""
+        self.handler.langsam["/api/v1/admin/actions/runners"] = 5
+        self.antworten["/api/v1/admin/actions/runners"] = (200, {}, json.dumps([self.runner]).encode())
+        a = fj.Forgejo(anbieter.RunnerKonfig(id="forgejo-runner", name="forgejo-runner", dienst="forgejo", unit="forgejo-runner.service",
+                                             server=f"http://127.0.0.1:{self.server.server_port}", org="beispiel-org", http_erlaubt=True,
+                                             name_beim_dienst="anderer-name", uuid=UUID_02))
+        k = fj.Klient(a.k.server, TOKEN, frist=6, http_erlaubt=True)
+        with mock.patch.object(fj, "SUCHE_MIN_REST", 1.0), mock.patch.object(fj, "SUCHE_RESERVE", 2.0):
+            beginn = time.monotonic()
+            erg = a.abfrage({}, token=TOKEN, klient=k)
+            dauer = time.monotonic() - beginn
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["job"]["name"], "build")
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")  # die Repository-Listen waren lesbar
+        self.assertLess(dauer, 6.0 - 2.0 + 1.0)  # ohne Deckel erst an der Frist (6 s) – gewogen mit Toleranz für CI-Last
+        gesehen = [p.split("?")[0] for p, _ in self.handler.gesehen]
+        if "/api/v1/admin/actions/runners" in gesehen:  # bei wenig Rest (CI-Last) gar nicht gefragt: auch gut
+            self.assertLess(gesehen.index("/api/v1/repos/beispiel-org/web-portal/actions/runs"), gesehen.index("/api/v1/admin/actions/runners"))
+
+
+# ---------------------------------------------------------------- Lauf-Liste (#163)
+
+FILTER = {"status": ["running", "waiting", "blocked"], "page": 1, "limit": 50}
+LAEUFE_API = "/repos/beispiel-org/api-dienst/actions/runs"
+LAEUFE_WEB = "/repos/beispiel-org/web-portal/actions/runs"
+FORGEJO_STATUS = {"unknown", "waiting", "running", "success", "failure", "cancelled", "skipped", "blocked"}
+
+
+def forgejo17_laeufe(alle: list[dict], abfrage: str) -> tuple[int, dict]:
+    """Wie Forgejo 17.0.1 (gemessen): ``status`` mehrfach = Oder, unbekannter Wert → 400, ``limit`` nur mit
+    ``page`` – ohne ``page`` kommen alle Läufe."""
+    qs = urllib.parse.parse_qs(abfrage)
+    werte = qs.get("status", [])
+    for wert in werte:
+        if wert not in FORGEJO_STATUS:
+            return 400, {"message": f"unknown status: {wert}"}
+    liste = [lauf for lauf in alle if not werte or lauf["status"] in werte]
+    if "page" in qs:
+        seite, limit = int(qs["page"][0]), min(int(qs.get("limit", ["30"])[0]), 50)
+        liste = liste[(seite - 1) * limit:seite * limit]
+    return 200, {"workflow_runs": liste, "total_count": len(liste)}
+
+
+def viele_laeufe(vorlage: list[dict], anzahl: int = 159) -> list[dict]:
+    """``anzahl`` Läufe mit großem ``event_payload`` (wie Forgejo, je Lauf rund 27 KB); die Vorlage bleibt vorn."""
+    laeufe = copy.deepcopy(vorlage)
+    for i in range(anzahl - len(laeufe)):
+        laeufe.append({**copy.deepcopy(vorlage[0]), "id": 1000 + i, "status": ("success", "failure", "cancelled")[i % 3],
+                       "event_payload": "x" * 22000, "repository": {"beschreibung": "y" * 5000}})
+    return laeufe
+
+
+class Filterlos400(Attrappe):
+    """Ein Server, der den Statusfilter mit 400 ablehnt (z. B. Gitea mit Forgejo-Werten)."""
+
+    def hole(self, pfad, parameter=None, *, text=False):
+        if pfad.endswith("/actions/runs") and parameter and "status" in parameter:
+            self.zaehler["anfragen"] += 1
+            self.pfade.append((pfad, parameter, text))
+            raise fj.ForgejoFehler("fehler", "Server antwortet mit 400", code=400)
+        return super().hole(pfad, parameter, text=text)
+
+
+class Blaetternd(Attrappe):
+    """Läufe seitenweise; ``blaettert=False``: der Server liefert immer dieselbe erste Seite."""
+
+    def __init__(self, antworten, laeufe, blaettert=True):
+        super().__init__(antworten)
+        self.laeufe, self.blaettert = laeufe, blaettert
+
+    def hole(self, pfad, parameter=None, *, text=False):
+        if pfad == LAEUFE_API:
+            self.zaehler["anfragen"] += 1
+            self.pfade.append((pfad, parameter, text))
+            seite = parameter["page"] if self.blaettert else 1
+            return fj.Antwort({"workflow_runs": copy.deepcopy(self.laeufe[(seite - 1) * 50:seite * 50])}, {})
+        return super().hole(pfad, parameter, text=text)
+
+
+class LaufListeTest(unittest.TestCase):
+    """#163: Forgejo übergeht ``limit`` ohne ``page`` und liefert alle Läufe (mehr als 4 MB) – nur nach den gezählten
+    Status fragen, und ein Repository mit zu großer oder ungültiger Antwort kostet nicht die ganze Runde."""
+
+    def setUp(self):
+        self.antworten = lade("forgejo-17.json")
+
+    def laeufe_anfragen(self, k):
+        return [(p, par) for p, par, _ in k.pfade if p.endswith("/actions/runs")]
+
+    def test_statusfilter_wird_gesendet(self):
+        k = Attrappe(self.antworten)
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(self.laeufe_anfragen(k), [(LAEUFE_WEB, FILTER), (LAEUFE_API, FILTER)])
+        # die Attrappe übergeht den Filter (wie ein älterer Server): gezählt wird trotzdem nur, was läuft/wartet
+        self.assertEqual([(r["laeuft"], r["wartet"]) for r in erg["repos"]], [(1, 0), (1, 1)])
+
+    def test_gitea_ohne_statusfilter(self):
+        k = Attrappe(lade("gitea.json"))
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-04", {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(self.laeufe_anfragen(k), [("/repos/beispiel-org/web-portal/actions/runs", {"page": 1, "limit": 30})])
+
+    def test_filter_abgelehnt_dann_ohne_filter_fuer_eine_stunde(self):
+        speicher = {}
+        k = Filterlos400(self.antworten)
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", speicher)
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual((erg["laeufeNichtLesbar"], erg["job"]["name"]), (0, "build"))
+        ohne = {"page": 1, "limit": 30}
+        self.assertEqual(self.laeufe_anfragen(k), [(LAEUFE_WEB, FILTER), (LAEUFE_WEB, ohne), (LAEUFE_API, ohne)])
+        self.assertGreater(speicher["filterAb"], time.time() + fj.FILTER_ERNEUT - 60)
+        k2 = Filterlos400(self.antworten)
+        fj.abfrage(k2, "beispiel-org", "runner-vm-02", speicher)
+        self.assertFalse([par for _, par in self.laeufe_anfragen(k2) if "status" in par])
+        speicher["filterAb"] = time.time() - 1  # nach einer Stunde wieder mit Filter
+        k3 = Attrappe(self.antworten)
+        fj.abfrage(k3, "beispiel-org", "runner-vm-02", speicher)
+        self.assertEqual(self.laeufe_anfragen(k3)[0], (LAEUFE_WEB, FILTER))
+
+    def test_blaettern(self):
+        vorlage = self.antworten[LAEUFE_API]["workflow_runs"]
+        laeufe = [{**vorlage[i % 2], "id": 500 + i} for i in range(60)]  # 30 laufen, 30 warten
+        k = Blaetternd(self.antworten, laeufe)
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["repos"][1], {"name": "api-dienst", "privat": True, "laeuft": 30, "wartet": 30})
+        self.assertEqual([par["page"] for p, par in self.laeufe_anfragen(k) if p == LAEUFE_API], [1, 2])
+        # ein Server, der nicht blättert: nach der ersten Wiederholung aufhören, nichts doppelt zählen
+        k = Blaetternd(self.antworten, laeufe, blaettert=False)
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        self.assertEqual((erg["repos"][1]["laeuft"], erg["repos"][1]["wartet"]), (25, 25))
+        self.assertEqual(len([p for p, _ in self.laeufe_anfragen(k) if p == LAEUFE_API]), 2)
+        # höchstens LAUF_SEITEN Seiten
+        k = Blaetternd(self.antworten, [{**vorlage[0], "id": 900 + i} for i in range(400)])
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["repos"][1]["laeuft"], fj.LAUF_SEITEN * 50)
+
+    def test_zu_grosse_oder_ungueltige_antwort_nur_dieses_repository(self):
+        for fehler in (fj.ForgejoFehler("fehler", f"Antwort auf {LAEUFE_API} zu groß"),
+                       fj.ForgejoFehler("fehler", f"Keine gültige JSON-Antwort auf {LAEUFE_API}", ursache="kein-dienst"),
+                       fj.ForgejoFehler("fehler", "Server antwortet mit 418", code=418)):
+            erg = fj.abfrage(Attrappe(self.antworten, fehler={LAEUFE_API: fehler}), "beispiel-org", "runner-vm-02", {})
+            self.assertEqual((erg["abfrage"], erg["fehler"]), ("ok", ""), str(fehler))
+            self.assertEqual(erg["laeufeNichtLesbar"], 1)
+            self.assertEqual([r["name"] for r in erg["repos"]], ["web-portal"])
+            self.assertEqual(erg["job"]["name"], "build")  # der Job im anderen Repository wird weiter gefunden
+            self.assertNotIn("ursache", erg)
+            e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                                 server="https://git.example.org", org="beispiel-org")).eintrag(
+                dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+            self.assertEqual(e["status"]["zustand"], "job")
+
+    def test_token_rechte_und_erreichbarkeit_weiter_fuer_die_ganze_runde(self):
+        for fehler, art in ((nicht_erreichbar(), "nicht-erreichbar"),
+                            (fj.ForgejoFehler("token-ungueltig", "401"), "token-ungueltig"),
+                            (fj.ForgejoFehler("keine-rechte", "403"), "keine-rechte"),
+                            (fj.ForgejoFehler("kontingent", "429"), "kontingent")):
+            erg = fj.abfrage(Attrappe(self.antworten, fehler={LAEUFE_API: fehler}), "beispiel-org", "runner-vm-02", {})
+            self.assertEqual(erg["abfrage"], art)
+
+
+class LaufListeHttpTest(unittest.TestCase):
+    """Ende zu Ende über HTTP gegen einen Server, der sich wie Forgejo 17 verhält (159 Läufe, über 4 MB)."""
+
+    def setUp(self):
+        daten = lade("forgejo-17.json")
+        self.alle = viele_laeufe(daten[LAEUFE_API]["workflow_runs"])
+        self.assertGreater(len(json.dumps({"workflow_runs": self.alle})), fj.MAX_ANTWORT)
+        self.laeufe = {f"/api/v1{LAEUFE_WEB}": daten[LAEUFE_WEB]["workflow_runs"], f"/api/v1{LAEUFE_API}": self.alle}
+        self.modus = "forgejo-17"
+        test = self
+
+        class Handler(_Handler):
+            def do_GET(self):  # noqa: N802
+                pfad, _, abfrage = self.path.partition("?")
+                if pfad not in test.laeufe:
+                    return super().do_GET()
+                type(self).gesehen.append((self.path, dict(self.headers)))
+                if test.modus == "forgejo-17":
+                    code, daten = forgejo17_laeufe(test.laeufe[pfad], abfrage)
+                else:  # alter Server: übergeht status, page und limit
+                    code, daten = 200, {"workflow_runs": test.laeufe[pfad]}
+                rumpf = json.dumps(daten).encode()
+                self.send_response(code)
+                self.send_header("Content-Length", str(len(rumpf)))
+                self.end_headers()
+                self.wfile.write(rumpf)
+
+        antworten = {f"/api/v1{p}": (200, {"Content-Type": "application/json"}, json.dumps(v).encode())
+                     for p, v in daten.items() if not p.endswith("/logs")}
+        antworten.update({f"/api/v1{p}": (200, {"Content-Type": "text/plain"}, v.encode())
+                          for p, v in daten.items() if p.endswith("/logs")})
+        Handler.antworten, Handler.gesehen = antworten, []
+        self.handler = Handler
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def klient(self):
+        return fj.Klient(f"http://127.0.0.1:{self.server.server_port}", TOKEN, http_erlaubt=True)
+
+    def test_vorher_zu_gross(self):
+        """So hat der Monitor bisher gefragt: ``limit`` ohne ``page`` – Forgejo liefert alles."""
+        with self.assertRaises(fj.ForgejoFehler) as f:
+            self.klient().hole(LAEUFE_API, {"limit": 30})
+        self.assertEqual(f.exception.art, "fehler")
+        self.assertIn("zu groß", str(f.exception))
+
+    def test_forgejo_17_mit_statusfilter(self):
+        erg = fj.abfrage(self.klient(), "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["laeufeNichtLesbar"], 0)
+        self.assertEqual([(r["name"], r["laeuft"], r["wartet"]) for r in erg["repos"]],
+                         [("web-portal", 1, 0), ("api-dienst", 1, 1)])
+        self.assertEqual(erg["job"]["name"], "build")
+        gesehen = [p for p, _ in self.handler.gesehen]
+        self.assertIn(f"/api/v1{LAEUFE_API}?status=running&status=waiting&status=blocked&page=1&limit=50", gesehen)
+        self.assertFalse([p for p in gesehen if p.startswith(f"/api/v1{LAEUFE_API}?") and "status=" not in p])
+
+    def test_alter_server_ohne_filter_nur_dieses_repository_nicht_lesbar(self):
+        self.modus = "alt"
+        erg = fj.abfrage(self.klient(), "beispiel-org", "runner-vm-02", {})
+        self.assertEqual((erg["abfrage"], erg["fehler"]), ("ok", ""))
+        self.assertEqual(erg["laeufeNichtLesbar"], 1)
+        self.assertEqual([r["name"] for r in erg["repos"]], ["web-portal"])
+        self.assertEqual(erg["job"]["name"], "build")
+
+    def test_unbekannter_status_gibt_400(self):
+        """Gemessen an Forgejo 17: ein unbekannter Statuswert (etwa Gitea/GitHub ``in_progress``) gibt 400."""
+        with self.assertRaises(fj.ForgejoFehler) as f:
+            self.klient().hole(LAEUFE_API, {"status": "in_progress", "page": 1, "limit": 50})
+        self.assertEqual((f.exception.art, f.exception.code), ("fehler", 400))
+
 
 # ---------------------------------------------------------------- Klient (nur 127.0.0.1)
 
@@ -629,9 +1001,11 @@ class FakeServerTest(unittest.TestCase):
 class _Handler(http.server.BaseHTTPRequestHandler):
     antworten: dict = {}
     gesehen: list = []
+    langsam: dict = {}  # Pfad → Sekunden Verzögerung vor der Antwort
 
     def do_GET(self):  # noqa: N802
         type(self).gesehen.append((self.path, dict(self.headers)))
+        time.sleep(type(self).langsam.get(self.path.split("?")[0], 0))
         code, kopf, rumpf = type(self).antworten.get(self.path.split("?")[0], (404, {}, b'{"message":"not found"}'))
         self.send_response(code)
         for k, v in kopf.items():
@@ -663,7 +1037,7 @@ def starte_troepfelnd():
 
 
 def starte(antworten: dict):
-    handler = type("H", (_Handler,), {"antworten": antworten, "gesehen": []})
+    handler = type("H", (_Handler,), {"antworten": antworten, "gesehen": [], "langsam": {}})
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, handler
@@ -759,6 +1133,44 @@ class KlientTest(unittest.TestCase):
                 k.hole("/version")
             self.assertEqual(f.exception.art, "nicht-erreichbar")
             self.assertLess(time.monotonic() - beginn, 1.5)
+        finally:
+            server.shutdown()
+            server.server_close()
+
+    def test_begrenze_deckel(self):
+        """#151: im Block endet jede Anfrage ``reserve`` Sekunden vor der Runde; ist nichts übrig, wird gar nicht gefragt."""
+        k = fj.Klient(f"http://127.0.0.1:{self.server.server_port}", TOKEN, frist=5, http_erlaubt=True)
+        with k.begrenze(10):  # Reserve größer als der Rest: negativer Rest
+            with self.assertRaises(fj.ForgejoFehler) as f:
+                k.hole("/version")
+            self.assertEqual(f.exception.art, "nicht-erreichbar")
+        self.assertEqual(self.handler.gesehen, [])
+        self.assertEqual(k.hole("/version").daten["version"], "17.0.1+gitea-1.22.0")  # danach wieder ohne Deckel
+
+    def test_begrenze_verschachtelt_und_nach_ausnahme_zurueckgesetzt(self):
+        k = fj.Klient("https://git.example.org", TOKEN, frist=100)
+        self.assertIsNone(k._deckel)
+        with k.begrenze(2):
+            aussen = k._deckel
+            self.assertAlmostEqual(aussen, k._ende - 2)
+            with k.begrenze(5):
+                self.assertAlmostEqual(k._deckel, k._ende - 5)
+            self.assertEqual(k._deckel, aussen)
+        self.assertIsNone(k._deckel)
+        with self.assertRaises(RuntimeError):
+            with k.begrenze(2):
+                raise RuntimeError
+        self.assertIsNone(k._deckel)
+
+    def test_begrenze_kuerzt_haengende_anfrage(self):
+        server, _ = starte_troepfelnd()
+        try:
+            k = fj.Klient(f"http://127.0.0.1:{server.server_address[1]}", TOKEN, zeitlimit=10, frist=3, http_erlaubt=True)
+            beginn = time.monotonic()
+            with k.begrenze(2), self.assertRaises(fj.ForgejoFehler) as f:
+                k.hole("/version")
+            self.assertEqual(f.exception.art, "nicht-erreichbar")
+            self.assertLess(time.monotonic() - beginn, 2.0)  # 1 s Rest, nicht 3 s Frist oder 10 s Zeitlimit
         finally:
             server.shutdown()
             server.server_close()

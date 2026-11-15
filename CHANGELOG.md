@@ -4,6 +4,41 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.8.3] – 15.11.2026
+
+### Geändert
+- Das Repository auf Forgejo heißt jetzt `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` (#162, E-33) – der
+  Monitor überwacht auch Forgejo-, Gitea- und GitLab-Runner. Das eingefrorene GitHub-Repository behält
+  den alten Namen; Updates von GitHub, Herkunftsprüfung und Doku-Links bleiben unverändert.
+- Update-Quelle Forgejo: Der Pfad des Repositorys kommt aus dem neuen Schlüssel
+  `MONITOR_UPDATE_FORGEJO_REPO` (Vorgabe `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted`) statt aus
+  `MONITOR_RELEASE_REPO`, das das GitHub-Repository für die Herkunftsprüfung bleibt. Ohne den neuen
+  Schlüssel fände eine VM nach der Umbenennung nur noch eine Weiterleitung, der der Monitor nicht folgt.
+  VMs mit Forgejo als Quelle sollten diese Version **vor** der Umbenennung installieren (docs/UPDATE.md).
+
+### Behoben
+- Forgejo-Erkennung (#152, Review zu PR #149): Ersatznamen (Monitor-ID, Unit) passen nur noch in der eigenen
+  Runner-Liste. In `/admin/actions/runners` und in den Listen der Repositories zählt ohne UUID nur der Name
+  aus `.runner` – ein gleichnamiger Runner einer anderen Organisation wird dort nicht mehr angezeigt.
+- Info › Runner: Weicht der Server in `runner.json` von dem in `.runner` ab, steht das jetzt als Merkmal im
+  Fund, und der Sicherheitsgrad ist „wahrscheinlich“ statt „sicher“, auch wenn der Server aus `runner.json`
+  antwortet.
+- Die Begründung (Merkmale) eines Funds in der Einrichtung ist übersetzt, auch die Sätze der Server-Probe mit
+  Pfad, Version und Dienst; dazu der neue Grund zur Server-Abweichung.
+- Forgejo: Die erweiterte Runner-Suche (`/admin` und die Listen der Repositories, #145) läuft jetzt erst nach
+  Läufen und Jobs (#151). Auf einem langsamen Server reichte die Rundenfrist danach nicht mehr, die Runde
+  endete als „nicht erreichbar“ und die Karte zeigte „unbekannt“. Auch ein gemerkter Fundort (z. B. `/admin`)
+  wird erst nach den Jobs gelesen; UUID und Name des letzten Funds merkt der Sammler, damit die Jobs vorher
+  richtig zugeordnet werden. Jede Anfrage der Suche endet 2 s vor dem Ende der Runde; Zeitüberschreitung
+  und 429 dort sind still (Runde bleibt „ok“, Runner „nicht sichtbar“ bzw. „nicht lesbar“), scheitert
+  `/admin`, geht es mit den Repository-Listen weiter. Die Suche braucht noch 6 s Rest der Runde (bisher 12 s).
+- Forgejo: „Forgejo nicht erreichbar“, obwohl der Server antwortet (#163). Forgejo 17 beachtet `limit` bei
+  `/actions/runs` nur zusammen mit `page` und lieferte alle Läufe eines Repositorys (über 4 MB), die Antwort
+  wurde verworfen und die ganze Abfrage galt als Fehler. Der Monitor fragt jetzt nur nach laufenden und
+  wartenden Läufen (`status=running&status=waiting&status=blocked`, seitenweise); Gitea und Server, die den
+  Filter ablehnen, wie bisher ohne Filter (erste Seite). Eine zu große oder ungültige Antwort eines einzelnen
+  Repositorys zählt nur dieses als „Läufe nicht lesbar“, die übrige Abfrage bleibt gültig.
+
 ## [0.8.2] – 30.10.2026
 
 ### Behoben (vor dem Release)

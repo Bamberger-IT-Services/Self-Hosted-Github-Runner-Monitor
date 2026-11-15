@@ -31,6 +31,8 @@ class Konfig:
     token_datei: Path = Path("/etc/runner-monitor/github-token")
     web_verz: Path = PAKET_VERZ.parent / "web"
     schwelle_frei_gb: int = 25
+    # Repository auf GitHub: Update-Quelle GitHub und Herkunftsprüfung (Attestierung, ADR-0005). Behält
+    # den alten Namen – GitHub ist eingefroren, laufende VMs holen dort ihre Updates (E-33).
     release_repo: str = "Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor"
     vm_name: str = ""
     # Nur für die Entwicklung auf dem Mac: keine Anmeldung, nur 127.0.0.1, Demo-Daten erlaubt.
@@ -38,9 +40,11 @@ class Konfig:
     https: bool = False  # hinter einem TLS-Proxy: Cookies mit Secure, HSTS (docs/HTTPS.md)
     update_herkunft: str = ""  # „pflicht“: Update nur mit bestätigter GitHub-Attestierung (ADR-0005)
     # Woher Updates kommen (#138, ADR-0007): „github“ (Vorgabe) oder „forgejo“ mit Basis-Adresse; http://
-    # nur mit ausdrücklicher Freigabe (wie E-21). Das Repository ist auf beiden MONITOR_RELEASE_REPO.
+    # nur mit ausdrücklicher Freigabe (wie E-21). Das Repository auf Forgejo heißt seit #162 anders als auf
+    # GitHub (MONITOR_UPDATE_FORGEJO_REPO, E-33); auf eine Weiterleitung des alten Namens baut nichts.
     update_quelle: str = "github"
     update_forgejo: str = ""
+    update_forgejo_repo: str = "Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted"
     update_http_erlaubt: bool = False
     weitere: dict = field(default_factory=dict)
 
@@ -84,6 +88,7 @@ class Konfig:
 
 
 _SCHLUESSEL = re.compile(r"^[A-Z][A-Z0-9_]*$")
+REPO_MUSTER = re.compile(r"[A-Za-z0-9-]+/(?!\.\.?$)[A-Za-z0-9._-]+")  # „.“/„..“ als Name wären Pfadteile
 
 
 def lies_env_datei(pfad: Path) -> dict[str, str]:
@@ -160,8 +165,12 @@ def lade(datei: Path | None = None, umgebung: dict[str, str] | None = None) -> K
     if org and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,38}", org):
         raise KonfigFehler(f"MONITOR_ORG ist kein gültiger GitHub-Name: {org!r}")
     repo = werte.get("MONITOR_RELEASE_REPO", Konfig.release_repo)
-    if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+", repo):
+    if not REPO_MUSTER.fullmatch(repo):
         raise KonfigFehler(f"MONITOR_RELEASE_REPO muss besitzer/repo sein, gefunden: {repo!r}")
+    # Leer = Vorgabe; geprüft auch bei Quelle GitHub, damit ein Tippfehler nicht erst beim Umschalten auffällt
+    forgejo_repo = werte.get("MONITOR_UPDATE_FORGEJO_REPO", "").strip() or Konfig.update_forgejo_repo
+    if not REPO_MUSTER.fullmatch(forgejo_repo):
+        raise KonfigFehler(f"MONITOR_UPDATE_FORGEJO_REPO muss besitzer/repo sein, gefunden: {forgejo_repo!r}")
 
     entwicklung = werte.get("MONITOR_ENTWICKLUNG", "") in ("1", "ja", "true")
     adresse = werte.get("MONITOR_ADRESSE", "127.0.0.1" if entwicklung else "0.0.0.0")
@@ -191,6 +200,7 @@ def lade(datei: Path | None = None, umgebung: dict[str, str] | None = None) -> K
         update_herkunft=werte.get("MONITOR_UPDATE_HERKUNFT", "").strip().lower(),
         update_quelle=quelle,
         update_forgejo=forgejo,
+        update_forgejo_repo=forgejo_repo,
         update_http_erlaubt=http_erlaubt,
         weitere={k: v for k, v in werte.items() if not k.startswith("MONITOR_")},
     )
