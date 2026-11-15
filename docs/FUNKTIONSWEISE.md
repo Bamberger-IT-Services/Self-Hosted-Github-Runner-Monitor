@@ -409,6 +409,7 @@ Benutzer (einmal je Token) → Repositories (ohne archivierte und ohne Actions, 
 eigene Runner-Liste → Läufe je Repository (ruhige
 Repositories nur alle 5 Min., wie bei GitHub) → Jobs der laufenden Läufe → bei Forgejo Log-Anfang je
 neuem Job → Schritte des eigenen Jobs → Ergebnis der Jobs, die seit der letzten Runde fertig sind →
+laufende und wartende Jobs der Organisation mit Schritten und Vergleichsdauern (#171, nächster Abschnitt) →
 erst jetzt (#151) die erweiterte Suche: der gemerkte Ort des letzten Funds (z. B. `/admin`, jede Runde),
 fehlt der Runner, höchstens alle 10 Min. und nur mit mindestens 6 s Rest der Runde `/admin/actions/runners`
 und die Listen der 10 zuletzt geänderten Repositories (scheitert `/admin`, geht es mit den Repositories
@@ -560,6 +561,60 @@ bei Forgejo: ist der Runner bei GitLab nicht zu finden oder schlug die Abfrage f
 `unbekannt` statt „bereit“; ein pausierter Runner mit laufendem Job zeigt `job`. Ein `status` eines Jobs,
 der kein Text ist (Liste, Objekt), kostet nur diesen Job, nicht die Runde. Die Server-Eingabe der
 Einrichtung folgt mit #96; erst dann hebt `erkennung.FAEHIG["gitlab"]` an (E-20).
+
+### Laufende und wartende Jobs (#171, Design 0.9.0)
+
+Das Dashboard zeigt je Repository, was dort läuft und wartet (Karte „Jobs je Repository“, aufklappbar), dazu im Runner-Status
+die geschätzte Restzeit. Die Daten stehen im Bereich `jobsJeRepository` (`workflows`) neben `repos[]`; `runner[].job` bekommt
+`schritt.start` und `vergleich`. Die Auswertung ohne Netz liegt in `runner_monitor/anbieter/jobsicht.py`, die Abfrage in
+`anbieter/forgejo.py` (Abschnitt „Laufende und wartende Jobs“), die Anzeige in `web/jobs.js` (mit `node --test` geprüft).
+
+```json
+"laufende": [{ "repo": "web-portal", "privat": true, "workflow": "ci", "name": "build",
+               "ref": { "art": "PR", "name": "#142", "titel": "…" },
+               "runner": "runner-vm-01", "eigener": true, "start": 1793264401.0,
+               "schritt": { "nr": 3, "von": 5, "name": "Tests", "start": 1793264404.0 },
+               "vergleich": { "median": 660.0, "anzahl": 5 } }],
+"wartende": [{ "repo": "api-dienst", "privat": true, "workflow": "ci",
+               "ref": { "art": "Branch", "name": "main", "titel": "…" },
+               "seit": 1793263800.0, "pos": 1, "blockiert": false }]
+```
+
+- `laufende` (höchstens 12): `eigener` = `true` (Job dieses Runners), `false` (anderer Runner) oder `null` (der Runner ist beim Dienst nicht
+  erkennbar, dann steht auch kein „anderer Runner“ da); `runner` nur beim eigenen Job; `schritt` = `null`, wenn der Dienst keine Schritte
+  liefert oder sie in dieser Runde nicht gelesen wurden; `vergleich` = `null`: keine Schätzung. `start` ist bei Forgejo der Beginn
+  des Jobs (sonst des ersten Schritts, sonst des Laufs).
+- `wartende` (höchstens 30, ältester zuerst): `pos` zählt nur Läufe, die auf einen Runner warten, und nur, wenn alle Repositories der
+  Runde lesbar waren **und keine Lauf-Liste abgeschnitten wurde** (Gitea ohne Statusfilter und GitHub sehen nur die 30 neuesten Läufe je
+  Repository, Forgejo höchstens 200; ist die Liste voll, fehlen vielleicht ältere wartende Läufe) und der Lauf eine Erstellzeit hat; sonst `null`.
+  Die Warteschlange besteht aus **Läufen**, nicht aus Jobs: Hat ein Lauf mehrere Jobs mit `needs:`, steht er einmal da, auch wenn sein
+  zweiter Job später wartet; und ein Lauf mit anderen Labels, die dieser Runner gar nicht bedient, zählt mit. `blockiert` (Forgejo `blocked`, GitHub `waiting`): wartet auf Freigabe oder einen anderen Job.
+  Die Position ist die Reihenfolge der Läufe, die der Monitor in der Organisation sieht; bedient der Runner weitere Organisationen,
+  stehen dort eigene Läufe davor, die der Monitor nicht kennt.
+- **Restzeit:** Der Server liefert nur `vergleich = {median, anzahl}` – den Median der Dauern der letzten höchstens 5 **erfolgreichen**
+  Läufe desselben Workflows und Jobs (Sekunden; unbrauchbare Dauern zählen nicht, ohne eine brauchbare ist es `null`). Die Oberfläche rechnet
+  daraus live: `noch ca. {Median − Laufzeit}` und `ca. HH:MM fertig`, ab dem Median `länger als üblich`, ohne Werte `keine Schätzung`.
+
+**Forgejo und Gitea** (eine Runde; alles Freiwillige läuft nur, wenn von der Rundenfrist noch mindestens 12 s übrig sind, endet 2 s vor deren Ende
+und lässt die Suche nach dem Runner (#151) den Vorrang; Zeitüberschreitung und 429 kosten die Runde nichts):
+
+| Was | Anfrage | Grenze |
+|---|---|---|
+| wartende Läufe | schon da: die Läufe mit Statusfilter (`created` je Lauf) | keine zusätzliche |
+| laufende Jobs der Organisation | `/actions/runs/{id}/jobs` der ersten 8 laufenden Läufe (je Runde einmal, auch für die Zuordnung des Runners) | 8 Läufe |
+| Schritte der Jobs anderer Runner | `/actions/jobs/{id}` (Forgejo ab 17; Gitea liefert sie in der Job-Liste) | 6 Jobs je Runde; der eigene Job immer |
+| Vergleichsdauern | `/actions/runs?status=success&page=1&limit=20` je Repository, bei Workflows mit mehreren Jobs je Vergleichslauf `/runs/{id}/jobs` und `/jobs/{id}`; hat der Lauf nur einen Job, genügt die Laufzeit aus der Lauf-Liste | 8 Anfragen je Runde, höchstens alle 10 Min. je Workflow und Job |
+
+Die Dauer je Vergleichslauf merkt der Sammler (`speicher["vergleich"]`, ein beendeter Lauf ändert sich nie; höchstens 40 Workflow/Job-Paare);
+was in einer Runde nicht mehr drankam, folgt in der nächsten. Ein Lauf ohne den Job oder ohne Zeiten zählt als „nicht zu ermitteln“ (0, wird nicht erneut gefragt).
+Zeiten vor dem Jahr 2000 (Forgejo schreibt `0001-01-01` für „nicht gesetzt“) zählen als fehlend.
+
+**Letzte Jobs ohne Zuordnung:** Lässt sich der Runner beim Dienst nicht erkennen (keine UUID, in keiner lesbaren Runner-Liste, #145), zeichnet der
+Monitor die laufenden Jobs der Organisation auf und trägt sie, wenn sie enden, mit Ergebnis und Dauer in „Letzte Jobs“ ein; sonst nur die des Runners.
+
+**GitHub:** `laufende` und `wartende` aus den ohnehin gelesenen Läufen (`run_started_at`, `created_at`, Workflow-Name), ohne zusätzliche Anfrage. Job-Name,
+Runner und Schritt stehen nur für den eigenen Job (aus `job`); `vergleich` ist immer `null`. **GitLab:** `laufende` aus den laufenden Jobs des Runners
+(`/runners/:id/jobs`), ohne Schritt und Schätzung; `wartende` bleibt leer (`wartetUnbekannt`).
 
 ### Momentaufnahme `GET /api/zustand` (E-19, additiv)
 
@@ -876,7 +931,7 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | `system` | `kerne[]` (%), `cpu`, `last[3]`, `ram{belegt, gesamt}`, `swap{…}`, `netz{empfangen, gesendet, schnittstellen[]}` (B/s), `start`; beim ersten Mal zusätzlich `verlauf{cpu[], ram[], netz[[empfangen, gesendet]], start}` (bis 600 Sekundenwerte, `start` = Zeit des ältesten Werts) |
 | `prozesse` | `[{pid, benutzer, cpu, ram, befehl}]` |
 | `platten` | `[{pfad, gesamt, frei, belegt, schwelleFrei}]` (Bytes; `schwelleFrei` nur für „/“) |
-| `workflows` | `org`, `abfrage: ok\|kein-token\|token-ungueltig\|keine-rechte\|nicht-erreichbar\|kontingent\|fehler`, `abgefragt`, `naechste`, `tokenAblauf`, `kontingent{}`, `repos[{name, privat, laeuft, wartet}]` |
+| `workflows` | `org`, `abfrage: ok\|kein-token\|token-ungueltig\|keine-rechte\|nicht-erreichbar\|kontingent\|fehler`, `abgefragt`, `naechste`, `tokenAblauf`, `kontingent{}`, `repos[{name, privat, laeuft, wartet}]`, `laufende[]`, `wartende[]` (seit #171, siehe „Laufende und wartende Jobs“) |
 | `update` | `installiert`, `neueste{version, veroeffentlicht, notizen[], aenderungen[{version, url, neu[], einmalig}], …}` (`aenderungen`: alle Releases nach der installierten bis zur neuesten, aus den Abschnitten „Was ist neu“ und „Einmalig nach dem Update“ der Release-Notiz), `status{zustand: laeuft\|fehler\|erfolg, schritt, meldung}`, `auto` |
 | `container` | `[{name, image, zustand, seit}]` |
 | `log` | `neu` (Ansicht leeren), `ereignisse[{art, zeit, repo, workflow, name, ergebnis, dauer}]`, `zeilen[{art: zeile\|schritt, zeit, text \| nr, von, name}]` (gebündelt, bis 1500 je Nachricht) |

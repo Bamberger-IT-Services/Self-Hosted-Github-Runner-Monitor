@@ -169,7 +169,7 @@ body.dashboard { overflow: hidden; }
 
 /* Runner-Status */
 .pillen { margin-left: auto; display: flex; gap: 6px; }
-.status { flex: 0 0 486px; padding: 18px 20px; }
+.status { flex: 1 0 486px; padding: 18px 20px; }  /* füllt die Spalte: die Jobs je Repository liegen seit 0.9.0 unter der Auslastung */
 .zustand { display: flex; align-items: center; gap: 10px; margin: 8px 0 14px; }
 .zustand-titel { font-size: 30px; line-height: 34px; font-weight: 650; letter-spacing: -0.024em; }
 .job-repo { display: flex; align-items: center; gap: 6px; font-size: 17px; line-height: 22px; font-weight: 600; letter-spacing: -0.014em; }
@@ -207,11 +207,55 @@ body.dashboard { overflow: hidden; }
 
 /* Workflows */
 .wf { flex: 1; }
+/* Jobs je Repository und Live-Log teilen sich die Fläche unter der Auslastung (Design 0.9.0, #171): Der Log ist klein
+   (feste Höhe), die Jobs bekommen den Rest; „Größer“ dreht das um. Die Wahl steht in localStorage (jobs.js). */
+.unten { grid-column: 2 / 4; grid-row: 2; display: flex; flex-direction: column; gap: 12px; min-height: 0; min-width: 0; }
+.unten .wf { flex: 1 1 0; min-height: 0; }
+.unten .log { flex: 0 0 176px; }
+.unten.gross .log { flex: 1 1 0; }
+.unten.gross .wf { flex: 0 1 auto; max-height: 46%; }
+.unten.klein .ereignisse .ev:nth-last-child(n+2) { display: none; }
+#k-log-hoehe .chev { transform: rotate(90deg); }
+#k-log-hoehe[aria-expanded="true"] .chev { transform: rotate(-90deg); }
 .summen { display: flex; gap: 22px; margin-bottom: 8px; }
 .summe { display: flex; align-items: center; gap: 6px; }
 .summe-zahl { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.022em; }
 .summe-text { font-size: 13px; color: var(--ink); }
 .repo { display: flex; align-items: center; gap: 8px; height: 30px; border-top: 1px solid var(--border); }
+.repo-block { border-top: 1px solid var(--border); }
+.repo-block > .repo { border-top: 0; }
+.repo-kopf { width: 100%; padding: 0; border: 0; border-top: 0; background: none; text-align: left; color: var(--ink); font: inherit; cursor: pointer; }
+.repo-kopf:hover .repo-name { color: var(--brand); }
+.repo-kopf .chev { color: var(--ink-muted); }
+.repo-detail { display: flex; flex-direction: column; gap: 8px; padding: 2px 0 12px 18px; }
+.lj { display: grid; grid-template-columns: minmax(0,1.1fr) minmax(0,1.5fr) minmax(0,1.1fr); gap: 20px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface); }
+.lj-pfad { font-size: 13px; line-height: 18px; color: var(--ink-muted); }
+.lj-pfad b { color: var(--ink); font-weight: 600; }
+.lj-ref { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--ink-muted); min-width: 0; }
+.lj-ref .ref { font-family: var(--mono); color: var(--ink); }
+.lj-ref .ref-titel { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.lj-runner { margin-top: 4px; font-size: 12px; color: var(--ink-muted); }
+.lj-schritt { margin-top: 2px; font-size: 13px; line-height: 18px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lj-schritt.mut { color: var(--ink-muted); font-weight: 500; }
+.lj-schritt .dauer { margin-left: 6px; font-weight: 400; color: var(--ink-muted); }
+.lj-zahl { margin-top: 2px; font-size: 22px; line-height: 26px; font-weight: 600; letter-spacing: -0.018em; }
+.lj-leer { font-size: 12.5px; color: var(--ink-muted); }
+.rest { margin-top: 4px; font-size: 13px; line-height: 18px; font-weight: 600; }
+.rest.lang { color: var(--warning); }
+.rest.keine { color: var(--ink-muted); font-weight: 500; }
+.rest-sub { font-size: 12px; line-height: 16px; color: var(--ink-muted); }
+.rest-karte { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.rest-karte .rest { margin-top: 3px; font-size: 17px; line-height: 22px; }
+.fort { height: 4px; margin-top: 6px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.fort span { display: block; height: 100%; background: var(--brand); transform-origin: left center; transform: scaleX(0); transition: transform .6s linear; }
+.fort.lang span { background: var(--warning); }
+.lw-titel { margin: 2px 0 -2px; font-size: 11.5px; line-height: 14px; font-weight: 650; color: var(--ink-muted); }
+.lw { display: grid; grid-template-columns: 62px minmax(0,1fr) auto; gap: 12px; align-items: center; min-height: 30px; padding: 0 14px; border: 1px dashed var(--border); border-radius: var(--r-sm); font-size: 12.5px; }
+.lw-pos { color: var(--ink-muted); font-weight: 550; }
+.lw-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lw-name b { font-weight: 600; }
+.lw-name .mut { margin-left: 6px; }
+.lw-seit { color: var(--ink-muted); white-space: nowrap; }
 .repo-name { display: flex; align-items: center; gap: 5px; font-weight: 550; min-width: 0; white-space: nowrap; }
 .repo-name svg { color: var(--ink-muted); }
 .repo-pillen { margin-left: auto; display: flex; gap: 6px; }
@@ -300,7 +344,7 @@ body.dashboard { overflow: hidden; }
 .pl-warn > div { overflow: hidden; text-overflow: ellipsis; }
 
 /* Live-Log */
-.log { grid-column: 2 / 4; grid-row: 2; min-height: 0; }
+.log { min-height: 0; }
 .schritt-chip { font-size: 12px; line-height: 20px; padding: 0 8px; border-radius: var(--r-sm); color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, transparent); font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .luecke { flex: 1; }
 .ereignisse { display: flex; flex-direction: column; margin-bottom: 8px; min-height: 21px; }
@@ -526,7 +570,7 @@ body.formular { min-height: 100%; display: flex; flex-direction: column; font-si
   *, *::before, *::after { animation-duration: .2s !important; animation-iteration-count: 1 !important; }
   .info { animation-name: einblenden; }
   .form-karte.breit { animation-name: einblenden; }
-  .pl-teil, .chev, .seg, .knopf, .raster { transition: opacity .2s linear; }
+  .pl-teil, .chev, .seg, .knopf, .raster, .fort span { transition: opacity .2s linear; }
   .upd-dreh { animation: none; }
 }
 @media (prefers-reduced-transparency: reduce) {

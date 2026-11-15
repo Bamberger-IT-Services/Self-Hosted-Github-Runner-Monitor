@@ -12,6 +12,9 @@ window.RM_DEMO = (() => {
   let grund = '';  // ?grund=oom-kill: Ursache des gestoppten Dienstes (#68)
   let api, takt = 0, kerne = 8, zustand = 'job', gh = 'ok', upd = 'aktuell', verlaufS = 600, schritteLokal = false, updQuelle = 'github';
   let cpuSchnitt = 40, job = null, schrittNr = 1, zeilenImSchritt = 0, updSchritt = 0;
+  // #171: Beginn des aktuellen Schritts und Vergleichsdauern (?schaetzung=laenger|keine) für die Restzeit
+  let schrittStart = 0, schaetzung = 'normal';
+  const vergleichDemo = () => (schaetzung === 'keine' ? null : { median: schaetzung === 'laenger' ? 300 : 660, anzahl: 5 });
   const START = jetzt() - 3 * 86400 - 4 * 3600;
   const REPOS = [
     ['web-portal', true], ['api-dienst', true], ['dokumentation', false], ['infrastruktur', true],
@@ -40,7 +43,7 @@ window.RM_DEMO = (() => {
     return {
       vm: 'runner-vm', runner: 'runner-vm-01', eingerichtet: true, labels: ['self-hosted', 'linux', 'x64', 'docker'], version: '2.329.0', monitorVersion: INST,
       dienst, github,
-      job: ['job', 'platte', 'volllast', 'getrennt'].includes(zustand) && job ? { ...JOB, schritte: schritteLokal ? [] : JOB.schritte, start: job.start, schritt: schritt(schrittNr) } : null,
+      job: ['job', 'platte', 'volllast', 'getrennt'].includes(zustand) && job ? { ...JOB, schritte: schritteLokal ? [] : JOB.schritte, start: job.start, schritt: { ...schritt(schrittNr), start: schrittStart }, vergleich: vergleichDemo() } : null,
       letzteJobs: [
         { repo: 'api-dienst', workflow: 'CI', name: 'build', ergebnis: 'erfolg', dauer: 274, ende: t - 860 },
         { repo: 'web-portal', workflow: 'Deploy', name: 'staging', ergebnis: 'fehler', dauer: 92, ende: t - 2400 },
@@ -50,14 +53,37 @@ window.RM_DEMO = (() => {
       ],
     };
   };
+  /* Laufende und wartende Jobs wie vom Server (#171): der eigene Job mit Schritt und Vergleichsdauern; bei Volllast ein
+     zweiter Job eines anderen Runners; wartende Läufe mit Position, ein blockierter ohne. */
+  const sicht = () => {
+    const t = jetzt(), aktiv = ['job', 'platte', 'volllast'].includes(zustand) && !!job;
+    const laufende = [], wartende = [];
+    const W = (repo, privat, workflow, ref, minuten, pos, blockiert = false) => ({ repo, privat, workflow, ref, seit: t - minuten * 60, pos, blockiert });
+    if (aktiv) {
+      laufende.push({ repo: JOB.repo, privat: JOB.privat, workflow: JOB.workflow, name: JOB.name, ref: JOB.ref, runner: 'runner-vm-01', eigener: true, start: job.start,
+        schritt: { ...schritt(schrittNr), start: schrittStart }, vergleich: vergleichDemo() });
+      wartende.push(W('api-dienst', true, 'CI', { art: 'Branch', name: 'main', titel: 'Abhängigkeiten aktualisiert' }, 8, 1));
+    }
+    if (aktiv && zustand === 'volllast') {
+      laufende.push({ repo: 'dokumentation', privat: false, workflow: 'Pages', name: 'build', ref: { art: 'Branch', name: 'main', titel: 'Kapitel Einrichtung ergänzt' }, runner: null, eigener: false,
+        start: t - 143, schritt: { nr: 2, von: 4, name: 'Seite bauen', start: t - 31 }, vergleich: { median: 95, anzahl: 4 } });
+      wartende.push(W('infrastruktur', true, 'Plan', { art: 'PR', name: '#98', titel: 'Netz aufteilen' }, 3, null, true));
+    }
+    if (zustand === 'gestoppt') {
+      wartende.push(W('web-portal', true, 'CI', { art: 'PR', name: '#142', titel: 'Suche im Kundenbereich' }, 24, 1), W('web-portal', true, 'CI', { art: 'Branch', name: 'feature/suche', titel: 'Filter ergänzt' }, 21, 2),
+        W('api-dienst', true, 'CI', { art: 'Branch', name: 'main', titel: 'Abhängigkeiten aktualisiert' }, 9, 3), W('dokumentation', false, 'Pages', { art: 'Branch', name: 'main', titel: 'Kapitel Einrichtung ergänzt' }, 3, 4));
+    }
+    const je = (liste, name) => liste.filter((e) => e.repo === name).length;
+    return { laufende, wartende, repos: REPOS.map(([name, privat]) => ({ name, privat, laeuft: je(laufende, name), wartet: je(wartende, name) })) };
+  };
   const workflows = () => {
-    const t = jetzt(), aktiv = ['job', 'platte', 'volllast'].includes(zustand);
+    const t = jetzt(), s = sicht();
     const fehler = ['nicht-erreichbar', 'kein-token'].includes(gh) ? gh : 'ok';
     return {
       org: 'beispiel-org', abfrage: fehler, abgefragt: fehler === 'ok' ? t - (takt % 30) : t - 380, versucht: t - (takt % 30), naechste: t + 30 - (takt % 30),
       tokenAblauf: gh === 'ablauf' ? t + 9 * 86400 : t + 74 * 86400,
       kontingent: { limit: 5000, frei: 4812, reset: t + 2400 },
-      repos: REPOS.map(([name, privat], i) => ({ name, privat, laeuft: aktiv && i === 0 ? 1 : 0, wartet: zustand === 'gestoppt' ? (i < 3 ? 2 - (i > 0) : 0) : (aktiv && i === 1 ? 1 : 0) })),
+      repos: s.repos, laufende: s.laufende, wartende: s.wartende,
       fehler: '', runnerGrund: '',
     };
   };
@@ -131,7 +157,7 @@ window.RM_DEMO = (() => {
       status: { zustand: unsichtbar ? 'aktiv' : offline ? 'offline' : 'bereit', dienst: { zustand: 'aktiv', seit: START + 9000, grund: null }, beimDienst },
       job: null, letzteJobs: [{ repo: 'datenimport', workflow: 'Import', name: 'nachts', ergebnis: 'erfolg', dauer: 128, ende: t - 720 }],
       jobsJeRepository: { ...w, abfrage: anbieterAbfrage, abgefragt: anbieterAbfrage === 'ok' ? t - (takt % 30) : t - anbieterAlter, naechste: t + 30 - (takt % 30), tokenAblauf: null,  // Forgejo, Gitea und GitLab melden kein Ablaufdatum (E-18: nur, was der Dienst liefert)
-        kontingent: {}, repos: anbieterAbfrage === 'kein-token' ? [] : REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })),
+        kontingent: {}, repos: anbieterAbfrage === 'kein-token' ? [] : REPOS.map(([name, privat]) => ({ name, privat, laeuft: 0, wartet: 0 })), laufende: [], wartende: [],
         runnerGrund: unsichtbar ? 'Runner beim Dienst nicht sichtbar (globaler Runner? Token-Rechte)' : '' },
       log: { art: 'journal', unit },
     };
@@ -300,12 +326,12 @@ window.RM_DEMO = (() => {
       api.empfange('log', { ereignisse: [{ art: 'ende', zeit: jetzt(), repo: JOB.repo, workflow: JOB.workflow, name: JOB.name, ergebnis: 'erfolg', dauer: jetzt() - job.start }] });
       job = null; setTimeout(() => { if (zustand === 'job') neuerJob(); }, 6000); return;
     }
-    schrittNr++; zeilenImSchritt = 0;
+    schrittNr++; zeilenImSchritt = 0; schrittStart = jetzt();
     api.empfange('log', { zeilen: [{ art: 'schritt', zeit: jetzt(), ...schritt(schrittNr) }] });
     api.empfange('status', status()); runnerSenden();
   }
   function neuerJob() {
-    job = { start: jetzt() - 95 }; schrittNr = 3; zeilenImSchritt = 0;
+    job = { start: jetzt() - 95 }; schrittNr = 3; zeilenImSchritt = 0; schrittStart = jetzt() - 60;
     api.empfange('log', { neu: true, ereignisse: [{ art: 'start', zeit: jetzt() - 95, repo: JOB.repo, workflow: JOB.workflow, name: JOB.name }], zeilen: [{ art: 'schritt', zeit: jetzt() - 60, ...schritt(3) }] });
     api.empfange('status', status()); runnerSenden();
   }
@@ -359,6 +385,7 @@ window.RM_DEMO = (() => {
     if (['kein-token', 'nicht-erreichbar', 'token-ungueltig'].includes(p.get('anbieter'))) anbieterAbfrage = p.get('anbieter');
     if (parseInt(p.get('anbieteralter'), 10) > 0) anbieterAlter = parseInt(p.get('anbieteralter'), 10);
     schritteLokal = p.get('schritte') === 'lokal';
+    if (['laenger', 'keine'].includes(p.get('schaetzung'))) schaetzung = p.get('schaetzung');
     if (['fehlt', 'teilweise', 'timer', 'unbekannt'].includes(p.get('aufraeumen'))) aufraeumenWahl = p.get('aufraeumen');
     const vl = parseInt(p.get('verlauf'), 10); if (vl >= 30 && vl <= 600) verlaufS = vl;
     if (p.get('leiste') !== '0') leiste();

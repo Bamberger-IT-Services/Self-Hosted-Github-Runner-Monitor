@@ -6,6 +6,7 @@
 (() => {
   const { $, IC, esc, zahl, zeit, hm, tm, wt, datum, dauer, vor, seit, mehrzahl, ms, t } = RM;
   I18N.wendeAn();  // statische Texte im HTML (data-t …) und <html lang>
+  const HILFEN = { t, esc, IC, dauer, seit, hm, zeit, mehrzahl };  // für jobs.js (laufende und wartende Jobs, #171)
   const GiB = 1024 ** 3, GB = 1e9;
   const REPO = 'Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor';
   const MAX_ZEILEN = 1500;
@@ -33,7 +34,7 @@
     status: null, system: null, prozesse: [], platten: [], workflows: null, update: null,
     cpuH: [], ramH: [], netzH: [], ende: null, zeitraum: zeitraumLaden(), ereignisse: [], zeilenN: 0, puffer: [],
     verbindung: 'verbindet', letzteDaten: 0,
-    umbruch: true, angehalten: false, hoch: false, pruefung: null, wfOffen: false, info: null, kerneN: 0,
+    umbruch: true, angehalten: false, hoch: false, pruefung: null, wfOffen: false, repoOffen: Object.create(null), logHoehe: JOBS.logHoeheLaden(), info: null, kerneN: 0,
     // Mehrere Runner (#94): runner[]/meldungen[] aus dem Server; status/workflows sind dann die Ansicht des
     // gewählten Runners, sonst (Altformat ohne runner) die Bereiche „status“/„workflows“ selbst.
     runner: null, meldungenSrv: null, wahl: RUNNER.wahl(), statusAlt: null, workflowsAlt: null, mehrOffen: false, logFremd: false,
@@ -470,7 +471,8 @@
         <div class="zahlen">
           <div><div class="zeile-k">${t('Laufzeit')}</div><div class="zahl-gross laufzeit"></div></div>
           <div><div class="zeile-k">${t('Gestartet')}</div><div class="zahl-mittel">${j.start ? zeit(j.start) : '–'}</div><div class="zahl-sub">${j.start ? `${wt(j.start)}, ${tm(j.start)}` : ''}</div></div>
-        </div>`;
+        </div>
+        ${JOBS.restHtml(j, HILFEN, true)}`;
     } else {
       const text = {
         aktiv: nichtSichtbar ? t('Der Dienst läuft. {dienst} zeigt den Runner in keiner Runner-Liste, die das Token lesen darf (globaler Runner? Token-Rechte) – ob er dort online ist, ist unbekannt. Laufende Jobs erscheinen, sobald sie sich dem Runner zuordnen lassen.', { dienst: dn })
@@ -523,6 +525,7 @@
     if (dyn) {
       const setze = (el, x) => { if (el && el.textContent !== x) el.textContent = x; };
       setze(karte.querySelector('.laufzeit'), dyn.laufzeit);
+      JOBS.tick(karte, HILFEN);  // Restzeit (#171)
       if (dyn.ohneSchritte) return;  // „Schritte nicht verfügbar“ bleibt stehen
       setze(karte.querySelector('.schritt-zahl'), t('{nr} von {von}', { nr: dyn.nr, von: dyn.von || '–' }));
       const nm = karte.querySelector('.schritt-name');
@@ -545,7 +548,7 @@
       return;
     }
     if (!w) return;
-    if (el.contains(document.activeElement) && el.dataset.letzte && Date.now() - Number(el.dataset.letzte) < 5000) return;
+    if (el.contains(document.activeElement) && el.dataset.letzte && Date.now() - Number(el.dataset.letzte) < 5000) { JOBS.tick(el, HILFEN); return; }
     el.dataset.letzte = String(Date.now());
     const jetzt = Date.now();
     // Dienst des gewählten Runners (#123): Texte, Pfad und „Was tun?“ gelten für ihn, nicht für GitHub
@@ -562,13 +565,13 @@
     } else {
       const aktiv = w.repos.filter(r => r.laeuft || r.wartet), ruhig = w.repos.filter(r => !r.laeuft && !r.wartet);
       const L = aktiv.reduce((a, r) => a + r.laeuft, 0), W = aktiv.reduce((a, r) => a + r.wartet, 0);
-      const alt = !['ok'].includes(w.abfrage);
+      const alt = !['ok'].includes(w.abfrage), je = JOBS.nachRepo(w);
       inhalt = `<div class="wf-inhalt${alt ? ' alt' : ''}">
         <div class="summen">
           <div class="summe laeuft">${IC.play(16)}<span class="summe-zahl">${L}</span><span class="summe-text">${mehrzahl(L, t('läuft'), t('laufen'))}</span></div>
           <div class="summe wartet">${IC.uhr()}<span class="summe-zahl">${W}</span><span class="summe-text">${mehrzahl(W, t('wartet'), t('warten'))}</span></div>
         </div>
-        ${aktiv.map(r => `<div class="repo"><span class="repo-name">${esc(r.name)}${r.privat ? IC.schloss(12) : ''}</span><span class="repo-pillen">${r.laeuft ? `<span class="pill laeuft">${IC.dreieck()}${r.laeuft} ${mehrzahl(r.laeuft, t('läuft'), t('laufen'))}</span>` : ''}${r.wartet ? `<span class="pill wartet">${IC.uhr(12, 1.7)}${r.wartet} ${mehrzahl(r.wartet, t('wartet'), t('warten'))}</span>` : ''}</span></div>`).join('')}
+        ${aktiv.map(r => JOBS.repoHtml(r, je, S.repoOffen, HILFEN)).join('')}
         ${aktiv.length ? '' : `<div class="alle-ruhig">${IC.ok()}${t('Nichts läuft, nichts wartet')}</div>`}
         ${ruhig.length ? `<button type="button" class="ruhig-knopf" data-aktion="wf-offen" aria-expanded="${S.wfOffen}">${IC.chev(S.wfOffen)}${aktiv.length ? t('{n} weitere ruhig', { n: ruhig.length }) : t('Alle {n} Repositories ruhig', { n: ruhig.length })}</button>` : ''}
         ${S.wfOffen ? `<div class="ruhig-liste">${ruhig.map(r => `<span class="ruhig-repo">${esc(r.name)}</span>`).join('')}</div>` : ''}
@@ -589,8 +592,18 @@
     const meta = ['kein-token', 'ausstehend'].includes(w.abfrage) ? esc(orgText) : `${esc(orgText)} · ${t('{n} Repositories', { n: w.repos.length })}`;
     const html = `<div class="karte-kopf"><span class="karte-titel">${t('Jobs je Repository')}</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
     // nur bei Änderung neu schreiben; die sekündlich wechselnde Zeitzeile per textContent
-    if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    if (el.dataset.html !== html) {
+      // Fokus über das Ersetzen retten (z. B. Schrittwechsel ändert das HTML, während ein Repository-Knopf Fokus hat)
+      const f = document.activeElement && el.contains(document.activeElement) ? document.activeElement : null;
+      const merk = f ? { repo: f.dataset.repo, aktion: f.dataset.aktion } : null;
+      el.innerHTML = html; el.dataset.html = html;
+      if (merk && merk.aktion) {
+        const neu = [...el.querySelectorAll('[data-aktion]')].find((k) => k.dataset.aktion === merk.aktion && k.dataset.repo === merk.repo);
+        if (neu) neu.focus();
+      }
+    }
     const zt = el.querySelector('.wf-zeit'); if (zt && zeitText && zt.textContent !== zeitText) zt.textContent = zeitText;
+    JOBS.tick(el, HILFEN);  // Laufzeiten, „wartet seit“ und Restzeiten (#171)
   }
 
   /* ------------------------------------------------------------ Auslastung */
@@ -717,6 +730,15 @@
     const aria = S.logQuelle === 'journal' ? t('Journal von {unit}', { unit: S.journalUnit }) : t('Ausgabe des laufenden Schritts');
     if ($('term').getAttribute('aria-label') !== aria) $('term').setAttribute('aria-label', aria);
     renderLeer();
+  }
+
+  /* Höhe des Live-Logs (#171): klein = feste Höhe, der Platz gehört den Jobs; groß = der Log bekommt den Rest. Die Wahl
+     steht je Browser in localStorage (jobs.js). */
+  function renderLogHoehe() {
+    const gross = S.logHoehe === 'gross', k = $('k-log-hoehe');
+    $('unten').classList.toggle('gross', gross); $('unten').classList.toggle('klein', !gross);
+    k.setAttribute('aria-expanded', String(gross));
+    k.innerHTML = `${IC.chev(false)}${esc(gross ? t('Kleiner') : t('Größer'))}`;
   }
 
   function renderEreignisse() {
@@ -1240,6 +1262,11 @@
     else if (a === 'thema') { RM.setzeThema(b.dataset.thema); renderModus(); renderInfo(); }
     else if (a === 'sprache') { if (b.dataset.sprache !== I18N.wahl()) { if (I18N.setzeSprache(b.dataset.sprache)) location.reload(); /* Speicher gesperrt: Wahl nicht möglich, keine Änderung */ } }
     else if (a === 'zeitraum') { S.zeitraum = VERLAUF.zeitraum(b.dataset.zeitraum); zeitraumSpeichern(S.zeitraum); renderZeitraum(); renderSystem(); }
+    else if (a === 'repo-offen') {
+      S.repoOffen[b.dataset.repo] = b.getAttribute('aria-expanded') !== 'true';
+      const el = $('workflows'); el.dataset.letzte = ''; el.dataset.html = ''; renderWorkflows();
+      const neu = [...el.querySelectorAll('[data-aktion="repo-offen"]')].find((k) => k.dataset.repo === b.dataset.repo); if (neu) neu.focus();
+    }
     else if (a === 'wf-offen') { S.wfOffen = !S.wfOffen; $('workflows').dataset.letzte = ''; $('workflows').dataset.html = ''; renderWorkflows(); }
     else if (a === 'abmelden') { if (!DEMO) await RM.sende('/api/abmelden'); location.href = '/anmelden'; }
     else if (a === 'kopieren') kopiere(b);
@@ -1292,7 +1319,8 @@
   $('k-umbrechen').addEventListener('click', () => setzeUmbruch(true));
   $('k-abschneiden').addEventListener('click', () => setzeUmbruch(false));
   $('vm-icon').innerHTML = IC.server();
-  renderModus(); renderPause(); renderKopf(); renderLeer();
+  renderModus(); renderPause(); renderKopf(); renderLeer(); renderLogHoehe();
+  $('k-log-hoehe').addEventListener('click', () => { S.logHoehe = S.logHoehe === 'gross' ? 'klein' : 'gross'; JOBS.logHoeheSpeichern(S.logHoehe); renderLogHoehe(); });
 
   /* Sekundentakt: Uhr, Laufzeiten, „vor …“, Wachhund für die Verbindung */
   setInterval(() => {

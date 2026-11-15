@@ -4,7 +4,8 @@
 
 ![Dashboard mit laufendem Job](bilder/dashboard-job.png)
 
-Eine Seite ohne Scrollen (1440 × 900 bis 1920 × 1080). Systemwerte kommen jede Sekunde,
+Eine Seite ohne Scrollen (1440 × 900 bis 1920 × 1080): links der Runner-Status, in der Mitte oben die Auslastung, darunter
+die Jobs je Repository und das (kleinere) Live-Log, rechts Prozesse und Platten. Systemwerte kommen jede Sekunde,
 Daten der Anbieter (GitHub, Forgejo, Gitea, GitLab) alle 30 Sekunden. Nichts lässt sich hier verändern – die Seite ist nur zum Anschauen.
 
 ## Kopfzeile
@@ -44,14 +45,16 @@ Das Wichtigste zuerst: groß der Zustand (hier am Beispiel GitHub; bei Forgejo, 
 
 | Zustand | Bedeutung |
 |---|---|
-| **Job läuft** (blau) | Repository, Workflow und Job, Pull Request oder Branch, aktueller Schritt „3 von 8“ mit Fortschritt, Laufzeit, Startzeit. Kennt GitHub die Schrittliste noch nicht (die ersten Sekunden eines Jobs), steht „3 von –“ mit gedämpftem Namen „Schritt 3“ und gestricheltem Rest; Name und Anzahl kommen nach. Die Zahl springt nie zurück. |
+| **Job läuft** (blau) | Repository, Workflow und Job, Pull Request oder Branch, aktueller Schritt „3 von 8“ mit Fortschritt, Laufzeit, Startzeit und **geschätzter Restzeit** (siehe „Geschätzte Restzeit“ unten). Kennt GitHub die Schrittliste noch nicht (die ersten Sekunden eines Jobs), steht „3 von –“ mit gedämpftem Namen „Schritt 3“ und gestricheltem Rest; Name und Anzahl kommen nach. Die Zahl springt nie zurück. |
 | **Bereit** (grün) | Dienst läuft, GitHub sieht den Runner, kein Job |
 | **Dienst gestoppt** (rot) | der systemd-Dienst des Runners läuft nicht – Jobs warten. Hat systemd ihn wegen eines Fehlers beendet, steht die Ursache unter **Grund**, z. B. „Speicher voll (OOM-Killer)“ oder „mit Fehlercode beendet“. Link „Runner-Logs abrufen“ |
 | **Offline bei GitHub** (orange) | Dienst läuft, GitHub sieht ihn aber nicht |
 | **Dienst aktiv** mit „Forgejo: nicht sichtbar“ (grün) | Forgejo/Gitea: Die Abfrage klappt, der Runner steht aber in keiner Runner-Liste, die das Token lesen darf (z. B. ein Runner der ganzen Instanz ohne Besitzer- oder Admin-Recht). Dienst, Log und Jobs, die sich dem Runner zuordnen lassen, bleiben sichtbar; ob er beim Server online ist, ist unbekannt. Link „Anleitung: Token-Rechte“ |
 | **Kein Runner** | auf der VM ist keiner eingerichtet |
 
-Darunter die **letzten fünf Jobs** mit Ergebnis (Erfolg, Fehler, Abgebrochen), Dauer und Endzeit.
+Darunter die **letzten fünf Jobs** mit Ergebnis (Erfolg, Fehler, Abgebrochen), Dauer und Endzeit. Lässt sich der Runner beim
+Forgejo- oder Gitea-Server nicht erkennen („nicht sichtbar“), steht dort stattdessen, was der Monitor in der Organisation laufen
+und enden sah – die Liste gehört dann nicht sicher zu diesem Runner.
 Oben rechts zwei Plaketten: Dienst aktiv/gestoppt und Online/Offline bei GitHub
 („unbekannt“ ohne Token oder ohne das Recht „Self-hosted runners“).
 
@@ -61,11 +64,44 @@ Oben rechts zwei Plaketten: Dienst aktiv/gestoppt und Online/Offline bei GitHub
 
 Fällt die Abfrage bei einem Dienst aus, zeigt der Monitor den letzten guten Stand mit seinem Alter („Stand von 14:02:11 (vor 12 Min.)“). Nach zehn Minuten Ausfall steht in „Runner-Status“ „Zustand unbekannt“ statt eines Jobs, der angeblich noch läuft; derselbe Reiter über der Karte zeigt dann ebenfalls „Unbekannt“.
 
+### Geschätzte Restzeit
+
+Aus den Dauern der letzten (höchstens fünf) **erfolgreichen** Läufe desselben Workflows und Jobs bildet der Monitor den
+Median und rechnet ihn auf den laufenden Job um. Die Zeit zählt live herunter:
+
+| Anzeige | Bedeutung |
+|---|---|
+| **noch ca. 12 Min.** | Median minus Laufzeit; darunter „ca. 18:40 fertig · üblich ca. 25 Min.“ und ein Balken (Anteil an der üblichen Zeit). Der Tooltip nennt die Grundlage („Median der letzten 5 erfolgreichen Läufe …“). |
+| **länger als üblich** (orange) | Der Job läuft länger als der Median – nie eine negative Zeit. |
+| **keine Schätzung** | Es gibt keinen erfolgreichen Vergleichslauf (neuer Workflow, nach Fehlern, Dienst ohne die Daten). |
+
+Es ist eine Schätzung, kein Versprechen: Ein Job, dessen Dauer stark schwankt (etwa mit der Größe der Änderung), kann deutlich
+abweichen. Die Vergleichsdauern holt der Monitor höchstens alle 10 Minuten und merkt sie sich; die Schätzung steht deshalb
+nach einem Neustart des Monitors erst nach ein bis zwei Runden (30 s) wieder.
+
 ## Jobs je Repository
 
 Summe **läuft / wartet** über alle Repositories der Organisation bzw. des Servers, darunter nur die Repositories,
 in denen gerade etwas läuft oder wartet. „n weitere ruhig“ klappt die übrigen auf. Ein Schloss
 markiert private Repositories. Unten: Zeit der letzten Abfrage und der nächsten.
+
+**Aufklappen:** Ein Klick auf ein Repository (oder Enter bzw. Leertaste auf der Zeile) zeigt, was dort läuft und wartet; ein Repository mit
+laufendem Job ist von selbst offen. Die Wahl gilt, solange die Seite offen ist.
+
+- **Laufender Job:** Workflow und Job, Branch oder PR mit Titel, der Runner (bei Jobs eines anderen Runners „anderer Runner“; ist der Runner
+  nicht erkennbar, steht nichts), **Aktueller Schritt „n von m“** mit Namen, Laufzeit des Schritts und Fortschrittsbalken, **Läuft seit**
+  (live) und die geschätzte Restzeit. Liefert der Dienst keine Schritte, steht „Schritte nicht verfügbar“.
+- **Wartet auf einen Runner:** je Lauf Workflow, Branch oder PR und „wartet seit …“ (live). **Pos. n** ist die Stelle in der Warteschlange,
+  wenn sie sich aus den Startzeiten aller Repositories ableiten lässt (die Reihenfolge der Läufe, die der Monitor sieht – bei einem Runner, der
+  auch andere Organisationen bedient, kann sie davon abweichen, ebenso bei Läufen mit anderen Labels, die dieser Runner nicht bedient, oder Jobs, die erst per `needs:` folgen – die
+  Warteschlange besteht aus Läufen); „–“ heißt: nicht ableitbar (auch, wenn die Lauf-Liste voll ist und ältere Läufe fehlen könnten). **Blockiert** (Freigabe oder ein anderer Job fehlt) wartet
+  nicht auf einen Runner und hat keine Position.
+- Zeigt ein Repository „1 läuft“, der Dienst liefert aber keine Einzelheiten (zu viele Läufe auf einmal, Rechte fehlen), steht
+  „Einzelheiten zum laufenden Job liegen nicht vor“.
+
+Was dabei vom Anbieter abhängt: **Forgejo und Gitea** liefern Schritte (Forgejo ab Version 17) und Vergleichsdauern, **GitHub** liefert laufende und
+wartende Läufe, Schritte aber nur für den eigenen Job und keine Schätzung (sie würde das API-Kontingent belasten), **GitLab** nennt die laufenden Jobs des
+Runners ohne Schritte und Schätzung und keine wartenden Läufe. Was fehlt, bleibt leer oder steht als „nicht verfügbar“ da.
 
 Ohne Token zeigt die Karte, wie man eines einrichtet:
 
@@ -123,6 +159,9 @@ der Schwelle wird orange.
   läuft wieder mit.
   Im Log stehen die letzten 1 500 Zeilen.
 - **Umbrechen / Abschneiden** für lange Zeilen.
+- **Größer / Kleiner** (Knopf neben „Anhalten“): Das Live-Log ist standardmäßig klein (feste Höhe mit dem letzten Ereignis und etwa vier Zeilen Ausgabe), damit
+  Runner-Status und Jobs Platz haben; „Größer“ gibt ihm den Rest der Fläche, die Jobs werden dafür kleiner. Die Wahl merkt der Browser
+  (`runner-monitor.log-hoehe`).
 - Ältere Ausgaben stehen im Runner (`_diag/pages`) und bei GitHub („Download log archive“).
 
 ## Sprache
