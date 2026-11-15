@@ -2,7 +2,8 @@
 
 **Stand: 30.10.2026 · Version 0.8.2** (Design v0.8.0, noch nicht auf einer echten Runner-VM abgenommen)
 
-Live-Dashboard für einen **selbst gehosteten GitHub-Actions-Runner** auf einer Linux-VM.
+Live-Dashboard für **selbst gehostete Runner** auf einer Linux-VM – GitHub Actions, dazu
+Forgejo, Gitea und GitLab.
 Ein Blick zeigt, ob der Runner bereit ist, welcher Job gerade läuft, wie ausgelastet die VM
 ist und was in den Repositories der Organisation läuft oder wartet – mit der Ausgabe des
 laufenden Schritts als Live-Log.
@@ -24,6 +25,12 @@ laufenden Schritts als Live-Log.
 Nur Python-Standardbibliothek, keine Pakete, kein Docker: zwei kleine systemd-Dienste.
 Dazu ist das Repository der eine Ort für die **Runner-VM selbst**: Einrichtung, Umzug, Pflege
 und Fehlerhilfe stehen in [docs/RUNNER.md](docs/RUNNER.md).
+
+**Name des Repositorys:** Gepflegt wird auf Forgejo als `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted`
+(bis November 2026 `Self-Hosted-Github-Runner-Monitor` – es überwacht längst nicht mehr nur GitHub-Runner). Die
+öffentliche Kopie auf GitHub ist seit 28.10.2026 eingefroren und behält den alten Namen
+`Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor`: Von dort holen installierte Monitore ihre Updates, und
+dorthin zeigen die Links unten ([E-33](DECISIONS.md)).
 
 ## Schnellstart auf der VM (3 Schritte)
 
@@ -75,7 +82,7 @@ Demo-Zustände lassen sich auch per Adresse wählen, z. B. `?demo&zustand=gestop
 | Architekturentscheidungen | [docs/adr/](docs/adr/) · [DECISIONS.md](DECISIONS.md) |
 | Design v0.8.0 und Abgleich mit dem Code | [docs/design/README.md](docs/design/README.md) |
 | Änderungen | [CHANGELOG.md](CHANGELOG.md) · [docs/releases/](docs/releases/) |
-| Aufgaben | [Project „Self-Hosted-Github-Runner-Monitor Roadmap“](https://github.com/orgs/Bamberger-IT-Services/projects/5) (Issues dieses Repos) |
+| Aufgaben | Issues des Repositorys `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` auf Forgejo (das GitHub-Project ist mit GitHub eingefroren) |
 | Entscheidungen, Verlauf | [entwickler-dashboard/index.html](entwickler-dashboard/index.html) |
 
 ### Dokumentation nach Version

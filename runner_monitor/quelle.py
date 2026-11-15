@@ -5,16 +5,19 @@ Der root-Sammler fragt die Quelle alle 6 Stunden nach dem neuesten Release und s
 dieser Quelle. Für GitHub bleibt alles wie bisher (``github.neueste_version``, Downloads unter
 ``https://github.com/<repo>/releases/download/``). Für Forgejo gilt:
 
-* Basis-Adresse aus ``MONITOR_UPDATE_FORGEJO`` (konfig.env, nur root schreibt), das Repository wie bei
-  GitHub aus ``MONITOR_RELEASE_REPO``. **Kein Token**: Release-API und Downloads eines öffentlichen
-  Repositorys brauchen keine Anmeldung, auf der VM liegt dafür kein Geheimnis.
+* Basis-Adresse aus ``MONITOR_UPDATE_FORGEJO`` (konfig.env, nur root schreibt), das Repository aus
+  ``MONITOR_UPDATE_FORGEJO_REPO`` (Vorgabe ``Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted``). Es
+  heißt seit #162 anders als auf GitHub (``MONITOR_RELEASE_REPO``, E-33) – der alte Name ginge nur über
+  eine Weiterleitung von Forgejo, und der folgt der Monitor nicht. **Kein Token**: Release-API und
+  Downloads eines öffentlichen Repositorys brauchen keine Anmeldung, auf der VM liegt dafür kein Geheimnis.
 * ``https://`` Pflicht, ``http://`` nur mit ``MONITOR_UPDATE_HTTP_ERLAUBT=1`` (wie E-21) und dann ohne
   Proxy aus der Umgebung.
 * **Keiner Weiterleitung folgen** (API und Downloads). Die Download-Adressen baut der Monitor selbst aus
   Basis, Repository, Tag ``vX.Y.Z`` und festem Dateinamen; ``browser_download_url`` aus der Antwort wird
   nur als „Paket hängt am Release“ gewertet, nie aufgerufen.
-* Herkunft wie bei GitHub mit ``gh attestation verify`` gegen das GitHub-Repository: Die Attestierung
-  hängt am SHA-256 des Archivs, nicht am Ort des Downloads (ADR-0005, ADR-0007).
+* Herkunft wie bei GitHub mit ``gh attestation verify`` gegen das GitHub-Repository
+  (``MONITOR_RELEASE_REPO``): Die Attestierung hängt am SHA-256 des Archivs, nicht am Ort des Downloads
+  (ADR-0005, ADR-0007).
 
 Aufruf von ``einrichten.sh quelle`` (alle Ausgaben ohne Geheimnisse)::
 
@@ -36,7 +39,7 @@ import urllib.request
 from pathlib import Path
 
 from . import github
-from .konfig import Konfig, KonfigFehler, lies_env_datei, update_quelle
+from .konfig import REPO_MUSTER, Konfig, KonfigFehler, lies_env_datei, update_quelle
 
 NAMEN = {"github": "GitHub", "forgejo": "Forgejo"}
 VERSION_MUSTER = re.compile(r"^\d+\.\d+\.\d+$")
@@ -67,7 +70,7 @@ def _repo_pfad(repo: str) -> str:
 
 def download_praefix(k: Konfig) -> str:
     if k.update_quelle == "forgejo":
-        return f"{k.update_forgejo}/{_repo_pfad(k.release_repo)}/releases/download/"
+        return f"{k.update_forgejo}/{_repo_pfad(k.update_forgejo_repo)}/releases/download/"
     return f"https://github.com/{k.release_repo}/releases/download/"
 
 
@@ -84,7 +87,7 @@ def anzeige(k: Konfig) -> dict:
     if k.update_quelle == "forgejo":
         return {"art": "forgejo", "name": NAMEN["forgejo"], "adresse": k.update_forgejo,
                 "http": k.update_forgejo.startswith("http://"),
-                "releases": f"{k.update_forgejo}/{_repo_pfad(k.release_repo)}/releases"}
+                "releases": f"{k.update_forgejo}/{_repo_pfad(k.update_forgejo_repo)}/releases"}
     return {"art": "github", "name": NAMEN["github"], "adresse": "https://github.com", "http": False,
             "releases": f"https://github.com/{k.release_repo}/releases"}
 
@@ -95,7 +98,7 @@ def _fehlertext(fehler: Exception) -> str:
     if art in ("keine-rechte", "token-ungueltig"):
         return "Forgejo verlangt eine Anmeldung – ist das Repository öffentlich?"
     if art == "fehlt":
-        return "Repository oder Release auf Forgejo nicht gefunden (404) – MONITOR_RELEASE_REPO prüfen"
+        return "Repository oder Release auf Forgejo nicht gefunden (404) – MONITOR_UPDATE_FORGEJO_REPO prüfen"
     if ursache == "weiterleitung":
         return "Forgejo leitet weiter – MONITOR_UPDATE_FORGEJO prüfen (genaue Adresse, https://)"
     if ursache == "kein-dienst":
@@ -116,7 +119,7 @@ def forgejo_release(k: Konfig, installiert: str, klient=None) -> dict:
         klient, fehlerart = _forgejo_klient(k)
     else:
         from .anbieter.forgejo import ForgejoFehler as fehlerart
-    pfad = f"/repos/{_repo_pfad(k.release_repo)}/releases"
+    pfad = f"/repos/{_repo_pfad(k.update_forgejo_repo)}/releases"
     try:
         daten = github.deute_release(klient.hole(f"{pfad}/latest").daten)
     except fehlerart as fehler:
@@ -194,7 +197,7 @@ def _main(argv: list[str] | None = None) -> int:
     b = befehle.add_parser("abfrage")
     b.add_argument("--basis", required=True)
     b.add_argument("--http-erlaubt", action="store_true")
-    b.add_argument("--repo", default=Konfig.release_repo)
+    b.add_argument("--repo", default=Konfig.update_forgejo_repo)
     b = befehle.add_parser("setze")
     b.add_argument("--konfig", type=Path, required=True)
     b.add_argument("--quelle", choices=("github", "forgejo"), required=True)
@@ -223,16 +226,16 @@ def _main(argv: list[str] | None = None) -> int:
         return 4 if basis.startswith("http://") else 0
     if a.befehl == "abfrage":
         werte = {"MONITOR_UPDATE_QUELLE": "forgejo", "MONITOR_UPDATE_FORGEJO": a.basis,
-                 "MONITOR_UPDATE_HTTP_ERLAUBT": "1" if a.http_erlaubt else "", "MONITOR_RELEASE_REPO": a.repo}
+                 "MONITOR_UPDATE_HTTP_ERLAUBT": "1" if a.http_erlaubt else "", "MONITOR_UPDATE_FORGEJO_REPO": a.repo}
         try:
             q, basis, http = update_quelle(werte)
         except KonfigFehler as fehler:
             print(f"fehler|{fehler}")
             return 2
-        if not re.fullmatch(r"[A-Za-z0-9-]+/[A-Za-z0-9._-]+", a.repo):
+        if not REPO_MUSTER.fullmatch(a.repo):
             print("fehler|Repository muss besitzer/repo sein")
             return 2
-        k = Konfig(release_repo=a.repo, update_quelle=q, update_forgejo=basis, update_http_erlaubt=http)
+        k = Konfig(update_forgejo_repo=a.repo, update_quelle=q, update_forgejo=basis, update_http_erlaubt=http)
         from . import VERSION
         daten = forgejo_release(k, VERSION)
         if daten.get("fehler"):

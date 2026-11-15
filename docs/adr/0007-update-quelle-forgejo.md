@@ -65,3 +65,9 @@ GitHub-API. Forgejo läuft derzeit im LAN über `http://`, wird eventuell öffen
 - `release.json` trägt `quelle`; stammt sie von der vorigen Quelle, lehnt der Hilfsdienst ab, bis der
   Sammler neu geprüft hat.
 - Repository-Pfad auf Forgejo = `MONITOR_RELEASE_REPO` (wie auf GitHub).
+  **Nachtrag #162 (E-33):** Das Forgejo-Repository heißt jetzt `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted`,
+  das eingefrorene GitHub-Repository weiter `Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor`. Der Pfad auf
+  Forgejo kommt deshalb aus dem eigenen Schlüssel `MONITOR_UPDATE_FORGEJO_REPO` (Vorgabe: der neue
+  Name); `MONITOR_RELEASE_REPO` bleibt das GitHub-Repository für die GitHub-Quelle und die
+  Herkunftsprüfung. Auf die Weiterleitung des alten Namens durch Forgejo baut nichts – der Monitor
+  folgt Weiterleitungen nicht (siehe oben).

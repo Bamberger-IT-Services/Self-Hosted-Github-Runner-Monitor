@@ -4,8 +4,11 @@ Es gelten die gemeinsamen Anweisungen im Repo `Public` auf Forgejo, Ordner `anwe
 (lokal `~/_Forgejo/Bamberger-IT-Services/Public/anweisungen`, 00–08, Vorlagen).
 **Seit 28.10.2026 nur noch Forgejo** (README der Anweisungen › Forgejo statt GitHub): GitHub ist
 eingefroren, Branches `develop` (Standard) / `main` / `feature/*` / `fix/*` / `release/*`, Merge
-nach `develop` per PR selbst, nach `main` nur mit Freigabe. Lokaler Ordner:
-`~/_Forgejo/Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor`. Was das Programm selbst
+nach `develop` per PR selbst, nach `main` nur mit Freigabe. Repository auf Forgejo:
+`Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` (bis #162 `Self-Hosted-Github-Runner-Monitor`), lokaler Ordner:
+`~/_Forgejo/Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted`. Das eingefrorene GitHub-Repository behält den alten
+Namen `Bamberger-IT-Services/Self-Hosted-Github-Runner-Monitor` – dorthin zeigen weiter Update-Quelle,
+Herkunftsprüfung, Doku-Links und Release-Adressen (E-33); diese Stellen nicht umbenennen. Was das Programm selbst
 mit GitHub macht (Runner überwachen, Updates aus GitHub-Releases), bleibt vorerst so. Deshalb
 legt Claude jedes Release zusätzlich per `gh release create` auf GitHub an (Tag und `main` kommen
 über die Forgejo-Spiegelung, Filter `main,develop,release/*`; `release.yml` baut dort Paket und
