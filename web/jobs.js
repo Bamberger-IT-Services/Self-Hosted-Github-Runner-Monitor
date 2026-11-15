@@ -14,6 +14,7 @@
 const JOBS = (() => {
   const SCHLUESSEL = 'runner-monitor.log-hoehe';  // localStorage: 'klein' | 'gross'
   const HOEHEN = ['klein', 'gross'];
+  const MAX_SEGMENTE = 100;                        // mehr Segmente zeichnet der Balken nicht (fremde Zahlen)
   const speicherStandard = () => { try { return typeof localStorage === 'undefined' ? null : localStorage; } catch (e) { return null; } };
 
   /* Gemerkte Höhe des Live-Logs; ohne Wahl oder bei gesperrtem Speicher: klein (der Platz gehört den Jobs). */
@@ -61,7 +62,7 @@ const JOBS = (() => {
      fehlerhafte Felder (älterer Server, anderer Dienst) ergeben leere Listen. */
   function nachRepo(w) {
     const gruppe = (liste) => {
-      const je = {};
+      const je = Object.create(null);  // Repo-Namen wie „toString“ oder „__proto__“ sind gewöhnliche Schlüssel
       for (const e of Array.isArray(liste) ? liste : []) if (e && typeof e.repo === 'string') (je[e.repo] = je[e.repo] || []).push(e);
       return je;
     };
@@ -69,7 +70,7 @@ const JOBS = (() => {
   }
 
   /* Ist ein Repository aufgeklappt? Eine Wahl des Benutzers gilt; sonst offen, wenn dort etwas läuft. */
-  const istOffen = (wahl, repo, laeuft) => (wahl && typeof wahl[repo] === 'boolean' ? wahl[repo] : laeuft > 0);
+  const istOffen = (wahl, repo, laeuft) => (wahl && Object.hasOwn(wahl, repo) && typeof wahl[repo] === 'boolean' ? wahl[repo] : laeuft > 0);
 
   /* ---------------------------------------------------------------- HTML */
   const live = (art, start) => `data-live="${art}" data-start="${Number.isFinite(ms(start)) ? Math.round(ms(start)) : ''}"`;
@@ -85,7 +86,8 @@ const JOBS = (() => {
   }
 
   function segmenteHtml(nr, von) {
-    const n = von || nr + 1;
+    nr = Math.min(Math.max(nr, 1), MAX_SEGMENTE); von = von ? Math.min(von, MAX_SEGMENTE) : null;
+    const n = von || Math.min(nr + 1, MAX_SEGMENTE);
     return `<div class="segmente" data-spalten="${n}">${Array.from({ length: n }, (_, i) => `<span class="seg ${i < nr - 1 ? 'fertig' : i === nr - 1 ? 'aktiv' : von ? '' : 'unbekannt'}"></span>`).join('')}</div>`;
   }
 
@@ -114,6 +116,8 @@ const JOBS = (() => {
     return `<div class="lw">${pos}<span class="lw-name">${t('Workflow')} <b>${esc(w.workflow || '–')}</b>${ref}</span><span class="lw-seit">${seit}</span></div>`;
   }
 
+  const detailId = (name) => `rd-${String(name).replace(/[^A-Za-z0-9_-]/g, '_')}`;
+
   /* Eine Zeile „Repository“ mit Pillen („1 läuft“, „2 warten“) als Knopf zum Aufklappen und, wenn offen, den Einzelheiten.
      r: {name, privat, laeuft, wartet}, je: Ergebnis von nachRepo(), wahl: {repo: bool} des Benutzers. */
   function repoHtml(r, je, wahl, f) {
@@ -124,9 +128,9 @@ const JOBS = (() => {
     if (offen) {
       const ohne = r.laeuft > 0 && !laufende.length ? `<div class="lj-leer">${t('Einzelheiten zum laufenden Job liegen nicht vor.')}</div>` : '';
       const wart = wartende.length ? `<div class="lw-titel">${t('Wartet auf einen Runner')}</div>${wartende.map((w) => wartendHtml(w, f)).join('')}` : '';
-      detail = `<div class="repo-detail">${laufende.map((j) => laufendHtml(j, f)).join('')}${ohne}${wart}</div>`;
+      detail = `<div class="repo-detail" id="${detailId(r.name)}">${laufende.map((j) => laufendHtml(j, f)).join('')}${ohne}${wart}</div>`;
     }
-    return `<div class="repo-block"><button type="button" class="repo repo-kopf" data-aktion="repo-offen" data-repo="${esc(r.name)}" aria-expanded="${offen}">${IC.chev(offen)}`
+    return `<div class="repo-block"><button type="button" class="repo repo-kopf" data-aktion="repo-offen" data-repo="${esc(r.name)}" aria-expanded="${offen}" aria-controls="${detailId(r.name)}">${IC.chev(offen)}`
       + `<span class="repo-name">${esc(r.name)}${r.privat ? IC.schloss(12) : ''}</span><span class="repo-pillen">${pillen}</span></button>${detail}</div>`;
   }
 

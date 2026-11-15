@@ -93,7 +93,8 @@ laufendem Job ist von selbst offen. Die Wahl gilt, solange die Seite offen ist.
   (live) und die geschätzte Restzeit. Liefert der Dienst keine Schritte, steht „Schritte nicht verfügbar“.
 - **Wartet auf einen Runner:** je Lauf Workflow, Branch oder PR und „wartet seit …“ (live). **Pos. n** ist die Stelle in der Warteschlange,
   wenn sie sich aus den Startzeiten aller Repositories ableiten lässt (die Reihenfolge der Läufe, die der Monitor sieht – bei einem Runner, der
-  auch andere Organisationen bedient, kann sie davon abweichen); „–“ heißt: nicht ableitbar. **Blockiert** (Freigabe oder ein anderer Job fehlt) wartet
+  auch andere Organisationen bedient, kann sie davon abweichen, ebenso bei Läufen mit anderen Labels, die dieser Runner nicht bedient, oder Jobs, die erst per `needs:` folgen – die
+  Warteschlange besteht aus Läufen); „–“ heißt: nicht ableitbar (auch, wenn die Lauf-Liste voll ist und ältere Läufe fehlen könnten). **Blockiert** (Freigabe oder ein anderer Job fehlt) wartet
   nicht auf einen Runner und hat keine Position.
 - Zeigt ein Repository „1 läuft“, der Dienst liefert aber keine Einzelheiten (zu viele Läufe auf einmal, Rechte fehlen), steht
   „Einzelheiten zum laufenden Job liegen nicht vor“.

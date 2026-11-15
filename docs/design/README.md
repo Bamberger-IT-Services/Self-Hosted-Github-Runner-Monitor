@@ -31,7 +31,7 @@ Planung nach Anweisung 08: Epic #100 „Design 0.8.0 umsetzen“ (Teil-Issues #8
 
 ## Was 0.9.0 gegenüber 0.8.x ändert (Vorschlag, #171)
 
-Entwurf im Claude-Design-Projekt als Seite „Main 0.9.0 Laufende Jobs“ (auf Grundlage von Main 0.8.3; liegt nicht im Repository):
+Entwurf als Seite [`v0.9.0/Main 0.9.0 Laufende Jobs.dc.html`](v0.9.0/) (aus dem Claude-Design-Projekt, auf Grundlage von Main 0.8.3; lädt `support.js` und `i18n-0.8.3.js` aus demselben Ordner):
 
 1. **Jobs je Repository** aufklappbar: ein Repository mit „läuft“ zeigt je Job Workflow und Job, Branch/PR, Runner, **läuft seit** (live),
    **Schritt „n von m“** mit Namen, Schrittdauer und Balken sowie die **geschätzte Restzeit**; wartende Läufe darunter mit Position und „wartet seit“.

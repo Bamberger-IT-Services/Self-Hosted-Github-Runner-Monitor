@@ -94,7 +94,7 @@ test('nachRepo: laufende und wartende Jobs je Repository, Fehlendes und Fehlerha
   assert.deepEqual(Object.keys(je.laufende).sort(), ['api-dienst', 'web-portal']);
   assert.equal(je.laufende['web-portal'].length, 2);
   assert.equal(je.wartende['api-dienst'].length, 1);
-  for (const leer of [null, undefined, {}, { laufende: 'x', wartende: {} }]) assert.deepEqual(J.nachRepo(leer), { laufende: {}, wartende: {} });
+  for (const leer of [null, undefined, {}, { laufende: 'x', wartende: {} }]) { const j = J.nachRepo(leer); assert.deepEqual([Object.keys(j.laufende), Object.keys(j.wartende)], [[], []]); }
 });
 
 test('aufgeklappt: die Wahl gilt, sonst offen, wenn dort etwas läuft', () => {
@@ -111,7 +111,7 @@ const alle = (h) => h.replace(/\s+/g, ' ');
 
 test('Repository mit laufendem Job: Knopf zum Aufklappen, Workflow und Job, Branch/PR, Runner, Schritt „7 von 8“', () => {
   const h = J.repoHtml({ name: 'web-portal', privat: true, laeuft: 1, wartet: 0 }, J.nachRepo({ laufende: [job()] }), {}, f);
-  assert.match(h, /<button type="button" class="repo repo-kopf" data-aktion="repo-offen" data-repo="web-portal" aria-expanded="true">/);
+  assert.match(h, /<button type="button" class="repo repo-kopf" data-aktion="repo-offen" data-repo="web-portal" aria-expanded="true" aria-controls="rd-web-portal">/);
   assert.match(h, /class="chev offen"/);
   assert.match(h, /1 läuft/);
   assert.match(h, /Workflow <b>ci<\/b><span class="sep"> › <\/span>Job <b>test<\/b>/);
@@ -284,4 +284,39 @@ test('Dashboard bindet jobs.js vor dashboard.js ein und hat den Knopf für die H
   assert.match(html, /id="k-log-hoehe"[^>]*aria-expanded="false"/);
   // Jobs je Repository und Live-Log teilen sich die Fläche unter der Auslastung
   assert.ok(html.indexOf('id="unten"') < html.indexOf('id="workflows"') && html.indexOf('id="workflows"') < html.indexOf('aria-label="Live-Log"'));
+});
+
+test('Repository-Namen wie toString, constructor und __proto__ legen nichts lahm', () => {
+  for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty', 'valueOf']) {
+    const je = J.nachRepo({ laufende: [job({ repo: name })], wartende: [{ repo: name, workflow: 'ci', seit: vor(5), pos: 1 }] });
+    assert.equal(je.laufende[name].length, 1, name);
+    assert.equal(je.wartende[name].length, 1, name);
+    const wahl = Object.create(null);
+    assert.equal(J.istOffen(wahl, name, 0), false, name);
+    wahl[name] = true;
+    assert.equal(J.istOffen(wahl, name, 0), true, name);
+    // ein gewöhnliches Objekt als Wahl: geerbte Eigenschaften zählen nicht
+    assert.equal(J.istOffen({}, name, 0), false, name);
+    const h = J.repoHtml({ name, privat: false, laeuft: 1, wartet: 1 }, je, wahl, f);
+    assert.match(h, /class="lj"/, name);
+    assert.match(h, /class="lw"/, name);
+  }
+  // Repository ohne eigene Einträge, aber mit Namen aus Object.prototype
+  assert.doesNotThrow(() => J.repoHtml({ name: 'toString', privat: false, laeuft: 0, wartet: 0 }, J.nachRepo({}), {}, f));
+});
+
+test('Segmente: fremde Zahlen werden begrenzt', () => {
+  const h = J.laufendHtml(job({ schritt: { nr: 100000, von: 100000, name: 'x', start: null } }), f);
+  assert.equal((h.match(/class="seg /g) || []).length, 100);
+  assert.match(h, /data-spalten="100"/);
+  const g = J.laufendHtml(job({ schritt: { nr: 5000, von: null, name: '', start: null } }), f);
+  assert.equal((g.match(/class="seg /g) || []).length, 100);
+});
+
+test('aria-controls: Log-Knopf und Repository-Knöpfe nennen, was sie steuern', () => {
+  const html = readFileSync(new URL('../../web/dashboard.html', import.meta.url), 'utf8');
+  assert.match(html, /id="k-log-hoehe" aria-controls="unten"/);
+  const h = J.repoHtml({ name: 'a.b', privat: false, laeuft: 1, wartet: 0 }, J.nachRepo({ laufende: [job({ repo: 'a.b' })] }), {}, f);
+  assert.match(h, /aria-controls="rd-a_b"/);
+  assert.match(h, /<div class="repo-detail" id="rd-a_b">/);
 });

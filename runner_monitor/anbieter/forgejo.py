@@ -370,6 +370,18 @@ def job_dauer(job: dict, schritte: list[dict] | None) -> float | None:
     return jobsicht.dauer_zwischen(start, ende)
 
 
+def erfolgreich(lauf: dict) -> bool:
+    """Forgejo: ``status: success``; Gitea wie GitHub: ``completed`` mit ``conclusion: success``."""
+    return status(lauf) == "success" or (status(lauf) == "completed" and status(lauf, "conclusion") == "success")
+
+
+def lauf_dauer(lauf: dict) -> float | None:
+    """Laufzeit eines beendeten Laufs: Forgejo ``started``/``stopped``, Gitea ``started_at``/``completed_at``."""
+    start = spaeter_als_2000(zeit(lauf.get("started")) or zeit(lauf.get("started_at")) or zeit(lauf.get("run_started_at")))
+    ende = spaeter_als_2000(zeit(lauf.get("stopped")) or zeit(lauf.get("completed_at")))
+    return jobsicht.dauer_zwischen(start, ende)
+
+
 def wartend_aus(lauf: dict, repo: dict) -> dict:
     """Wartender Lauf für die Warteschlange (``jobsicht.positionen``); ``blocked`` wartet nicht auf einen Runner."""
     return {"repo": repo["name"], "privat": repo["privat"], "workflow": workflow_aus(lauf), "ref": ref_aus(lauf),
@@ -705,6 +717,7 @@ def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: di
         ruhige = speicher.setdefault("ruhig", {})
         laufend: list[tuple[dict, dict]] = []
         wartend: list[dict] = []
+        luecken = False  # Läufe fehlen vielleicht (Liste ohne Statusfilter voll, Seitengrenze): keine Position (K2)
         runde: dict = {}  # Zwischenspeicher dieser Runde (Job-Listen, erfolgreiche Läufe; #171)
         filtern = ergebnis["art"] != "gitea" and jetzt >= (speicher.get("filterAb") or 0)
         for repo in repos:
@@ -732,6 +745,7 @@ def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: di
                 # Runde bleibt „ok“, und „bereit“ wird nicht behauptet
                 ergebnis["laeufeNichtLesbar"] += 1
                 continue
+            luecken = luecken or len(laeufe) >= (LAUF_SEITEN * SEITE if filtern else LAUF_OHNE_FILTER)
             laeuft, wartet = zaehle(laeufe)
             ruhige[repo["name"]] = {"zeit": jetzt, "laeuft": laeuft, "wartet": wartet}
             ergebnis["repos"].append({"name": repo["name"], "privat": repo["privat"], "laeuft": laeuft, "wartet": wartet})
@@ -750,9 +764,10 @@ def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: di
         # tragen kein „anderer Runner“. Sonst nur die Jobs dieses Runners.
         org_modus = not (mein or speicher.get("runnerWer") or kennung.uuid)
         org_jobs = _org_jobs(klient, org, laufend, runde)
-        _letzte_jobs(klient, org, [job_fuer(lauf, repo, job, None) for repo, lauf, job, _ in org_jobs] if org_modus and not meine else meine, speicher, jetzt)
+        modus = "org" if org_modus and not meine else "eigen"
+        _letzte_jobs(klient, org, [job_fuer(lauf, repo, job, None) for repo, lauf, job, _ in org_jobs] if modus == "org" else meine, speicher, jetzt, modus)
         ergebnis["letzteJobs"] = list(speicher.get("letzte") or [])
-        _sicht(klient, org, ergebnis, wartend, org_jobs, meine, not org_modus, namen[0] if namen else None, speicher, runde, jetzt)
+        _sicht(klient, org, ergebnis, wartend, org_jobs, meine, not org_modus, namen[0] if namen else None, speicher, runde, jetzt, not luecken)
         if not mein:
             # erweiterte Suche erst jetzt (#151): Läufe und Jobs der Runde sind gelesen, ein langsamer Server
             # kostet die Runde nicht mehr
@@ -844,32 +859,58 @@ def _job_am_ende(klient: Klient, org: str, jid: int, j: dict) -> tuple[str | Non
     return ende_aus(job, None) if job else (None, None)
 
 
-def _letzte_jobs(klient: Klient, org: str, meine: list[dict], speicher: dict, jetzt: float) -> None:
+MAX_ENDEN_ORG = 3  # im Organisations-Modus (#171) höchstens so viele Ergebnisse beendeter Jobs je Runde nachfragen
+
+
+def _letzte_jobs(klient: Klient, org: str, meine: list[dict], speicher: dict, jetzt: float, modus: str = "eigen") -> None:
     """Jobs, die dieser Runner in der vorigen Runde hatte und jetzt nicht mehr: Ergebnis und Ende holen
     und vorn in ``letzte`` (höchstens 5) eintragen. Jobs, die zwischen zwei Runden (30 s) begannen und
     endeten, sieht der Monitor nicht. Ist das Ergebnis (noch) nicht zu bekommen, wird es bis zu einer
     Stunde lang erneut versucht und sonst nicht eingetragen – nie ein geratenes Ergebnis."""
+    org_modus = modus == "org"
     jetzt_ids = {j["_id"] for j in meine if j.get("_id")}
-    vorher: dict = speicher.get("laufend") or {}
+    # Wechselt der Modus (z. B. der Runner wird erkannt), gehören die gemerkten Jobs nicht mehr zu diesem Runner: verwerfen,
+    # nie fremde Jobs als „Letzte Jobs“ des Runners eintragen
+    vorher: dict = (speicher.get("laufend") or {}) if speicher.get("laufendModus", "eigen") == modus else {}
+    speicher["laufendModus"] = modus
     letzte: list = speicher.setdefault("letzte", [])
     bleibt: dict = {}
-    for jid, j in vorher.items():
-        if not str(jid).isdigit() or int(jid) in jetzt_ids or not isinstance(j, dict):
-            continue
-        ergebnis, ende = _job_am_ende(klient, org, int(jid), j)
-        if ergebnis is None:
-            if jetzt - (j.get("gesehen") or jetzt) < 3600:
-                bleibt[jid] = j
-            continue
-        ende = ende or jetzt
-        start = j.get("start")
-        letzte.insert(0, {"name": j["name"], "ergebnis": ergebnis, "dauer": ende - start if isinstance(start, (int, float)) else None,
-                          "ende": ende, "repo": j["repo"], "workflow": j["workflow"]})
-    del letzte[MAX_LETZTE:]
-    bleibt.update({str(j["_id"]): {"name": j["name"], "repo": j["repo"], "workflow": j["workflow"], "start": j["start"],
-                                   "lauf": j.get("_lauf"), "gesehen": jetzt}
-                   for j in meine if j.get("_id")})
-    speicher["laufend"] = dict(list(bleibt.items())[:20])
+    offen = {k: v for k, v in vorher.items() if str(k).isdigit() and isinstance(v, dict) and int(k) not in jetzt_ids}
+    fragen = 0
+    still = False  # Zeitüberschreitung oder 429 im Organisations-Modus: den Rest in der nächsten Runde
+    try:
+        with klient.begrenze(SUCHE_RESERVE) if org_modus else contextlib.nullcontext():
+            for jid, j in list(offen.items()):
+                if org_modus and (still or fragen >= MAX_ENDEN_ORG):
+                    continue  # bleibt in ``offen`` und damit gemerkt
+                offen.pop(jid)
+                fragen += 1
+                try:
+                    ergebnis, ende = _job_am_ende(klient, org, int(jid), j)
+                except ForgejoFehler as fehler:
+                    offen[jid] = j  # Ergebnis nicht zu bekommen: gemerkt, nächste Runde wieder
+                    if not org_modus:
+                        raise
+                    still = still or fehler.art in ("nicht-erreichbar", "kontingent")
+                    continue
+                if ergebnis is None:
+                    if jetzt - (j.get("gesehen") or jetzt) < 3600:
+                        bleibt[jid] = j
+                    continue
+                ende = ende or jetzt
+                start = j.get("start")
+                eintrag = {"name": j["name"], "ergebnis": ergebnis, "dauer": ende - start if isinstance(start, (int, float)) else None,
+                           "ende": ende, "repo": j["repo"], "workflow": j["workflow"]}
+                if eintrag not in letzte:
+                    letzte.insert(0, eintrag)
+    finally:
+        # auch bei einem Fehler: nichts doppelt eintragen, nichts verlieren
+        bleibt.update(offen)
+        del letzte[MAX_LETZTE:]
+        bleibt.update({str(j["_id"]): {"name": j["name"], "repo": j["repo"], "workflow": j["workflow"], "start": j["start"],
+                                       "lauf": j.get("_lauf"), "gesehen": jetzt}
+                       for j in meine if j.get("_id")})
+        speicher["laufend"] = dict(list(bleibt.items())[:20])
 
 
 # ---------------------------------------------------------------- Laufende und wartende Jobs, Vergleichsdauern (#171)
@@ -880,10 +921,11 @@ class _Budget(Exception):
 
 
 def _sicht(klient: Klient, org: str, ergebnis: dict, wartend: list[dict], org_jobs: list[tuple[dict, dict, dict, int]], meine: list[dict],
-           ich_bekannt: bool, eigener_name: str | None, speicher: dict, runde: dict, jetzt: float) -> None:
+           ich_bekannt: bool, eigener_name: str | None, speicher: dict, runde: dict, jetzt: float, vollstaendig: bool = True) -> None:
     """Trägt ``wartende`` (mit Position) und ``laufende`` (mit Schritt und Vergleichsdauern) ins Ergebnis ein, dazu die
-    Vergleichsdauern des eigenen Jobs. Die Position gilt nur, wenn alle Repositories lesbar waren."""
-    ergebnis["wartende"] = jobsicht.positionen(wartend, not ergebnis["laeufeNichtLesbar"])
+    Vergleichsdauern des eigenen Jobs. Die Position gilt nur, wenn alle Repositories lesbar waren und keine Lauf-Liste
+    abgeschnitten wurde (Gitea ohne Statusfilter: nur die 30 neuesten Läufe)."""
+    ergebnis["wartende"] = jobsicht.positionen(wartend, vollstaendig and not ergebnis["laeufeNichtLesbar"])
     laufende = _laufende(klient, org, org_jobs, meine, ich_bekannt, eigener_name, speicher, runde, jetzt)
     if ergebnis["job"]:
         ergebnis["job"]["vergleich"] = next((e["vergleich"] for e in laufende if e["eigener"] and e["_id"] == ergebnis["job"].get("_id")), None)
@@ -921,7 +963,6 @@ def _laufende(klient: Klient, org: str, org_jobs: list[tuple[dict, dict, dict, i
         for j in meine]
     voll = _rest(klient) >= SICHT_MIN_REST
     schritt_budget = MAX_SCHRITT_JOBS
-    runde["grenze"] = getattr(klient, "zaehler", {}).get("anfragen", 0) + VERGLEICH_ANFRAGEN
     with klient.begrenze(SUCHE_RESERVE):
         for repo, lauf, job, anzahl in org_jobs:
             if ganzzahl(job.get("id")) in eigene:
@@ -935,6 +976,8 @@ def _laufende(klient: Klient, org: str, org_jobs: list[tuple[dict, dict, dict, i
                     voll = fehler.art not in ("nicht-erreichbar", "kontingent")
             eintraege.append(({**job_fuer(lauf, repo, details, schritte), "eigener": False if ich_bekannt else None, "runner": None}, anzahl))
         ergebnis: list[dict] = []
+        # das Budget der Vergleichsanfragen zählt ab hier, nicht schon vor den Schritt-Anfragen (S5)
+        runde["grenze"] = getattr(klient, "zaehler", {}).get("anfragen", 0) + VERGLEICH_ANFRAGEN
         for e, anzahl in eintraege[:jobsicht.MAX_LAUFENDE]:
             vg = _vergleich(klient, org, e, anzahl == 1, speicher, runde, jetzt) if voll else _gemerkt(speicher, e)
             ergebnis.append({**{k: e.get(k) for k in ("repo", "privat", "workflow", "name", "ref", "runner", "eigener", "start", "schritt")},
@@ -990,7 +1033,7 @@ def _vergleich_erneuern(klient: Klient, org: str, e: dict, einzeln: bool, eintra
     if erfolg is None:
         _anfrage_erlaubt(klient, runde)
         daten = klient.hole(f"/repos/{q(org)}/{q(repo)}/actions/runs", {"status": "success", "page": 1, "limit": VERGLEICH_LAEUFE}).daten
-        erfolg = runde[("erfolg", repo)] = [lauf for lauf in liste_aus(daten, "workflow_runs") if status(lauf) == "success" and ganzzahl(lauf.get("id"))]
+        erfolg = runde[("erfolg", repo)] = [lauf for lauf in liste_aus(daten, "workflow_runs") if erfolgreich(lauf) and ganzzahl(lauf.get("id"))]
     gleiche = sorted((lauf for lauf in erfolg if workflow_aus(lauf) == e["workflow"]), key=lambda lauf: -ganzzahl(lauf["id"]))[:jobsicht.VERGLEICH_ANZAHL]
     dauern = eintrag["dauern"]
     for k in set(dauern) - {str(ganzzahl(lauf["id"])) for lauf in gleiche}:
@@ -1000,7 +1043,7 @@ def _vergleich_erneuern(klient: Klient, org: str, e: dict, einzeln: bool, eintra
         if k in dauern:
             continue
         if einzeln:
-            sekunden = jobsicht.dauer_zwischen(spaeter_als_2000(zeit(lauf.get("started"))), spaeter_als_2000(zeit(lauf.get("stopped"))))
+            sekunden = lauf_dauer(lauf)
         else:
             sekunden = _job_dauer_im_lauf(klient, org, repo, lauf, e["name"], runde)
         dauern[k] = sekunden or 0  # 0 = nicht zu ermitteln: wird nicht noch einmal gefragt und zählt nicht

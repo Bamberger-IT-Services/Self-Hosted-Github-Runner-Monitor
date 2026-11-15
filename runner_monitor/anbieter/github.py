@@ -26,6 +26,7 @@ RUHIG_AB = 3600              # Repository gilt als ruhig, wenn der letzte Push l
 RUHIG_TAKT = 300             # … und nichts läuft oder wartet: Läufe dann nur alle 5 Minuten abfragen
 LAEUFT = {"in_progress"}
 WARTET = {"queued", "waiting", "pending", "requested"}
+LAUF_SEITE = 30              # Läufe je Repository und Abfrage
 TAKT = 30                    # Sekunden zwischen zwei Abfragen (Sammler)
 
 
@@ -134,6 +135,7 @@ def abfrage(klient: gh.Klient, org: str, runner_name: str, letzter_erfolg: float
             seite += 1
 
         wartend: list[dict] = []
+        luecken = False
         ruhige = klient.speicher.setdefault("ruhig", {})  # Repo → {"zeit", "laeuft", "wartet"} der letzten Abfrage
         for repo in repos:
             name = repo.get("name", "")
@@ -143,8 +145,9 @@ def abfrage(klient: gh.Klient, org: str, runner_name: str, letzter_erfolg: float
                 # ruhig: letzten Stand übernehmen, erst nach RUHIG_TAKT wieder fragen
                 ergebnis["repos"].append({"name": name, "privat": bool(repo.get("private")), "laeuft": 0, "wartet": 0})
                 continue
-            laeufe = klient.hole(f"/repos/{org}/{name}/actions/runs", {"per_page": 30}).daten
+            laeufe = klient.hole(f"/repos/{org}/{name}/actions/runs", {"per_page": LAUF_SEITE}).daten
             runs = laeufe.get("workflow_runs", []) if isinstance(laeufe, dict) else []
+            luecken = luecken or len(runs) >= LAUF_SEITE  # mehr Läufe, als die Seite zeigt: Position unsicher (#171)
             laeuft, wartet = zaehle_laeufe(runs)
             ruhige[name] = {"zeit": jetzt, "laeuft": laeuft, "wartet": wartet}
             ergebnis["repos"].append({"name": name, "privat": bool(repo.get("private")), "laeuft": laeuft, "wartet": wartet})
@@ -163,7 +166,7 @@ def abfrage(klient: gh.Klient, org: str, runner_name: str, letzter_erfolg: float
                         ergebnis["job"] = gefunden
                         break
 
-        ergebnis["wartende"] = jobsicht.positionen(wartend, True)
+        ergebnis["wartende"] = jobsicht.positionen(wartend, not luecken)
         ergebnis["laufende"] = ergebnis["laufende"][:jobsicht.MAX_LAUFENDE]
         eigenen_job_eintragen(ergebnis["laufende"], ergebnis["job"], runner_name)
 

@@ -18,6 +18,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   gelesenen Daten (Schritte nur für den eigenen Job, keine Schätzung), GitLab die laufenden Jobs seines Runners.
 - „Letzte Jobs“ (#171): Lässt sich der Runner beim Forgejo-/Gitea-Server nicht erkennen („nicht sichtbar“), zeigt die Liste Ergebnis und Dauer der
   Jobs, die der Monitor in der Organisation laufen und enden sah.
+- Gitea (#171): Vergleichsdauern auch für Gitea-Läufe (`completed` mit `conclusion: success`, `started_at`/`completed_at`). Fokus auf einem
+  Repository-Knopf bleibt beim Aktualisieren der Karte erhalten; die Entwurfsdatei liegt unter `docs/design/v0.9.0/`.
 - `/api/zustand` und Ereignis `workflows`: neue Felder `laufende[]` und `wartende[]` in `jobsJeRepository`, `schritt.start` und `vergleich` im
   Job (nur additiv; FUNKTIONSWEISE › „Laufende und wartende Jobs“). Demo: `?zustand=volllast` zeigt mehrere Jobs, `?schaetzung=laenger|keine` die
   Restzeit-Zustände.

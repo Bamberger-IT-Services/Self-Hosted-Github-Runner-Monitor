@@ -348,6 +348,130 @@ class ForgejoLetzteJobsTest(unittest.TestCase):
         self.assertEqual(sorted(speicher["laufend"]), ["99"])   # der Job von runner-vm-03 gehört nicht in „Letzte Jobs“ dieses Runners
 
 
+class OrgModusLetzteJobsTest(unittest.TestCase):
+    """S3: Im Organisations-Modus sind die Anfragen nach beendeten Jobs freiwillig, begrenzt und stören die Runde nicht."""
+
+    def speicher(self, n=4, modus="org"):
+        return {"laufendModus": modus, "laufend": {str(200 + i): {"name": "build", "repo": "web-portal", "workflow": "ci", "start": T0.timestamp(), "lauf": 1, "gesehen": T0.timestamp()}
+                                                   for i in range(n)}}
+
+    def antworten(self, n=4):
+        return {f"{WEB}/jobs/{200 + i}": {"id": 200 + i, "name": "build", "status": "success", "steps": [
+            {"name": "s", "status": "success", "started": iso(0), "stopped": iso(60 + i)}]} for i in range(n)}
+
+    def test_hoechstens_drei_ergebnisse_je_runde_ohne_doppelte(self):
+        s = self.speicher()
+        k = Attrappe(self.antworten())
+        fj._letzte_jobs(k, "beispiel-org", [], s, T0.timestamp() + 900, "org")
+        self.assertEqual(len(s["letzte"]), fj.MAX_ENDEN_ORG)
+        self.assertEqual(len(s["laufend"]), 1)
+        fj._letzte_jobs(Attrappe(self.antworten()), "beispiel-org", [], s, T0.timestamp() + 930, "org")
+        self.assertEqual(len(s["letzte"]), 4)
+        self.assertEqual(len({(e["ende"], e["dauer"]) for e in s["letzte"]}), 4)   # keine Duplikate
+        self.assertEqual(s["laufend"], {})
+
+    def test_zeitueberschreitung_und_429_kosten_die_runde_nichts(self):
+        for fehler in (nicht_erreichbar(), fj.ForgejoFehler("kontingent", "429")):
+            s = self.speicher()
+            k = Attrappe(self.antworten(), fehler={f"{WEB}/jobs/200": fehler})
+            fj._letzte_jobs(k, "beispiel-org", [], s, T0.timestamp() + 900, "org")   # wirft nicht
+            self.assertEqual(len([p for p, _, _ in k.pfade if "/jobs/" in p]), 1, "nach dem Fehler keine weiteren Anfragen")
+            self.assertEqual(s.get("letzte"), [])
+            self.assertEqual(len(s["laufend"]), 4, "alles bleibt gemerkt")
+            fj._letzte_jobs(Attrappe(self.antworten()), "beispiel-org", [], s, T0.timestamp() + 930, "org")
+            self.assertEqual(len(s["letzte"]), 3)
+
+    def test_anderer_fehler_nur_dieser_job_bleibt(self):
+        s = self.speicher(2)
+        k = Attrappe(self.antworten(2), fehler={f"{WEB}/jobs/200": fj.ForgejoFehler("fehler", "kaputt")})
+        fj._letzte_jobs(k, "beispiel-org", [], s, T0.timestamp() + 900, "org")
+        self.assertEqual(len(s["letzte"]), 1)
+        self.assertEqual(list(s["laufend"]), ["200"])
+
+    def test_eigener_modus_wirft_weiter_aber_der_speicher_bleibt_stimmig(self):
+        s = self.speicher(3, "eigen")
+        a = self.antworten(3)
+        k = Attrappe(a, fehler={f"{WEB}/jobs/201": nicht_erreichbar()})
+        with self.assertRaises(fj.ForgejoFehler):
+            fj._letzte_jobs(k, "beispiel-org", [], s, T0.timestamp() + 900, "eigen")
+        self.assertEqual(len(s["letzte"]), 1)                # 200 ist eingetragen …
+        self.assertEqual(sorted(s["laufend"]), ["201", "202"])  # … 201 und 202 bleiben gemerkt, nichts geht verloren
+        fj._letzte_jobs(Attrappe(a), "beispiel-org", [], s, T0.timestamp() + 930, "eigen")
+        self.assertEqual(len(s["letzte"]), 3)                # und nichts doppelt
+
+    def test_modus_wechsel_traegt_keine_fremden_jobs_ein(self):
+        """Erster Fund nach einem Neustart: Die gemerkten Jobs der Organisation gehören nicht dem Runner."""
+        s = self.speicher(3, "org")
+        k = Attrappe(self.antworten(3))
+        fj._letzte_jobs(k, "beispiel-org", [], s, T0.timestamp() + 900, "eigen")
+        self.assertEqual(s["letzte"], [])
+        self.assertEqual(s["laufend"], {})
+        self.assertEqual(k.pfade, [])
+        self.assertEqual(s["laufendModus"], "eigen")
+
+    def test_ganze_runde_erster_fund_nach_org_modus(self):
+        antworten = lade("forgejo-17.json")
+        s = {}
+        fj.abfrage(Attrappe(antworten), "beispiel-org", "runner-vm-99", s)       # nicht erkennbar: Organisations-Modus
+        self.assertEqual(s["laufendModus"], "org")
+        ende = copy.deepcopy(antworten)
+        ende[f"{WEB}/runs"] = {"workflow_runs": []}
+        ende[f"{API}/runs"] = {"workflow_runs": []}
+        ende[f"{WEB}/jobs/99"]["status"] = "success"
+        erg = fj.abfrage(Attrappe(ende), "beispiel-org", "runner-vm-02", s)      # jetzt erkannt: eigener Modus
+        self.assertEqual(erg["letzteJobs"], [])
+
+
+class GiteaVergleichTest(unittest.TestCase):
+    """S4: Gitea-Läufe sind ``completed`` + ``conclusion: success`` mit ``started_at``/``completed_at``."""
+
+    def test_erfolgreich_und_dauer_beider_formen(self):
+        self.assertTrue(fj.erfolgreich({"status": "success"}))
+        self.assertTrue(fj.erfolgreich({"status": "completed", "conclusion": "success"}))
+        for lauf in ({"status": "completed", "conclusion": "failure"}, {"status": "in_progress"}, {"status": "completed"}, {}):
+            self.assertFalse(fj.erfolgreich(lauf), lauf)
+        self.assertEqual(fj.lauf_dauer({"started": iso(0), "stopped": iso(90)}), 90.0)
+        self.assertEqual(fj.lauf_dauer({"started_at": iso(0), "completed_at": iso(120)}), 120.0)
+        self.assertIsNone(fj.lauf_dauer({"started_at": iso(0)}))
+        self.assertIsNone(fj.lauf_dauer({"started": "0001-01-01T00:00:00Z", "stopped": iso(5)}))
+
+    def test_schaetzung_bei_gitea(self):
+        antworten = lade("gitea.json")
+        erfolg = [{"id": 10 + i, "status": "completed", "conclusion": "success", "path": ".gitea/workflows/ci.yml@refs/heads/main",
+                   "started_at": iso(-1000 + i), "completed_at": iso(-1000 + i + d)} for i, d in enumerate((100, 300, 200))]
+        for i, d in enumerate((100, 300, 200)):   # Gitea nennt die Zeiten schon in der Job-Liste des Laufs (zwei Jobs: kein Einzeljob)
+            antworten[f"{WEB}/runs/{10 + i}/jobs"] = {"jobs": [
+                {"id": 300 + i, "name": "test", "status": "completed", "conclusion": "success", "started_at": iso(-1000 + i), "completed_at": iso(-1000 + i + d)},
+                {"id": 400 + i, "name": "lint", "status": "completed", "conclusion": "success", "started_at": iso(0), "completed_at": iso(5)}]}
+        erfolg.append({"id": 30, "status": "completed", "conclusion": "failure", "path": ".gitea/workflows/ci.yml@refs/heads/main", "started_at": iso(0), "completed_at": iso(9999)})
+        k = Erfolgreiche(antworten, {f"{WEB}/runs": erfolg})
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-04", {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        job = erg["laufende"][0]
+        self.assertEqual((job["workflow"], job["name"], job["eigener"]), ("ci", "test", True))
+        self.assertEqual(job["vergleich"], {"median": 200.0, "anzahl": 3})
+
+    def test_position_nur_ohne_abgeschnittene_liste(self):
+        antworten = lade("gitea.json")
+        antworten[f"{WEB}/runs"]["workflow_runs"][1]["created_at"] = iso(-300)
+        erg = fj.abfrage(Attrappe(antworten), "beispiel-org", "runner-vm-04", {})
+        self.assertEqual([w["pos"] for w in erg["wartende"]], [1])
+        with mock.patch.object(fj, "LAUF_OHNE_FILTER", 2):   # die Liste ist voll: es fehlen vielleicht ältere wartende Läufe
+            erg = fj.abfrage(Attrappe(antworten), "beispiel-org", "runner-vm-04", {})
+        self.assertEqual([w["pos"] for w in erg["wartende"]], [None])
+
+
+class VergleichBudgetTest(unittest.TestCase):
+    def test_schritt_anfragen_verkleinern_das_vergleichsbudget_nicht(self):
+        a = lade("forgejo-17.json")
+        a[f"{API}/jobs/120"] = {"id": 120, "name": "paket", "status": "running", "steps": []}   # kostet eine Schritt-Anfrage
+        erfolgreich = {f"{WEB}/runs": mit_vergleichslaeufen(a, [200, 400, 300, 360, 340])}
+        k = Erfolgreiche(a, erfolgreich)
+        fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        n = len([p for p, par, _ in k.pfade if p.startswith(WEB) and ((par or {}).get("status") == "success" or "/runs/2" in p or "/jobs/50" in p)])
+        self.assertEqual(n, fj.VERGLEICH_ANFRAGEN)
+
+
 # ---------------------------------------------------------------- GitHub und GitLab
 
 

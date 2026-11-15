@@ -34,7 +34,7 @@
     status: null, system: null, prozesse: [], platten: [], workflows: null, update: null,
     cpuH: [], ramH: [], netzH: [], ende: null, zeitraum: zeitraumLaden(), ereignisse: [], zeilenN: 0, puffer: [],
     verbindung: 'verbindet', letzteDaten: 0,
-    umbruch: true, angehalten: false, hoch: false, pruefung: null, wfOffen: false, repoOffen: {}, logHoehe: JOBS.logHoeheLaden(), info: null, kerneN: 0,
+    umbruch: true, angehalten: false, hoch: false, pruefung: null, wfOffen: false, repoOffen: Object.create(null), logHoehe: JOBS.logHoeheLaden(), info: null, kerneN: 0,
     // Mehrere Runner (#94): runner[]/meldungen[] aus dem Server; status/workflows sind dann die Ansicht des
     // gewählten Runners, sonst (Altformat ohne runner) die Bereiche „status“/„workflows“ selbst.
     runner: null, meldungenSrv: null, wahl: RUNNER.wahl(), statusAlt: null, workflowsAlt: null, mehrOffen: false, logFremd: false,
@@ -592,7 +592,16 @@
     const meta = ['kein-token', 'ausstehend'].includes(w.abfrage) ? esc(orgText) : `${esc(orgText)} · ${t('{n} Repositories', { n: w.repos.length })}`;
     const html = `<div class="karte-kopf"><span class="karte-titel">${t('Jobs je Repository')}</span><span class="karte-meta">${meta}</span></div>${inhalt}<div class="wf-fuss">${fuss}</div>`;
     // nur bei Änderung neu schreiben; die sekündlich wechselnde Zeitzeile per textContent
-    if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; }
+    if (el.dataset.html !== html) {
+      // Fokus über das Ersetzen retten (z. B. Schrittwechsel ändert das HTML, während ein Repository-Knopf Fokus hat)
+      const f = document.activeElement && el.contains(document.activeElement) ? document.activeElement : null;
+      const merk = f ? { repo: f.dataset.repo, aktion: f.dataset.aktion } : null;
+      el.innerHTML = html; el.dataset.html = html;
+      if (merk && merk.aktion) {
+        const neu = [...el.querySelectorAll('[data-aktion]')].find((k) => k.dataset.aktion === merk.aktion && k.dataset.repo === merk.repo);
+        if (neu) neu.focus();
+      }
+    }
     const zt = el.querySelector('.wf-zeit'); if (zt && zeitText && zt.textContent !== zeitText) zt.textContent = zeitText;
     JOBS.tick(el, HILFEN);  // Laufzeiten, „wartet seit“ und Restzeiten (#171)
   }

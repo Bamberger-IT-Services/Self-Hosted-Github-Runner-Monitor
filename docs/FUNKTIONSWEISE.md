@@ -585,7 +585,10 @@ die geschätzte Restzeit. Die Daten stehen im Bereich `jobsJeRepository` (`workf
   liefert oder sie in dieser Runde nicht gelesen wurden; `vergleich` = `null`: keine Schätzung. `start` ist bei Forgejo der Beginn
   des Jobs (sonst des ersten Schritts, sonst des Laufs).
 - `wartende` (höchstens 30, ältester zuerst): `pos` zählt nur Läufe, die auf einen Runner warten, und nur, wenn alle Repositories der
-  Runde lesbar waren; sonst `null`. `blockiert` (Forgejo `blocked`, GitHub `waiting`): wartet auf Freigabe oder einen anderen Job.
+  Runde lesbar waren **und keine Lauf-Liste abgeschnitten wurde** (Gitea ohne Statusfilter und GitHub sehen nur die 30 neuesten Läufe je
+  Repository, Forgejo höchstens 200; ist die Liste voll, fehlen vielleicht ältere wartende Läufe) und der Lauf eine Erstellzeit hat; sonst `null`.
+  Die Warteschlange besteht aus **Läufen**, nicht aus Jobs: Hat ein Lauf mehrere Jobs mit `needs:`, steht er einmal da, auch wenn sein
+  zweiter Job später wartet; und ein Lauf mit anderen Labels, die dieser Runner gar nicht bedient, zählt mit. `blockiert` (Forgejo `blocked`, GitHub `waiting`): wartet auf Freigabe oder einen anderen Job.
   Die Position ist die Reihenfolge der Läufe, die der Monitor in der Organisation sieht; bedient der Runner weitere Organisationen,
   stehen dort eigene Läufe davor, die der Monitor nicht kennt.
 - **Restzeit:** Der Server liefert nur `vergleich = {median, anzahl}` – den Median der Dauern der letzten höchstens 5 **erfolgreichen**
