@@ -351,14 +351,16 @@ Daemon-Faden, die auch DNS und tröpfelnde Antworten abdeckt; Antworten werden s
 und `Infinity` abgelehnt, eine Antwort in unerwarteter Form wird „unerwartete Antwort“ mit dem letzten
 guten Stand): Version → Organisation oder
 Benutzer (einmal je Token) → Repositories (ohne archivierte und ohne Actions, 50 je Seite) →
-Runner-Liste (zuerst der Ort des letzten Funds, dann die eigene Liste) → Läufe je Repository (ruhige
+eigene Runner-Liste → Läufe je Repository (ruhige
 Repositories nur alle 5 Min., wie bei GitHub) → Jobs der laufenden Läufe → bei Forgejo Log-Anfang je
 neuem Job → Schritte des eigenen Jobs → Ergebnis der Jobs, die seit der letzten Runde fertig sind →
-fehlt der Runner in der eigenen Liste, erst jetzt (#151) die erweiterte Suche, höchstens alle 10 Min.
-und nur mit mindestens 6 s Rest der Runde: `/admin/actions/runners` und die Listen der 10 zuletzt
-geänderten Repositories. Die Jobs ordnet meist die UUID aus `.runner` zu, die Suche muss davor nicht
-fertig sein. Jede Anfrage der Suche endet 2 s vor dem Ende der Runde; Zeitüberschreitung, 429, 403/404
-oder ein älterer Server ohne den Pfad kosten die Runde nichts, sobald die eigene Liste gelesen wurde
+erst jetzt (#151) die erweiterte Suche: der gemerkte Ort des letzten Funds (z. B. `/admin`, jede Runde),
+fehlt der Runner, höchstens alle 10 Min. und nur mit mindestens 6 s Rest der Runde `/admin/actions/runners`
+und die Listen der 10 zuletzt geänderten Repositories (scheitert `/admin`, geht es mit den Repositories
+weiter). UUID und Name des letzten Funds merkt der Sammler, damit Läufe und Jobs ab der nächsten Runde
+auch dann richtig zugeordnet werden, wenn der Runner nur dort steht. Jede Anfrage der Suche endet 2 s vor
+dem Ende der Runde; Zeitüberschreitung und 429 kosten die Runde nichts, 403/404 oder ein älterer Server
+ohne den Pfad auch nicht; war keine Liste lesbar, gilt der Runner als „nicht lesbar“, sonst als
 (dann „nicht sichtbar“, nächster Versuch nach der Pause). Bei einer Instanz mit 7 Repositories ohne laufende
 Jobs waren das 11 Anfragen in 0,2 s, in der Runde danach 6. In diesen fremden Listen gilt ohne UUID nur der
 Name aus `.runner`; Ersatznamen (Monitor-ID, Unit) passen nur in der eigenen Liste (#152) – sonst könnte ein
