@@ -40,6 +40,9 @@
     // Live-Log je Runner (#95): Quelle des gewählten Runners ('seiten' | 'journal' | 'datei' | null) und die
     // Runner-ID, deren Journal der aktuelle Live-Strom liefert (/events?journal=…; null = keins).
     logQuelle: 'seiten', journalUnit: '', stromJournal: null, journalFehler: null,
+    // Job-Log (#176): Stand des laufenden Forgejo-/Gitea-Jobs ({runner, aktiv, schritt, hinweis}) und die Zeilen der
+    // gerade nicht angezeigten Quelle, damit beim Umschalten Journal ↔ Job-Log der Stand sofort da ist
+    jobLog: null, nebenPuffer: { journal: [], joblog: [] },
     // Info › Runner (#97): Funde der Erkennung, „Neu erkennen“, neue Funde, offenes Formular / offene Box
     anlRunner: null,  // Runner, dessen Zugangsdaten-Anleitung der Link bei „Zugangsdaten ändern“ zeigt
     ir: { funde: null, zeit: null, erkZeit: null, geladen: 0, fehler: false, erk: 'ruhe', aktiv: false, neu: [], form: null, zugang: null, werte: {}, formFehler: {}, meldung: '', sendet: false },
@@ -104,7 +107,7 @@
       const r = gewaehlterRunner(), b = S.statusAlt || {};
       S.status = RUNNER.ansicht(r, { vm: b.vm, monitorVersion: b.monitorVersion, system: b.system });
       S.workflows = r.jobsJeRepository || null;
-      setzeLogQuelle(S.status.logQuelle, RUNNER.journalZiel(r), S.status.journalUnit);
+      setzeLogQuelle(RUNNER.mitJobLog(S.status.logQuelle, S.jobLog, r.id), RUNNER.journalZiel(r), S.status.journalUnit);
       if (S.status.ohneSchritte) ohneTrenner();
     } else {
       S.status = S.statusAlt; S.workflows = S.workflowsAlt; S.wahl.gewaehlt = null;
@@ -116,11 +119,20 @@
      „journal“, nur für die Runner-ID im Live-Strom). Wechselt die Quelle, wird das Log geleert; wechselt der
      Runner mit Journal, verbindet sich der Strom mit dem neuen Ziel neu (Server schickt dann den Stand). */
   function setzeLogQuelle(quelle, ziel, unit) {
-    const alt = S.logQuelle;
+    const alt = S.logQuelle, neben = (q) => q === 'journal' || q === 'joblog';
     S.logQuelle = quelle; S.journalUnit = unit || '';
-    S.logFremd = quelle !== 'seiten' && quelle !== 'journal';
-    if (alt !== quelle && (alt === 'journal' || quelle === 'journal')) leereLog();
-    if (ziel !== S.stromJournal) { S.stromJournal = ziel; S.journalFehler = null; if (quelle === 'journal') leereLog(); wechsleJournal(); }
+    S.logFremd = !['seiten', 'journal', 'joblog'].includes(quelle);
+    if (ziel !== S.stromJournal) {
+      // anderer Runner im Live-Strom: Journal und Job-Log kommen nach dem Neuverbinden mit „neu“
+      S.stromJournal = ziel; S.journalFehler = null; S.jobLog = null; S.nebenPuffer = { journal: [], joblog: [] };
+      if (neben(alt) || neben(quelle)) leereLog();
+      wechsleJournal(); return;
+    }
+    // Journal ↔ Job-Log (#176) oder ↔ Ausgabe der Schritte: leeren, den gepufferten Stand der neuen Quelle zeigen
+    if (alt !== quelle && (neben(alt) || neben(quelle))) {
+      leereLog();
+      if (neben(quelle)) zeilenAn(RUNNER.logZeilen(S.nebenPuffer[quelle], quelle === 'joblog' && !(S.status && S.status.ohneSchritte)));
+    }
   }
   /* Liefert der Runner keine Schritte, gibt es auch keine Trenner – auch nicht solche, die vor runner[] kamen. */
   function ohneTrenner() {
@@ -258,12 +270,28 @@
       case 'log':
       case 'journal': {
         // „log“ = Ausgabe der Schritte (GitHub-Runner), „journal“ = Journal der Unit des gewählten Runners (#95).
-        // Angezeigt wird nur die Quelle des gewählten Runners; Trenner nur, wenn er Schritte liefert.
-        if ((bereich === 'journal') !== (S.logQuelle === 'journal')) break;
+        // Angezeigt wird nur die Quelle des gewählten Runners; Trenner nur, wenn er Schritte liefert. Das Journal
+        // wird auch gepuffert, solange das Job-Log (#176) zu sehen ist.
+        if (bereich === 'journal') { S.nebenPuffer.journal = RUNNER.puffer(S.nebenPuffer.journal, d, MAX_ZEILEN); if (d.neu) S.journalFehler = d.hinweis || null; }
+        if (bereich === 'journal' ? S.logQuelle !== 'journal' : ['journal', 'joblog'].includes(S.logQuelle)) break;
         if (d.neu) { leereLog(); S.journalFehler = bereich === 'journal' ? (d.hinweis || null) : null; }
         if (d.ereignisse && d.ereignisse.length) { S.ereignisse.push(...d.ereignisse); S.ereignisse = S.ereignisse.slice(-20); renderEreignisse(); }
         zeilenAn(RUNNER.logZeilen(d.zeilen, bereich === 'log' && !(S.status && S.status.ohneSchritte)));
         renderLeer(); break;
+      }
+      case 'joblog': {
+        // Ausgabe des laufenden Forgejo-/Gitea-Jobs (#176), nur für den Runner dieses Live-Stroms. Umschalten
+        // Journal ↔ Job-Log entscheidet abgleich() (RUNNER.mitJobLog); dabei zeigt setzeLogQuelle() den Puffer.
+        if (!d || typeof d !== 'object' || d.runner !== S.stromJournal) break;
+        S.nebenPuffer.joblog = RUNNER.puffer(S.nebenPuffer.joblog, d, MAX_ZEILEN);
+        S.jobLog = { runner: d.runner, aktiv: d.aktiv === true, schritt: d.schritt || null, hinweis: d.hinweis || null };
+        const vorher = S.logQuelle;
+        if (Array.isArray(S.runner) && S.runner.length) abgleich();
+        if (vorher === 'joblog' && S.logQuelle === 'joblog') {
+          if (d.neu) leereLog();
+          zeilenAn(RUNNER.logZeilen(d.zeilen, !(S.status && S.status.ohneSchritte)));
+        }
+        renderLogKopf(); break;
       }
       default: break;
     }
@@ -710,6 +738,11 @@
     if (S.logQuelle === 'journal') {
       // Journal der Unit (Grundüberwachung, „teilweise“): Chip nennt die Quelle, keine Schritte
       chip.hidden = false; chip.textContent = t('Journal · {unit}', { unit: S.journalUnit });
+    } else if (S.logQuelle === 'joblog') {
+      // Job-Log (#176): Schritt aus dem Job-Log (alle paar Sekunden), sonst aus der Abfrage
+      const s = RUNNER.jobLogSchritt(S.jobLog, j);
+      chip.hidden = !s || !!(st && st.ohneSchritte);
+      if (s) { const { nr, von, name } = schrittVon({ schritt: s }); chip.textContent = t('Schritt {nr}/{von}', { nr, von: von || '–' }) + (name ? ' · ' + name : ''); }
     } else if (j && j.zuordenbar !== false && st.dienst.zustand === 'aktiv' && !S.logFremd && !st.ohneSchritte) {
       const { nr, von, name } = schrittVon(j);
       chip.hidden = false; chip.textContent = t('Schritt {nr}/{von}', { nr, von: von || '–' }) + (name ? ' · ' + name : '');
@@ -736,6 +769,10 @@
     if (z.art === 'schritt') {
       div.className = 'trenner';
       div.innerHTML = `<span class="tr-nr">${t('Schritt {nr}/{von}', { nr: Number(z.nr) || 1, von: Number(z.von) || '–' })}</span><span class="tr-name">${esc(z.name || '')}</span><span class="tr-linie"></span><span class="tr-zeit">${zeit(z.zeit)}</span>`;
+    } else if (z.art === 'gekuerzt') {
+      // Job-Log (#176): beim Einstieg in einen Schritt nur dessen Ende bzw. nach einem Sprung ans Ende
+      div.className = 'z luecke';
+      div.innerHTML = `<span class="zt">${zeit(z.zeit)}</span><span class="zx">${esc(t('… frühere Ausgabe ausgelassen ({n} KB)', { n: zahl(Math.max(1, (Number(z.bytes) || 0) / 1024), 0) }))}</span>`;
     } else if (z.art === 'luecke') {
       // Journal: eine Flut von Zeilen in einem Takt – die ältesten wurden nicht übertragen (Server, journal.py)
       const n = Math.max(1, Number(z.n) || 1);
@@ -757,6 +794,7 @@
     const leer = $('term-leer'), st = S.status;
     leer.hidden = !S.logFremd && (S.zeilenN > 0 || S.puffer.length > 0);
     const text = S.logFremd ? (S.logQuelle === 'datei' ? t('Die Ausgabe dieses Runners wird hier noch nicht angezeigt.') : t('Ohne Dienst gibt es für diesen Runner kein Log.'))
+      : S.logQuelle === 'joblog' ? t('Noch keine Ausgabe des laufenden Jobs.')
       : S.logQuelle === 'journal' ? (S.journalFehler === 'grenze' ? t('Das Journal kann gerade nicht angezeigt werden – zu viele sind gleichzeitig geöffnet.') : t('Noch keine Einträge im Journal von {unit}.', { unit: S.journalUnit }))
       : st && st.dienst.zustand === 'gestoppt' ? t('Der Runner-Dienst ist gestoppt – es kommt keine Ausgabe.')
       : st && st.github.zustand === 'offline' ? t('Kein Schritt läuft. {dienst} stellt dem Runner gerade keine Jobs zu.', { dienst: RUNNER.dienstName(st.anbieter) || 'GitHub' })
@@ -1316,7 +1354,7 @@
     letzterVersuch = Date.now();
     // Mit Journal-Runner: /events?journal=<id> – der Server liefert dann zusätzlich das Journal seiner Unit (#95)
     quelle = new EventSource(RUNNER.journalUrl(S.stromJournal));
-    for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log', 'journal', 'runner', 'meldungen', 'aufraeumen']) {
+    for (const b of ['status', 'system', 'prozesse', 'platten', 'container', 'workflows', 'update', 'log', 'journal', 'joblog', 'runner', 'meldungen', 'aufraeumen']) {
       quelle.addEventListener(b, (e) => { try { empfange(b, JSON.parse(e.data)); } catch (f) { console.error(b, f); } });
     }
     quelle.onopen = () => setzeVerbindung('verbunden');

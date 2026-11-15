@@ -702,6 +702,9 @@ def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: di
             if meine[0]["schritte"] or speicher.get("schritte") is None:
                 ergebnis["schritte"] = speicher["schritte"] = bool(meine[0]["schritte"])
         _letzte_jobs(klient, org, meine, speicher, jetzt)
+        # Job-Log fürs Live-Log (#176): welchen Job der Sammler nachliest, solange ein Browser zusieht
+        speicher["jobLogZiel"] = {"id": meine[0]["_id"], "repo": meine[0]["repo"], "art": ergebnis["art"]} \
+            if meine and meine[0].get("_id") else None
         ergebnis["letzteJobs"] = list(speicher.get("letzte") or [])
         if not mein:
             # erweiterte Suche erst jetzt (#151): Läufe und Jobs der Runde sind gelesen, ein langsamer Server
@@ -828,6 +831,7 @@ class Forgejo(Anbieter):
     FAEHIG = {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False}
     ANBINDUNG = True
     BRAUCHT_ORG = True
+    JOB_LOG = True  # Live-Log: Ausgabe des laufenden Jobs über die API (#176, runner_monitor.joblog)
 
     def __init__(self, konfig: RunnerKonfig) -> None:
         super().__init__(konfig)

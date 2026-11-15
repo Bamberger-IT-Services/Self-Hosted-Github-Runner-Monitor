@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "15.11.2026 21:06",
+  stand: "15.11.2026 23:14",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -174,6 +174,7 @@ window.RUNNER_MONITOR = {
    * Erledigte nicht löschen, sondern status: "entschieden" + antwort setzen. Quelle: DECISIONS.md.
    */
   entscheidungen: [
+    { id: "E-34", thema: "Live-Log: Job-Log (#176)", frage: "Was zeigt das Live-Log eines Forgejo-/Gitea-Runners, wenn der Job endet?", optionen: ["Sofort zurück aufs Journal (umgesetzt, wie im Issue beschrieben) (a)", "Ausgabe des beendeten Jobs stehen lassen, bis ein neuer Job startet oder der Runner gewechselt wird (b)", "Zusätzlich ein Umschalter Journal/Job-Log von Hand (c)"], datei: "docs/FUNKTIONSWEISE.md", status: "offen" },
     { id: "E-01", thema: "Anmeldung", frage: "Zwei-Faktor-Anmeldung nach Anweisung 03 auch für den Monitor? Es gibt einen Zugang, nur im LAN, nur lesend.", optionen: ["Nur Passwort (Abweichung)", "Passwort + TOTP", "Gar keine Anmeldung"], datei: "docs/adr/0003-nur-passwort.md", status: "entschieden", antwort: "Nur Passwort, keine 2FA – Abweichung von Anweisung 03, ADR-0003 (Tobias, Auswahlfrage, 23.10.2026)" },
     { id: "E-02", thema: "Betrieb", frage: "Monitor als Docker-Container oder als normaler Dienst? Er braucht den Host (/proc, Journal, systemd, Dateien des Runners).", optionen: ["systemd-Dienst", "Docker-Container"], datei: "docs/adr/0002-systemd-statt-docker.md", status: "entschieden", antwort: "Normaler systemd-Dienst statt Docker, ADR-0002 (Tobias, 23.10.2026)" },
     { id: "E-03", thema: "Update", frage: "Wie kommen Updates aus den GitHub-Releases auf die VM?", optionen: ["1: nur Hinweis, Update per SSH", "2: Knopf über root-Hilfsdienst", "3: Webserver mit sudo-Regel"], datei: "docs/adr/0004-update-hilfsdienst.md", status: "entschieden", antwort: "Variante 2: per Knopf über den root-Hilfsdienst – Komfort ohne Rechte im Webserver, ADR-0004 (Tobias, 23.10.2026)" },
@@ -267,6 +268,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "15.11.2026 23:14", text: "#176 umgesetzt (Branch feature/176-job-log, Opus, noch kein PR – CI vor dem Release): Live-Log zeigt bei angebundenen Forgejo-/Gitea-Runnern während eines Jobs dessen Ausgabe mit „Schritt n/m · Name“ und Trennern, danach wieder das Journal. Endpunkt und Format vorher an Forgejo 17.0.1 gemessen (nur lesend, öffentliches Repository): text/plain mit Zeitstempel je Zeile, Range 206/416, ?step=N mit number aus /actions/jobs/{id}, keine Schrittmarken im Log. Sammler liest nur bei Bedarf (Auftrag joblog-bedarf vom Webdienst, gilt 30 s), alle 3 s, höchstens 2 Runner, 6 Anfragen/Takt, 256 KiB/Anfrage, Einstieg nur die letzten 64 KiB, Rückfall ohne Range (Ende behalten, 15 s); joblog.json 0640 root:runner-monitor; Webdienst prüft erneut und schickt nur neue Zeilen (Ereignis joblog). Neue Module runner_monitor/joblog.py und anbieter/forgejo_log.py (gekapselt wegen #171). Doku: FUNKTIONSWEISE, Handbuch, Sicherheitsbericht S-JOBLOG-01, CHANGELOG. Tests: Fake-Forgejo mit wachsendem Log, Range/kein Range, Grenzen; JS: Umschalten Journal ↔ Job-Log." },
     { datum: "15.11.2026 21:06", text: "Release 0.8.4 vorbereitet (Branch release/0.8.4, OK von Tobias für Vorbereiten und Veröffentlichen): #172 (PR #173, „Name beim Server“, Registrierung aus runner.file und server.connections, „sicher“ nur mit Kennung) und Dashboard-Nachtrag #170; VERSION, CHANGELOG [0.8.4] – 15.11.2026, Release-Notiz (nach dem Update nichts nötig; wer den Namen beim Server als Anzeigenamen eingetragen hatte, trägt ihn im neuen Feld ein), Stand der Dokus. Ablauf wie 0.8.3." },
     { datum: "15.11.2026 20:49", text: "#172 Architekt-Review eingearbeitet: keine config.yml-Heuristik ohne -c (forgejo-runner liest dann keine Datei), Konfiguration einmal und ohne Symlink gelesen, YAML-Leser mit BOM/null/~ und Flussform mit Anführungszeichen, Nachschritte der Erkennung abgesichert, Grund „mehrere Verbindungen – Server in runner.json eintragen“, Merkmale zu server.connections übersetzt; Sicherheitsbericht S-EINR-01/S-FORGEJO-01 und Design-Abgleich ergänzt." },
     { datum: "15.11.2026 20:34", text: "#172 Nachtrag (gleicher Branch): Erkennung liest bei forgejo-runner ab 12.7 ohne .runner url und uuid aus server.connections der Konfiguration (Format belegt an config.example.yaml/config.go des Runners, v12.7.0–v13.2.1), nie den Token; mehrere Verbindungen: die zum Server aus runner.json. Security-Review (MEDIUM) behoben: frei gewählte Registrierungsnamen nur aus der Konfiguration der Unit-Datei, gliedweise ohne Symlink geöffnet (dir_fd, O_NOFOLLOW). Tests, Doku, Sicherheitsbericht S-ERK-01." },

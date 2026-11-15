@@ -4,6 +4,16 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Neu
+- Live-Log bei Forgejo/Gitea (#176): Läuft ein Job eines angebundenen Forgejo-/Gitea-Runners, zeigt das
+  Live-Log nach wenigen Sekunden die **Ausgabe des Jobs** statt des Journals – mit „Schritt n/m · Name“ und
+  Trennzeilen wie beim GitHub-Runner (Gitea ohne Trennzeilen), danach wieder das Journal. Der Sammler liest das
+  Job-Log über die API (`/actions/jobs/{id}/logs`, Forgejo mit `?step=N`) nur, solange ein Browser zusieht, alle
+  3 s ab dem zuletzt gelesenen Byte (Range), mit harten Grenzen; das Token bleibt beim Sammler, der Webdienst
+  bekommt nur Zeilen (`/run/runner-monitor/joblog.json`, 0640 root:runner-monitor). Ohne Rechte oder auf
+  älteren Servern bleibt das Live-Log beim Journal, Info › Verbindungen nennt den Grund („Job-Log“).
+  Sicherheitsbericht S-JOBLOG-01.
+
 ## [0.8.4] – 15.11.2026
 
 ### Behoben

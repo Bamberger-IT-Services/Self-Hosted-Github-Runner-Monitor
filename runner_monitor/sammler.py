@@ -33,7 +33,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from . import VERSION, anbieter, aufraeumen, einrichtung, erkennung, github, quelle, runner
+from . import VERSION, anbieter, aufraeumen, einrichtung, erkennung, github, joblog, quelle, runner
 from .anbieter import github as gh_adapter
 from .anbieter import token as zugangsdaten
 from .konfig import Konfig, lade
@@ -148,6 +148,9 @@ class Sammler:
         self._anbieter_wartend: dict[str, anbieter.Anbieter] = {}  # fällig, noch nicht gestartet (Reihenfolge = Ankunft)
         self._anbieter_laeufe: dict[str, tuple[threading.Thread, float, anbieter.Anbieter]] = {}  # je Runner: (Faden, Start monoton, Adapter)
         self._anbieter_haengend: set[str] = set()                # Runde über RUNDENFRIST, Ergebnis schon „nicht erreichbar“
+        self._anbieter_adapter: dict[str, anbieter.Anbieter] = {}  # angebundene Runner (letzte Planung), fürs Job-Log
+        # Job-Log laufender Forgejo-/Gitea-Jobs fürs Live-Log (#176): nur solange ein Browser zusieht
+        self.joblog = joblog.Verwaltung(k.lauf_verz, k.auftraege_verz)
         self.naechste_aufraeumen = 0.0
         self._aufraeumen_stand: dict | None = None  # zuletzt geschrieben (ohne Zeit)
 
@@ -391,6 +394,7 @@ class Sammler:
                     if isinstance(erfolg, (int, float)) and not isinstance(erfolg, bool) and erfolg > 0:
                         self._anbieter_erfolg[rid] = erfolg
             self._anbieter_ids = ids
+            self._anbieter_adapter = {a.k.id: a for a in liste}
             for rid in set(self._anbieter_ergebnis) - ids:
                 del self._anbieter_ergebnis[rid]
                 geaendert = True
@@ -530,6 +534,20 @@ class Sammler:
             elif ergebnis.get("abfrage") != "kein-token":
                 self._uebernimm_guten_stand(ergebnis, self._guter_stand(vorher, ziel))
         return ergebnis
+
+    def joblog_takt(self, mono: float | None = None) -> None:
+        """Job-Log fürs Live-Log (#176, :mod:`runner_monitor.joblog`): je angebundenem Forgejo-/Gitea-Runner der
+        Job, den seine letzte Runde ihm zugeordnet hat; gelesen wird nur bei Bedarf (Browser sieht zu)."""
+        mono = time.monotonic() if mono is None else mono
+        kandidaten: dict = {}
+        with self._anbieter_sperre:
+            for rid, a in self._anbieter_adapter.items():
+                if rid not in self._anbieter_ids or not a.JOB_LOG:
+                    continue
+                gemerkt = self._anbieter_speicher.get(rid)
+                ziel = gemerkt[1].get("jobLogZiel") if gemerkt else None
+                kandidaten[rid] = (a, dict(ziel) if isinstance(ziel, dict) else None)
+        self.joblog.takt(mono, kandidaten)
 
     def _anbieter_schreiben(self) -> None:
         """``/run/runner-monitor/anbieter.json`` (0644, ohne Token) aus dem Stand aller angebundenen Runner."""
@@ -726,6 +744,10 @@ class Sammler:
             self.anbieter_takt(jetzt)
         except Exception:  # noqa: BLE001 – weitere Dienste dürfen den Sammler nie aufhalten
             LOG.exception("Fehler bei der Abfrage weiterer Dienste")
+        try:
+            self.joblog_takt(mono)
+        except Exception:  # noqa: BLE001 – das Job-Log darf den Sammler nie aufhalten
+            LOG.exception("Fehler beim Job-Log")
         if jetzt >= self.naechste_release:
             self.naechste_release = jetzt + TAKT_RELEASE
             daten = self.release()
