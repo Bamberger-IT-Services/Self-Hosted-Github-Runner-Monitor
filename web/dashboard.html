@@ -12,6 +12,7 @@
 <script src="/static/verlauf.js" defer></script>
 <script src="/static/mail.js" defer></script>
 <script src="/static/runner.js" defer></script>
+<script src="/static/jobs.js" defer></script>
 <script src="/static/einrichtung-runner.js" defer></script>
 <script src="/static/info.js" defer></script>
 <script src="/static/dashboard.js" defer></script>
@@ -40,7 +41,6 @@
       <div class="rw-tabs" id="rw-tabs" hidden></div>
       <div class="rw-pop" id="rw-pop" role="listbox" aria-label="Weitere Runner" data-t-aria hidden></div>
       <section class="karte status" id="status" aria-label="Runner-Status" data-t-aria></section>
-      <section class="karte wf" id="workflows" aria-label="Jobs je Repository" data-t-aria></section>
     </div>
 
     <section class="karte ausl" aria-label="Auslastung" data-t-aria>
@@ -73,6 +73,9 @@
       </div>
     </section>
 
+    <div class="unten klein" id="unten">
+    <section class="karte wf" id="workflows" aria-label="Jobs je Repository" data-t-aria></section>
+
     <section class="karte log" aria-label="Live-Log" data-t-aria>
       <div class="karte-kopf">
         <span class="karte-titel" data-t>Live-Log</span>
@@ -83,6 +86,7 @@
           <button type="button" class="seg-knopf" id="k-umbrechen" aria-pressed="true" data-t>Umbrechen</button>
           <button type="button" class="seg-knopf" id="k-abschneiden" aria-pressed="false" data-t>Abschneiden</button>
         </div>
+        <button type="button" class="knopf" id="k-log-hoehe" aria-expanded="false" title="Höhe des Live-Logs; die Wahl wird im Browser gemerkt" data-t-title></button>
         <button type="button" class="knopf" id="k-pause"></button>
       </div>
       <div class="ereignisse" id="ereignisse" aria-label="Ereignisse" data-t-aria></div>
@@ -95,6 +99,7 @@
         <div class="pause-hinweis scroll-hinweis" id="scroll-hinweis" role="status" hidden><span id="scroll-text"></span><button type="button" class="knopf zum-ende" id="k-zum-ende" data-t>Zum Ende ↓</button></div>
       </div>
     </section>
+    </div>
 
     <div class="spalte c">
       <section class="karte proz" aria-label="Prozesse und Platten" data-t-aria>

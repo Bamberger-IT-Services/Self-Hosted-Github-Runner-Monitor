@@ -43,7 +43,8 @@ test('ein Runner: Eintrag wie im Backend, Job mit Schritt', () => {
   assert.equal(r.dienst, 'github');
   assert.deepEqual(r.faehig, { status: true, jobs: true, schritte: true, logs: true, updates: false });
   assert.equal(r.status.zustand, 'job');
-  assert.deepEqual(Object.keys(r.job.schritt).sort(), ['name', 'nr', 'von']);
+  assert.deepEqual(Object.keys(r.job.schritt).sort(), ['name', 'nr', 'start', 'von']);
+  assert.deepEqual(r.job.vergleich, { median: 660, anzahl: 5 });
   assert.equal(r.log.art, 'seiten');
   // die bisherigen Bereiche kommen weiter
   for (const b of ['status', 'system', 'prozesse', 'platten', 'workflows', 'update']) assert.ok(empfangen.some(([x]) => x === b), b);
@@ -179,4 +180,30 @@ test('Aufräumen (#144): Bereich wie der Sammler, ?aufraeumen=fehlt|teilweise|ti
   assert.equal(letzte(empfangen, 'aufraeumen').vorDemJob, null);
   ({ empfangen } = starteDemo('?demo&leiste=0&aufraeumen=unbekannt'));
   assert.ok(!empfangen.some(([b]) => b === 'aufraeumen'));
+});
+
+// #171: laufende und wartende Jobs je Repository wie vom Server (jobsJeRepository.laufende/wartende)
+test('Volllast: eigener Job mit Schritt und Vergleichsdauern, Job eines anderen Runners, wartende Läufe mit und ohne Position', () => {
+  const { empfangen } = starteDemo('?demo&leiste=0&zustand=volllast');
+  const w = letzte(empfangen, 'workflows');
+  assert.deepEqual(w.laufende.map((j) => [j.repo, j.eigener, j.runner]), [['web-portal', true, 'runner-vm-01'], ['dokumentation', false, null]]);
+  assert.deepEqual(Object.keys(w.laufende[0]).sort(), ['eigener', 'name', 'privat', 'ref', 'repo', 'runner', 'schritt', 'start', 'vergleich', 'workflow']);
+  assert.deepEqual(w.wartende.map((e) => [e.repo, e.pos, e.blockiert]), [['api-dienst', 1, false], ['infrastruktur', null, true]]);
+  // die Zahlen je Repository stimmen mit den Listen überein
+  for (const r of w.repos) {
+    assert.equal(r.laeuft, w.laufende.filter((j) => j.repo === r.name).length, r.name);
+    assert.equal(r.wartet, w.wartende.filter((e) => e.repo === r.name).length, r.name);
+  }
+});
+
+test('Dienst gestoppt: nur wartende Läufe, fortlaufend nummeriert', () => {
+  const { empfangen } = starteDemo('?demo&leiste=0&zustand=gestoppt');
+  const w = letzte(empfangen, 'workflows');
+  assert.deepEqual(w.laufende, []);
+  assert.deepEqual(w.wartende.map((e) => e.pos), [1, 2, 3, 4]);
+});
+
+test('?schaetzung=laenger und keine ändern die Vergleichsdauern', () => {
+  assert.deepEqual(letzte(starteDemo('?demo&leiste=0&schaetzung=laenger').empfangen, 'workflows').laufende[0].vergleich, { median: 300, anzahl: 5 });
+  assert.equal(letzte(starteDemo('?demo&leiste=0&schaetzung=keine').empfangen, 'workflows').laufende[0].vergleich, null);
 });
