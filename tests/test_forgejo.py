@@ -560,17 +560,44 @@ class GlobalerRunnerTest(unittest.TestCase):
         """Ein älterer Server antwortet auf /admin/actions/runners mit 405: kein Fehler der Runde."""
         k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("fehler", "Server antwortet mit 405")})
         self.assertEqual(fj.abfrage(k, "beispiel-org", self.a().kennung(), {})["abfrage"], "ok")
-        # nicht erreichbar bleibt ein Fehler der Runde (kein „ok“ mit halbem Stand)
+        # nicht erreichbar in der freiwilligen Suche kostet die Runde nicht mehr (#151), solange die eigene Liste gelesen wurde
         k = Attrappe(self.antworten, fehler={"/admin/actions/runners": nicht_erreichbar()})
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")
+        # … die eigene Liste aber bleibt ein Fehler der Runde
+        k = Attrappe(self.antworten, fehler={"/orgs/beispiel-org/actions/runners": nicht_erreichbar()})
         self.assertEqual(fj.abfrage(k, "beispiel-org", self.a().kennung(), {})["abfrage"], "nicht-erreichbar")
 
     def test_wenig_zeit_in_der_runde_keine_erweiterte_suche(self):
         k = Attrappe(self.antworten)
-        k.rest = lambda: 5.0
+        k.rest = lambda: fj.SUCHE_MIN_REST - 1
         speicher = {}
         fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
         self.assertNotIn("/admin/actions/runners", [p for p, _, _ in k.pfade])
         self.assertNotIn("sucheAb", speicher)  # nächste Runde erneut versuchen
+
+    def test_erweiterte_suche_erst_nach_laeufen_und_jobs(self):
+        """#151: erst die eigene Liste, Läufe und Jobs, dann /admin und die Repositories."""
+        self.antworten["/admin/actions/runners"] = self.global_liste
+        k = Attrappe(self.antworten)
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), {})
+        pfade = [p for p, _, _ in k.pfade]
+        admin = pfade.index("/admin/actions/runners")
+        self.assertTrue(all(i < admin for i, p in enumerate(pfade) if "/actions/runs" in p or "/actions/jobs/" in p))
+        self.assertLess(pfade.index("/orgs/beispiel-org/actions/runners"), pfade.index(LAEUFE_WEB))
+        self.assertEqual(erg["runner"]["zustand"], "online")  # trotzdem gefunden
+        self.assertEqual(erg["job"]["name"], "build")
+
+    def test_kontingent_in_der_erweiterten_suche_kostet_die_runde_nicht(self):
+        k = Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("kontingent", "Zu viele Anfragen (429)")})
+        speicher = {}
+        erg = fj.abfrage(k, "beispiel-org", self.a().kennung(), speicher)
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["job"]["name"], "build")
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")
+        self.assertIsNotNone(erg["letzterErfolg"])
+        self.assertGreater(speicher["sucheAb"], time.time())  # nicht in jeder Runde neu
 
 
 class FakeServerTest(unittest.TestCase):
@@ -622,6 +649,26 @@ class FakeServerTest(unittest.TestCase):
         e = a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
         self.assertEqual(e["status"]["zustand"], "job")
         self.assertIs(e["status"]["beimDienst"]["sichtbar"], False)
+
+    def test_langsamer_server_erweiterte_suche_nur_im_rest_der_frist(self):
+        """#151: /admin antwortet erst nach 5 s; Läufe und Jobs sind da, die Runde bleibt „ok“ und endet vor ihrer Frist."""
+        self.handler.langsam["/api/v1/admin/actions/runners"] = 5
+        self.antworten["/api/v1/admin/actions/runners"] = (200, {}, json.dumps([self.runner]).encode())
+        a = fj.Forgejo(anbieter.RunnerKonfig(id="forgejo-runner", name="forgejo-runner", dienst="forgejo", unit="forgejo-runner.service",
+                                             server=f"http://127.0.0.1:{self.server.server_port}", org="beispiel-org", http_erlaubt=True,
+                                             name_beim_dienst="anderer-name", uuid=UUID_02))
+        k = fj.Klient(a.k.server, TOKEN, frist=4, http_erlaubt=True)
+        speicher = {}
+        with mock.patch.object(fj, "SUCHE_MIN_REST", 1.0), mock.patch.object(fj, "SUCHE_RESERVE", 1.0):
+            beginn = time.monotonic()
+            erg = a.abfrage(speicher, token=TOKEN, klient=k)
+            dauer = time.monotonic() - beginn
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["job"]["name"], "build")
+        self.assertEqual(erg["runner"]["ursache"], "nicht-gefunden")
+        self.assertLess(dauer, 4.0)  # die Anfrage endete an der Reserve vor der Rundenfrist, nicht nach 5 s
+        gesehen = [p.split("?")[0] for p, _ in self.handler.gesehen]
+        self.assertLess(gesehen.index("/api/v1/repos/beispiel-org/web-portal/actions/runs"), gesehen.index("/api/v1/admin/actions/runners"))
 
 
 # ---------------------------------------------------------------- Lauf-Liste (#163)
@@ -847,9 +894,11 @@ class LaufListeHttpTest(unittest.TestCase):
 class _Handler(http.server.BaseHTTPRequestHandler):
     antworten: dict = {}
     gesehen: list = []
+    langsam: dict = {}  # Pfad → Sekunden Verzögerung vor der Antwort
 
     def do_GET(self):  # noqa: N802
         type(self).gesehen.append((self.path, dict(self.headers)))
+        time.sleep(type(self).langsam.get(self.path.split("?")[0], 0))
         code, kopf, rumpf = type(self).antworten.get(self.path.split("?")[0], (404, {}, b'{"message":"not found"}'))
         self.send_response(code)
         for k, v in kopf.items():
@@ -881,7 +930,7 @@ def starte_troepfelnd():
 
 
 def starte(antworten: dict):
-    handler = type("H", (_Handler,), {"antworten": antworten, "gesehen": []})
+    handler = type("H", (_Handler,), {"antworten": antworten, "gesehen": [], "langsam": {}})
     server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, handler

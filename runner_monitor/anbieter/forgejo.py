@@ -35,6 +35,7 @@ Zugangsdaten (es wird 0644 nach ``/run/runner-monitor/anbieter.json`` geschriebe
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import re
@@ -61,7 +62,8 @@ MAX_LETZTE = 5
 SUCHE_TAKT = 600              # Runner nicht in der eigenen Liste: Admin- und Repository-Listen höchstens alle 10 Min.
 ADMIN_ERNEUT = 3600           # /admin/actions/runners nach 403/404 erst nach einer Stunde wieder versuchen
 MAX_REPO_SUCHE = 10           # so viele Repositories (zuletzt geändert zuerst) je Suche
-SUCHE_MIN_REST = 12.0         # die erweiterte Suche nur, wenn von der Runde noch so viele Sekunden übrig sind
+SUCHE_MIN_REST = 6.0          # die erweiterte Suche (nach Läufen und Jobs) nur, wenn von der Runde noch so viele Sekunden übrig sind
+SUCHE_RESERVE = 2.0           # jede Anfrage der erweiterten Suche endet so viele Sekunden vor dem Ende der Runde (#151)
 LAUF_STATUS = ("running", "waiting", "blocked")  # Forgejo-Werte aus LAEUFT/WARTET (Forgejo kennt unknown, waiting,
 #                                                  running, success, failure, cancelled, skipped, blocked)
 LAUF_SEITEN = 4               # mit Statusfilter höchstens 200 laufende/wartende Läufe je Repository
@@ -121,6 +123,7 @@ class Klient:
         self.zeitlimit = zeitlimit
         self.zaehler = {"anfragen": 0}
         self._ende = time.monotonic() + frist
+        self._deckel: float | None = None  # früheres Ende für freiwillige Anfragen (siehe begrenze)
         if oeffner is None:
             # bei http:// ohne Proxy aus der Umgebung: das Token ginge sonst unverschlüsselt über ihn (E-21)
             oeffner = (urllib.request.build_opener(_OhneWeiterleitung, urllib.request.ProxyHandler({}))
@@ -131,13 +134,24 @@ class Klient:
         """Sekunden, die von der Runde noch übrig sind."""
         return self._ende - time.monotonic()
 
+    @contextlib.contextmanager
+    def begrenze(self, reserve: float):
+        """Anfragen im Block enden spätestens ``reserve`` Sekunden vor dem Ende der Runde (freiwillige Suche, #151)."""
+        alt = self._deckel
+        self._deckel = self._ende - reserve
+        try:
+            yield
+        finally:
+            self._deckel = alt
+
     def hole(self, pfad: str, parameter: dict | None = None, *, text: bool = False) -> Antwort:
         """Eine GET-Anfrage mit **harter Frist**: Sie läuft in einem eigenen Daemon-Faden; ist er nach
         ``min(zeitlimit, Rest der Runde)`` nicht fertig (hängender DNS, tröpfelnder Server), gilt der
         Server als nicht erreichbar und der Faden wird zurückgelassen (wie ``gitlab.Klient``)."""
         if not self.server:
             raise ForgejoFehler("fehler", "Server fehlt, ist keine gültige Adresse oder nicht https:// (http:// nur mit „http_erlaubt“ in runner.json)")
-        rest = min(self.zeitlimit, self._ende - time.monotonic())
+        ende = self._ende if self._deckel is None else min(self._ende, self._deckel)
+        rest = min(self.zeitlimit, ende - time.monotonic())
         if rest <= 0:
             raise ForgejoFehler("nicht-erreichbar", "Frist für die Abfrage überschritten")
         url = f"{self.server}/api/v1{pfad}"
@@ -380,72 +394,100 @@ def _rest(klient: object) -> float:
     return rest() if callable(rest) else math.inf
 
 
-def runner_beim_dienst(klient: Klient, org: str, besitzer: str, kennung: "Kennung | str", speicher: dict | None = None,
-                       repos: list[dict] | None = None, jetzt: float | None = None) -> tuple[dict, dict | None]:
-    """Online-Status beim Dienst (optional). ``(Ergebnis, Rohdaten)``; nicht gefunden → ``zustand: unbekannt``
-    mit ``grund`` und ``ursache`` (``nicht-lesbar``: keine Liste lesbar, ``nicht-gefunden``: in keiner
-    lesbaren Liste). Nur lesend; 403/404 einer Liste heißt „darf nicht“ und ist kein Fehler der Runde.
+class RunnerSuche:
+    """Online-Status beim Dienst (optional), in zwei Stufen (#151). ``eigene()`` liest vor Läufen und Jobs den
+    Ort des letzten Funds und die eigene Liste (Organisation bzw. Benutzer); ``erweitert()`` sucht erst NACH
+    Läufen und Jobs – die Zuordnung der Jobs läuft meist über die UUID – in der Liste der Instanz
+    (``/admin``, nach 403/404 erst nach ``ADMIN_ERNEUT`` wieder) und in der der zuletzt geänderten
+    Repositories, höchstens alle ``SUCHE_TAKT`` Sekunden und nur mit genug Zeit in der Runde. Jede Anfrage dort
+    endet ``SUCHE_RESERVE`` Sekunden vor der Rundenfrist; Zeitüberschreitung und 429 kosten die Runde nicht,
+    wenn die eigene Liste gelesen wurde. Nur lesend; 403/404 einer Liste heißt „darf nicht“."""
 
-    Reihenfolge: der Ort des letzten Funds, die eigene Liste (Organisation bzw. Benutzer), dann – fehlt der
-    Runner dort, höchstens alle ``SUCHE_TAKT`` Sekunden und nur mit genug Zeit in der Runde – die Liste der
-    Instanz (``/admin``, nach 403/404 erst nach ``ADMIN_ERNEUT`` wieder) und die der zuletzt geänderten
-    Repositories."""
-    kennung = Kennung.aus(kennung)
-    speicher = {} if speicher is None else speicher
-    jetzt = time.time() if jetzt is None else jetzt
-    eigen = f"/orgs/{q(org)}/actions/runners" if besitzer == "org" else "/user/actions/runners"
-    repo_namen = [r["name"] for r in sorted(repos or [], key=lambda r: -(r.get("geaendert") or 0))]
+    def __init__(self, klient: Klient, org: str, besitzer: str, kennung: "Kennung | str", speicher: dict | None = None,
+                 repos: list[dict] | None = None, jetzt: float | None = None) -> None:
+        self.klient = klient
+        self.org = org
+        self.kennung = Kennung.aus(kennung)
+        self.speicher = {} if speicher is None else speicher
+        self.jetzt = time.time() if jetzt is None else jetzt
+        self.eigen = f"/orgs/{q(org)}/actions/runners" if besitzer == "org" else "/user/actions/runners"
+        self.repo_namen = [r["name"] for r in sorted(repos or [], key=lambda r: -(r.get("geaendert") or 0))]
+        self.gelesen = False
+        self.eigene_gelesen = False
+        self.orte: list[str] = []
 
-    def pfad_fuer(ort: str) -> str | None:
+    def _pfad_fuer(self, ort: str) -> str | None:
         if ort == "eigen":
-            return eigen
+            return self.eigen
         if ort == "admin":
             return "/admin/actions/runners"
         name = ort[5:] if ort.startswith("repo:") else ""
-        return f"/repos/{q(org)}/{q(name)}/actions/runners" if name in repo_namen else None
+        return f"/repos/{q(self.org)}/{q(name)}/actions/runners" if name in self.repo_namen else None
 
-    gelesen = False
-
-    def versuche(ort: str) -> dict | None:
-        nonlocal gelesen
-        pfad = pfad_fuer(ort)
+    def _versuche(self, ort: str, still: bool = False) -> dict | None:
+        pfad = self._pfad_fuer(ort)
         if not pfad:
             return None
         try:
-            treffer = _durchsuche(klient, pfad, kennung)
+            treffer = _durchsuche(self.klient, pfad, self.kennung)
         except ForgejoFehler as fehler:
             # die eigene Liste wie bisher; die zusätzlichen Listen sind freiwillig – ein älterer Server ohne
-            # den Pfad (400/405) kostet dort nicht die ganze Runde, „nicht erreichbar“ aber schon
+            # den Pfad (400/405) kostet dort nicht die ganze Runde, „nicht erreichbar“ aber schon (vor Läufen
+            # und Jobs); in der erweiterten Suche (still) auch das nicht, wenn die eigene Liste gelesen wurde
+            if still and self.eigene_gelesen and fehler.art in ("nicht-erreichbar", "kontingent"):
+                raise _SucheAbbruch from None
             if fehler.art not in ("keine-rechte", "fehlt") and (ort == "eigen" or fehler.art != "fehler"):
                 raise
             if ort == "admin":
-                speicher["adminAb"] = jetzt + ADMIN_ERNEUT  # Token ohne read:admin oder kein Administrator
+                self.speicher["adminAb"] = self.jetzt + ADMIN_ERNEUT  # Token ohne read:admin oder kein Administrator
             return None
-        gelesen = True
+        self.gelesen = True
+        if ort == "eigen":
+            self.eigene_gelesen = True
         if treffer:
-            speicher["runnerOrt"] = ort
+            self.speicher["runnerOrt"] = ort
         return treffer
 
-    orte = list(dict.fromkeys([speicher.get("runnerOrt") or "eigen", "eigen"]))
-    gefunden = next((t for ort in orte if (t := versuche(ort))), None)
-    if not gefunden and jetzt >= (speicher.get("sucheAb") or 0) and _rest(klient) >= SUCHE_MIN_REST:
-        speicher["sucheAb"] = jetzt + SUCHE_TAKT
-        weitere = (["admin"] if jetzt >= (speicher.get("adminAb") or 0) else []) \
-            + [f"repo:{n}" for n in repo_namen[:MAX_REPO_SUCHE]]
-        for ort in weitere:
-            if ort in orte:
-                continue
-            if _rest(klient) < SUCHE_MIN_REST / 2:
-                break  # Läufe und Jobs der Runde gehen vor
-            if (gefunden := versuche(ort)):
-                break
-        speicher["gelesen"] = gelesen
-    if gefunden:
-        return runner_eintrag(gefunden), gefunden
-    speicher.pop("runnerOrt", None)
-    if gelesen or speicher.get("gelesen"):
-        return {"zustand": "unbekannt", "grund": GRUND_NICHT_SICHTBAR, "ursache": "nicht-gefunden"}, None
-    return {"zustand": "unbekannt", "grund": GRUND_NICHT_LESBAR, "ursache": "nicht-lesbar"}, None
+    def eigene(self) -> dict | None:
+        self.orte = list(dict.fromkeys([self.speicher.get("runnerOrt") or "eigen", "eigen"]))
+        return next((t for ort in self.orte if (t := self._versuche(ort))), None)
+
+    def erweitert(self) -> dict | None:
+        if self.jetzt < (self.speicher.get("sucheAb") or 0) or _rest(self.klient) < SUCHE_MIN_REST:
+            return None
+        self.speicher["sucheAb"] = self.jetzt + SUCHE_TAKT
+        weitere = (["admin"] if self.jetzt >= (self.speicher.get("adminAb") or 0) else []) \
+            + [f"repo:{n}" for n in self.repo_namen[:MAX_REPO_SUCHE]]
+        gefunden = None
+        begrenzt = self.klient.begrenze(SUCHE_RESERVE) if hasattr(self.klient, "begrenze") else contextlib.nullcontext()
+        try:
+            with begrenzt:
+                for ort in weitere:
+                    if ort in self.orte:
+                        continue
+                    if _rest(self.klient) < SUCHE_RESERVE + 1:
+                        break  # für die Runde bleibt nichts mehr übrig
+                    if (gefunden := self._versuche(ort, still=True)):
+                        break
+        except _SucheAbbruch:
+            # Zeitüberschreitung oder 429 in der freiwilligen Suche: nächste Runde nach der Pause wieder
+            pass
+        self.speicher["gelesen"] = self.gelesen
+        return gefunden
+
+    def ergebnis(self, gefunden: dict | None) -> tuple[dict, dict | None]:
+        """``(Ergebnis, Rohdaten)``; nicht gefunden → ``zustand: unbekannt`` mit ``grund`` und ``ursache``
+        (``nicht-lesbar``: keine Liste lesbar, ``nicht-gefunden``: in keiner lesbaren Liste)."""
+        if gefunden:
+            return runner_eintrag(gefunden), gefunden
+        self.speicher.pop("runnerOrt", None)
+        if self.gelesen or self.speicher.get("gelesen"):
+            return {"zustand": "unbekannt", "grund": GRUND_NICHT_SICHTBAR, "ursache": "nicht-gefunden"}, None
+        return {"zustand": "unbekannt", "grund": GRUND_NICHT_LESBAR, "ursache": "nicht-lesbar"}, None
+
+
+class _SucheAbbruch(Exception):
+    """Die freiwillige Suche endet still (siehe :meth:`RunnerSuche.erweitert`)."""
 
 
 def job_details(klient: Klient, org: str, repo: str, job: dict) -> tuple[list[dict] | None, dict]:
@@ -586,7 +628,9 @@ def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: di
         ergebnis["serverVersion"] = erkennung.pruefe_version(roh.split("+")[0]) if isinstance(roh, str) else None
         besitzer = _besitzer(klient, org, speicher)
         repos = _repos(klient, org, besitzer)
-        ergebnis["runner"], mein = runner_beim_dienst(klient, org, besitzer, kennung, speicher, repos, jetzt)
+        suche = RunnerSuche(klient, org, besitzer, kennung, speicher, repos, jetzt)
+        mein = suche.eigene()
+        ergebnis["runner"], mein = suche.ergebnis(mein)
         # Wer hat einen Job? Forgejo Runner schreibt die UUID ins Log, act_runner/Gitea den Namen. Ist der Runner
         # in einer Liste gefunden, zählt sein Name dort; sonst der aus .runner bzw. die Ersatznamen (#145).
         namen = [mein.get("name")] if mein else [kennung.name_aus_datei] if kennung.name_aus_datei else list(kennung.namen)
@@ -634,6 +678,12 @@ def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: di
                 ergebnis["schritte"] = speicher["schritte"] = bool(meine[0]["schritte"])
         _letzte_jobs(klient, org, meine, speicher, jetzt)
         ergebnis["letzteJobs"] = list(speicher.get("letzte") or [])
+        if not mein:
+            # erweiterte Suche erst jetzt (#151): Läufe und Jobs der Runde sind gelesen, ein langsamer Server
+            # kostet die Runde nicht mehr
+            gefunden = suche.erweitert()
+            if gefunden or suche.gelesen:
+                ergebnis["runner"], mein = suche.ergebnis(gefunden)
         ergebnis["letzterErfolg"] = jetzt
     except ForgejoFehler as fehler:
         ergebnis["abfrage"] = "keine-rechte" if fehler.art == "fehlt" else fehler.art
