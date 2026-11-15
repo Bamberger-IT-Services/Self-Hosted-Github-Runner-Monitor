@@ -173,6 +173,12 @@ const EINR = (() => {
     if (x) return t('{pfad} antwortet: {v}', { pfad: x[1], v: x[2] });
     x = /^(\/\S+) laut Konfiguration erwartet, nicht gefunden$/.exec(s);  // #172
     if (x) return t('{pfad} laut Konfiguration erwartet, nicht gefunden', { pfad: x[1] });
+    x = /^(\/\S+) mit server\.connections, url (\S+)$/.exec(s);
+    if (x) return t('{datei} mit server.connections, url {url}', { datei: x[1], url: x[2] });
+    x = /^(\/\S+) mit server\.connections ohne gültige url$/.exec(s);
+    if (x) return t('{datei} mit server.connections ohne gültige url', { datei: x[1] });
+    x = /^(\/\S+) mit (\d+) Verbindungen in server\.connections$/.exec(s);
+    if (x) return t('{datei} mit {n} Verbindungen in server.connections', { datei: x[1], n: x[2] });
     if (s === 'Verbindung in server.connections passt zum Server aus runner.json') return t('Verbindung in server.connections passt zum Server aus runner.json');
     if (s === 'Server aus runner.json bestätigt') return t('Server aus runner.json bestätigt');
     if (s === 'Server aus runner.json: nicht bestätigt') return t('Server aus runner.json: nicht bestätigt');

@@ -9,7 +9,7 @@ Der Monitor findet selbst, welche CI-Runner auf der VM laufen, zu welchem Dienst
 * **Prozesse** – ``/proc/<pid>/cmdline``, ``cgroup`` (zu welcher Unit gehört der Prozess?) und ``cwd``.
 * **Registrierungen** – ``.runner`` (GitHub, Forgejo, Gitea) und ``config.toml`` (GitLab) neben den
   Units und Prozessen sowie an den üblichen Orten; bei Forgejo/Gitea auch die Datei aus ``runner.file``
-  der ``config.yml``/``config.yaml`` (``-c``/``--config`` der Unit bzw. im Arbeitsverzeichnis, #172) und
+  der ``config.yml``/``config.yaml`` aus ``-c``/``--config`` der Unit (#172) und
   ohne Registrierungsdatei ``url``/``uuid`` aus ``server.connections`` (forgejo-runner ab 12.7, nie ``token``).
 * **Server-API-Probe** ohne Zugangsdaten – ``/api/forgejo/v1/version``, ``/api/v1/version``,
   GitLab-Anmeldeseite, ``/api/v3/meta`` (GitHub Enterprise). Ohne Netz bleibt der Grad „wahrscheinlich“.
@@ -634,6 +634,7 @@ def deute_gitlab_konfig(pfad: str, daten: bytes) -> Registrierung:
 # des Runners sie nennt. Schlichter Dateiname; nie Zugangsdaten (``.credentials*``), nie eine Konfiguration.
 REG_NAME = re.compile(r"\.?[A-Za-z0-9_][A-Za-z0-9._-]{0,126}")
 KONFIG_NAME = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._-]{0,122}\.ya?ml")
+YAML_NULL = ("null", "Null", "NULL", "~")
 YAML_FILE = re.compile(r"""file:[ \t]*(?:"([^"\\]{0,512})"|'([^']{0,512})'|([^\s"'#][^\s#]{0,511}))?[ \t]*(?:#.*)?""")
 
 
@@ -666,9 +667,9 @@ def lies_registrierung(q: Quelle, pfad: str, aus_konfig: bool = False) -> Regist
 def runner_file_aus_yaml(text: str) -> str | None:
     """Wert von ``runner.file`` aus der ``config.yml`` von act_runner/forgejo-runner – nur der Schlüssel ``file``
     direkt unter dem Abschnitt ``runner:`` der obersten Ebene (kein allgemeiner YAML-Leser). Leer, fehlend oder
-    ungültig: None (dann gilt die Vorgabe des Runners, ``.runner`` im Arbeitsverzeichnis)."""
+    ungültig, ``null`` oder ``~``: None (dann gilt die Vorgabe des Runners, ``.runner`` im Arbeitsverzeichnis)."""
     im_runner, tiefe_kind = False, None
-    for zeile in text.splitlines()[:2000]:
+    for zeile in text.removeprefix("\ufeff").splitlines()[:2000]:
         inhalt = zeile.strip()
         if not inhalt or inhalt.startswith("#") or inhalt in ("---", "..."):
             continue
@@ -684,7 +685,9 @@ def runner_file_aus_yaml(text: str) -> str | None:
         if tiefe != tiefe_kind or not re.match(r"file:(?:\s|$)", inhalt):
             continue
         treffer = YAML_FILE.fullmatch(inhalt)
-        wert = next((w for w in treffer.groups() if w), "") if treffer else ""
+        if not treffer or (treffer.group(3) or "") in YAML_NULL:
+            return None  # ungültig bzw. null/~: wie nicht gesetzt
+        wert = next((w for w in treffer.groups() if w), "")
         return wert.strip() or None
     return None
 
@@ -694,7 +697,18 @@ def _unter(pfad: str, verz: str | None) -> bool:
     return bool(verz) and verz != "/" and pfad.startswith(verz.rstrip("/") + "/")
 
 
-def konfig_runner_datei(q: Quelle, konfig: str, basis: str | None, frei: bool = True) -> list[str]:
+def lies_konfig(q: Quelle, konfig: str) -> str | None:
+    """Konfiguration von act_runner/forgejo-runner (schlichter ``*.yml``/``*.yaml``-Name) als Text: einmal gelesen
+    für ``runner.file`` und ``server.connections`` (#172), gliedweise ohne Symlink (:meth:`Quelle.lies_ohne_links`),
+    begrenzt, ohne BOM."""
+    if not KONFIG_NAME.fullmatch(PurePosixPath(konfig).name):
+        return None
+    daten = q.lies_ohne_links(konfig, MAX_REGISTRIERUNG)
+    return None if daten is None else daten.decode("utf-8", "replace").removeprefix("\ufeff")
+
+
+def konfig_runner_datei(q: Quelle, konfig: str, basis: str | None, frei: bool = True,
+                        text: str | None = None) -> list[str]:
     """Wo die Registrierung laut ``runner.file`` der Konfiguration von act_runner/forgejo-runner liegt (#172),
     wichtigster Ort zuerst; ohne ``runner.file`` gilt wie beim Runner ``.runner``.
 
@@ -704,13 +718,11 @@ def konfig_runner_datei(q: Quelle, konfig: str, basis: str | None, frei: bool = 
     Arbeitsverzeichnis (nicht ``/``) liegen – eine Konfiguration, die der Benutzer des Runners schreiben darf,
     lenkt die Erkennung (root) so nicht auf beliebige Dateien. ``frei=False`` (Konfiguration nur aus der
     Befehlszeile eines Prozesses, nicht aus der root-eigenen Unit-Datei): nur ``.runner`` wie vor #172. Gelesen
-    wird die Konfiguration wie alles andere: regulär, ohne Symlink, begrenzt; ``.yml`` und ``.yaml``."""
-    if not KONFIG_NAME.fullmatch(PurePosixPath(konfig).name):
+    wird die Konfiguration mit :func:`lies_konfig` (``text``: schon gelesen)."""
+    text = lies_konfig(q, konfig) if text is None else text
+    if text is None:
         return []
-    daten = q.lies(konfig, MAX_REGISTRIERUNG)
-    if daten is None:
-        return []
-    wert = runner_file_aus_yaml(daten.decode("utf-8", "replace")) or ".runner"
+    wert = runner_file_aus_yaml(text) or ".runner"
     konfig_verz = str(PurePosixPath(konfig).parent)
     if wert.startswith("/"):
         kandidaten = [wert]
@@ -731,7 +743,51 @@ def konfig_runner_datei(q: Quelle, konfig: str, basis: str | None, frei: bool = 
 
 YAML_VERBINDUNG = re.compile(r"""(url|uuid):[ \t]*(?:"([^"\\]{0,512})"|'([^']{0,512})'|([^\s"'#,{}]{1,512}))?[ \t]*(?:#.*)?""")
 YAML_NAME = re.compile(r"""(?:"([^"\\]{1,64})"|'([^']{1,64})'|([^\s"'#:{}]{1,64})):(?:[ \t]+(.*))?""")
-FLUSS_FELD = re.compile(r"""(?:^|[{,\s])(url|uuid):[ \t]*["']?([^"',}\s]{1,512})""")
+
+
+def fluss_felder(rest: str) -> dict[str, str]:
+    """``{url: …, uuid: …, token: "…"}`` in einer Zeile: an Kommas der obersten Ebene zerlegen, Anführungszeichen
+    und Klammern beachten – ein ``uuid:`` im Wert eines anderen Schlüssels (z. B. im Token) zählt nie. Nur
+    ``url`` und ``uuid``; ohne schließende Klammer: nichts."""
+    rest = rest.strip()
+    if not (rest.startswith("{") and rest.rstrip().endswith("}")) or len(rest) > 4096:
+        return {}
+    teile, stueck, quote, tiefe = [], "", None, 0
+    for z in rest.strip()[1:-1]:
+        if quote:
+            stueck += z
+            if z == quote:
+                quote = None
+        elif z in "\"'":
+            quote = z
+            stueck += z
+        elif z in "[{":
+            tiefe += 1
+            stueck += z
+        elif z in "]}":
+            tiefe -= 1
+            stueck += z
+        elif z == "," and tiefe == 0:
+            teile.append(stueck)
+            stueck = ""
+        else:
+            stueck += z
+    if quote or tiefe:
+        return {}
+    teile.append(stueck)
+    felder: dict[str, str] = {}
+    for teil in teile:
+        schluessel, sep, wert = teil.strip().partition(":")
+        if not sep or schluessel.strip() not in ("url", "uuid") or schluessel.strip() in felder:
+            continue
+        wert = wert.strip()
+        if len(wert) >= 2 and wert[0] == wert[-1] and wert[0] in "\"'":
+            wert = wert[1:-1]
+        elif wert in YAML_NULL or any(z in wert for z in "\"'[]{} "):
+            continue
+        felder[schluessel.strip()] = wert
+    return felder
+
 MAX_VERBINDUNGEN = 20
 
 
@@ -754,7 +810,7 @@ def verbindungen_aus_yaml(text: str) -> list[dict]:
     im_server = in_conn = False
     tiefe_kind = tiefe_conn = tiefe_name = tiefe_feld = None
     aktuell: dict | None = None
-    for zeile in text.splitlines()[:2000]:
+    for zeile in text.removeprefix("\ufeff").splitlines()[:2000]:
         inhalt = zeile.strip()
         if not inhalt or inhalt.startswith("#") or inhalt in ("---", "..."):
             continue
@@ -784,11 +840,7 @@ def verbindungen_aus_yaml(text: str) -> list[dict]:
             aktuell = {"name": next(n for n in treffer.groups()[:3] if n), "url": None, "uuid": None}
             roh.append(aktuell)
             tiefe_feld = None
-            rest = (treffer.group(4) or "").strip()
-            if rest.startswith("{"):
-                for feld, wert in FLUSS_FELD.findall(rest):
-                    aktuell.setdefault(feld, None)
-                    aktuell[feld] = aktuell[feld] or wert
+            aktuell.update(fluss_felder(treffer.group(4) or ""))
             continue
         if aktuell is None or tiefe < tiefe_name:
             continue
@@ -807,15 +859,11 @@ def verbindungen_aus_yaml(text: str) -> list[dict]:
     return ergebnis
 
 
-def konfig_verbindungen(q: Quelle, konfig: str) -> list[dict]:
-    """``server.connections`` aus einer Konfiguration (#172), wie :func:`konfig_runner_datei` gelesen; jede
-    Verbindung mit ``datei`` (Pfad der Konfiguration, für die Begründung)."""
-    if not KONFIG_NAME.fullmatch(PurePosixPath(konfig).name):
-        return []
-    daten = q.lies(konfig, MAX_REGISTRIERUNG)
-    if daten is None:
-        return []
-    return [{**v, "datei": konfig} for v in verbindungen_aus_yaml(daten.decode("utf-8", "replace"))]
+def konfig_verbindungen(q: Quelle, konfig: str, text: str | None = None) -> list[dict]:
+    """``server.connections`` aus einer Konfiguration (#172), gelesen mit :func:`lies_konfig` (``text``: schon
+    gelesen); jede Verbindung mit ``datei`` (Pfad der Konfiguration, für die Begründung)."""
+    text = lies_konfig(q, konfig) if text is None else text
+    return [] if text is None else [{**v, "datei": konfig} for v in verbindungen_aus_yaml(text)]
 
 
 def standard_orte(q: Quelle, runner_verz: str | None) -> list[str]:
@@ -869,8 +917,9 @@ def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None,
                     verbindungen: list[dict] | None = None) -> list[tuple[str, bool]]:
     """Wo neben Unit und Prozess eine Registrierung liegen kann: ``(pfad, aus_konfig)`` – ``aus_konfig``, wenn
     ``runner.file`` einer Konfiguration den Pfad nennt (#172; dann auch unter anderem Namen als ``.runner``).
-    Die Konfiguration kommt aus ``-c``/``--config`` im ExecStart bzw. der Befehlszeile; fehlt die Angabe bei
-    einer Forgejo-/Gitea-Unit, aus ``config.yml``/``config.yaml`` in ihrem Arbeitsverzeichnis.
+    Die Konfiguration kommt nur aus ``-c``/``--config`` im ExecStart bzw. der Befehlszeile – ohne die Angabe
+    liest forgejo-runner keine Datei (``config.FromFile``: „No configuration file specified“), also auch der
+    Monitor nicht.
 
     ``aus_unit=True``: nur was die Unit-Datei vorgibt (``--config`` im ExecStart, Programmordner,
     WorkingDirectory); ``False``: nur was Prozesse vorgeben (argv[0], ``--config``, cwd) – die kann
@@ -893,7 +942,6 @@ def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None,
     for argv, basis, von_unit in befehle:
         if not argv:
             continue
-        vorher = len(konfig)
         programm = pruefe_pfad(argv[0])
         if programm:
             eltern = PurePosixPath(programm).parent
@@ -910,10 +958,6 @@ def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None,
                 if not wert.startswith("/") and basis:
                     wert = f"{basis.rstrip('/')}/{wert}"
                 konfig.append((wert, basis, von_unit))
-        if von_unit and len(konfig) == vorher and basis and basis != "/" \
-                and dienst_aus(BEKANNT_PROGRAMM, PurePosixPath(argv[0]).name) in ("forgejo", "gitea"):
-            # ohne --config: config.yml bzw. config.yaml im Arbeitsverzeichnis der Unit (üblicher Ort, #172)
-            konfig += [(f"{basis}/config.yml", basis, True), (f"{basis}/config.yaml", basis, True)]
     dateien: list[tuple[str, bool]] = []
     for pfad, basis, von_unit in konfig:
         pfad = pruefe_pfad(pfad)
@@ -922,9 +966,12 @@ def orte_der_gruppe(q: Quelle, g: Gruppe, aus_unit: bool | None = None,
         if PurePosixPath(pfad).name == "config.toml":
             dateien.append((pfad, False))
         else:
-            dateien += [(datei, True) for datei in konfig_runner_datei(q, pfad, basis, frei=von_unit)]
+            text = lies_konfig(q, pfad)  # einmal lesen, beide Auswertungen auf demselben Inhalt (#172)
+            if text is None:
+                continue
+            dateien += [(datei, True) for datei in konfig_runner_datei(q, pfad, basis, frei=von_unit, text=text)]
             if von_unit and verbindungen is not None:
-                verbindungen += [v for v in konfig_verbindungen(q, pfad)
+                verbindungen += [v for v in konfig_verbindungen(q, pfad, text=text)
                                  if (v["url"], v["uuid"]) not in {(w["url"], w["uuid"]) for w in verbindungen}]
     dateien += [(f"{v}/.runner", False) for v in programmverz + verz if pruefe_pfad(v)]
     if g.unit_name and aus_unit is not False and dienst_aus(BEKANNT_UNIT, g.unit_name) == "gitlab" or (
@@ -1415,6 +1462,7 @@ def pruefe_zuordnung_server(funde: list[dict], zuordnung: dict[str, dict], q: Qu
 
 
 GRUND_NAME_UNBEKANNT = "Name beim Server unbekannt – Zuordnung ändern"
+GRUND_MEHRERE_VERBINDUNGEN = "mehrere Verbindungen – Server in runner.json eintragen"
 
 
 def waehle_verbindung(funde: list[dict], zuordnung: dict[str, dict]) -> list[dict]:
@@ -1429,6 +1477,10 @@ def waehle_verbindung(funde: list[dict], zuordnung: dict[str, dict]) -> list[dic
         if len(passend) == 1:
             fund["kennung"] = {"name": None, "uuid": passend.pop()}
             fund["merkmale"].append("Verbindung in server.connections passt zum Server aus runner.json")
+    for fund in funde:
+        if fund.get("_verbindungen") and not fund.get("kennung") and fund.get("grad") != "sicher" \
+                and not (zuordnung.get(fund["id"]) or {}).get("server"):
+            fund["_grund"] = GRUND_MEHRERE_VERBINDUNGEN  # sonst hieße es „keine Registrierung gefunden“
     return funde
 
 
@@ -1482,8 +1534,11 @@ def erkenne(wurzel: Path | str = "/", runner_verz: Path | str | None = None, zuo
         funde = pruefe_zuordnung_server(funde, zuordnung, q, speicher)
     except Exception:  # noqa: BLE001 – die Prüfung darf die Erkennung nie beenden
         pass
-    funde = waehle_verbindung(funde, zuordnung)
-    funde = pruefe_kennung_bekannt(funde, zuordnung)
+    for schritt in (waehle_verbindung, pruefe_kennung_bekannt):
+        try:
+            funde = schritt(funde, zuordnung)
+        except Exception:  # noqa: BLE001 – wie pruefe_zuordnung_server: die Erkennung wirft nie
+            pass
     return {"zeit": time.time(), "geprueft": GEPRUEFT, "runner": [{k: v for k, v in f.items() if not k.startswith("_")} | {"grund": f.get("_grund")} for f in funde]}
 
 

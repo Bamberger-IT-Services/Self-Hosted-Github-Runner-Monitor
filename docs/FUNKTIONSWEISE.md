@@ -105,7 +105,7 @@ alle nicht ignorierten Funde in `runner[]` (siehe „Anbieter-Adapter“); das D
 |---|---|---|
 | systemd-Units | Unit-Dateien in `/etc/systemd/system`, `/run/systemd/system`, `/usr/local/lib/systemd/system`, `/usr/lib/systemd/system`, `/lib/systemd/system` samt Drop-ins; `ExecStart`, `WorkingDirectory`; aktiviert über `*.wants/`, aktiv über `systemctl is-active` | „systemd-Unit forgejo-runner.service“ |
 | Prozesse | `/proc/<pid>/cmdline`, `cgroup` (welche Unit, Container?), `cwd` – nur bekannte Programme (`Runner.Listener`, `forgejo-runner`, `act_runner`, `gitlab-runner`) | „Prozess forgejo-runner daemon“ |
-| Registrierungen | `.runner` (GitHub: `agentName`, `gitHubUrl`; Forgejo/Gitea: `name`, `address`) neben Unit und Prozess, laut `runner.file` der Runner-Konfiguration (`config.yml`/`config.yaml` aus `-c`/`--config` der Unit, ohne Angabe die im `WorkingDirectory`; auch unter anderem Dateinamen, #172) und an üblichen Orten (`/opt/*`, `/srv/*`, `/var/lib/*`, `/home/*`, `/root`); GitLab: `config.toml` (`name`, `url`) | „/opt/actions-runner/.runner mit gitHubUrl“ |
+| Registrierungen | `.runner` (GitHub: `agentName`, `gitHubUrl`; Forgejo/Gitea: `name`, `address`) neben Unit und Prozess, laut `runner.file` der Runner-Konfiguration (`config.yml`/`config.yaml` aus `-c`/`--config` der Unit; auch unter anderem Dateinamen, #172) und an üblichen Orten (`/opt/*`, `/srv/*`, `/var/lib/*`, `/home/*`, `/root`); GitLab: `config.toml` (`name`, `url`) | „/opt/actions-runner/.runner mit gitHubUrl“ |
 | Server-API ohne Zugangsdaten | nur für Funde mit systemd-Unit (E-17): Forgejo `/api/forgejo/v1/version`, Gitea `/api/v1/version`, GitLab-Anmeldeseite, GitHub Enterprise `/api/v3/meta` (github.com gilt als bekannt) | „/api/forgejo/v1/version antwortet: 13.0“ |
 | Runner-Version | GitHub aus `bin/Runner.Listener.deps.json`, sonst aus dem Journal der Unit („with version: v9.1.0“, „version=17.5.2“) | – |
 
@@ -159,8 +159,12 @@ Forgejo/Gitea trotzdem `wahrscheinlich` (#172, siehe **Grad**). Die Datei hat au
 **Ort der Registrierung (#172):** forgejo-runner und act_runner nennen ihre Registrierung in der
 Konfiguration (`runner.file`, Vorgabe `.runner`), relativ zum Arbeitsverzeichnis des Runners. Die Erkennung
 liest die Konfiguration aus `-c`/`--config` im ExecStart der Unit (`config.yml` oder `config.yaml`, auch
-anderer schlichter `*.yml`/`*.yaml`-Name; fehlt die Angabe, `config.yml`/`config.yaml` im
-`WorkingDirectory`), daraus nur den Schlüssel `file` direkt unter `runner:` (kein allgemeiner YAML-Leser).
+anderer schlichter `*.yml`/`*.yaml`-Name), daraus nur den Schlüssel `file` direkt unter `runner:` (kein
+allgemeiner YAML-Leser; BOM entfernt, `null`/`~`/leer wie nicht gesetzt → `.runner`). Ohne `-c`/`--config` liest
+forgejo-runner keine Datei (`config.FromFile`: „No configuration file specified; using default settings“) – dann
+auch der Monitor nicht, auch keine `config.yml` im Arbeitsverzeichnis (sie könnte veraltet sein). Die
+Konfiguration wird einmal gelesen (gliedweise ohne Symlink) und für `runner.file` und `server.connections`
+ausgewertet.
 Ein relativer Pfad gilt ab dem `WorkingDirectory` der Unit (ohne Angabe wie bei systemd `/`, dann zusätzlich
 neben der Konfiguration). Beispiel: `WorkingDirectory=/root`, `-c /etc/forgejo-runner/config.yaml`,
 `runner: file: .runner` → `/root/.runner`. Heißt die Datei nicht `.runner`, wird sie nur im Ordner der
@@ -187,10 +191,12 @@ server:
 
 Findet die Erkennung für eine Unit keine Registrierungsdatei, liest sie aus der Konfiguration der Unit (nicht
 aus der Befehlszeile eines Prozesses) nur `url` und `uuid` je Verbindung (geprüft, höchstens 20; Block-Schreibweise
-und `name: {url: …, uuid: …}`). Eine Verbindung gilt wie `.runner`: `url` als Server-Vorschlag (Probe ohne
+und `name: {url: …, uuid: …}` – dort an Kommas der obersten Ebene zerlegt, Anführungszeichen beachtet, damit
+ein `uuid:` im Token-Wert nie zählt). Eine Verbindung gilt wie `.runner`: `url` als Server-Vorschlag (Probe ohne
 Zugangsdaten), `uuid` als Kennung (`kennung.name` bleibt `null` – der Server ordnet über die UUID zu). Bei mehreren
 Verbindungen wird die UUID der Verbindung genommen, deren `url` dem Server aus `runner.json` entspricht; passt
-keine (oder keiner), gibt es keine Kennung und der Grad bleibt „wahrscheinlich“.
+keine (oder keiner), gibt es keine Kennung und der Grad bleibt „wahrscheinlich“; steht in `runner.json` kein
+Server, lautet der Grund „mehrere Verbindungen – Server in runner.json eintragen“.
 
 **IDs (E-18):** aus dem Namen, eindeutig (gleicher Name → `-2`, `-3`) und **zuerst an Funde mit
 Unit** vergeben – ein nachgemachter Fund (z. B. eine `.runner` in `/home`) bekommt so nie die ID
