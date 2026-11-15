@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "15.11.2026 12:25",
+  stand: "15.11.2026 12:42",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -267,6 +267,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "15.11.2026 12:42", text: "Release 0.8.3 vorbereitet (Branch release/0.8.3, OK von Tobias für Vorbereiten, Veröffentlichen und VM-Update): #163, #151, #162 in develop, #152 (PR #167) folgt; VERSION, CHANGELOG [0.8.3] – 15.11.2026, Release-Notiz mit Reihenfolge der Umbenennung (erst VMs mit Forgejo-Quelle auf 0.8.3, dann Repository auf Forgejo umbenennen; dazwischen meldet 0.8.3 mit Forgejo-Quelle 404), Stand der Dokus. Ablauf wie 0.8.2: release/X.Y.Z → develop, develop → main (volle CI), Forgejo-Release auf main (Tag), Spiegelung schiebt main und Tag nach GitHub, gh release create (release.yml baut und attestiert), dasselbe Paket byte-gleich an das Forgejo-Release." },
     { datum: "15.11.2026 12:25", text: "Arbeitsrunde Issues (Opus): PR #164 (#163) war schon gemergt; #162 (PR #166, E-33 von Tobias bestätigt) und #151 (PR #165, nach Architekt-Review überarbeitet) nach develop gemergt, #152 (PR #167) auf develop umgestellt. CI-Wartezeiten analysiert: ein Runner mit capacity 1, Helios-Läufe 1–2,5 h blockieren die Warteschlange; Vorschläge (zweiter Runner mit Label für kurze Jobs, capacity, shutdown_timeout, Helios-Tests) an Tobias. Offen: Release mit #163/#151/#152/#162, danach Umbenennung auf Forgejo in der Reihenfolge aus PR #166." },
     { datum: "15.11.2026 10:15", text: "#152 umgesetzt (Branch fix/152-ersatznamen, baut auf #151 auf): Ersatznamen nur in der eigenen Runner-Liste (RunnerSuche: /admin und Repo-Listen streng, passt(streng=True)); abweichender Server aus runner.json wird als Merkmal vermerkt und der Grad ist dann nicht sicher; Merkmale der Erkennung in Einrichtung übersetzbar (EINR.merkmalText). Tests ergänzt." },
     { datum: "15.11.2026 10:11", text: "#151 umgesetzt und nach Architekt-Review (PR #165) überarbeitet: erweiterte Runner-Suche (/admin, Repository-Listen) erst nach Läufen und Jobs (Klasse RunnerSuche: eigene() davor, erweitert() danach, gemerkter Ort zuerst); jede Anfrage dort endet SUCHE_RESERVE (2 s) vor der Rundenfrist (Klient.begrenze), Zeitüberschreitung und 429 immer still, nach Abbruch bei /admin weiter mit den Repository-Listen; UUID und Name des letzten Funds im Speicher (runnerWer), damit Läufe und Jobs ab Runde 2 richtig zugeordnet werden; SUCHE_MIN_REST 12 s auf 6 s; Sicherheitsbericht S-FORGEJO-02 nachgezogen. Tests mit langsamem HTTP-Fake-Server und Unit-Tests für Klient.begrenze." },

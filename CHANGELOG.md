@@ -4,6 +4,8 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.8.3] – 15.11.2026
+
 ### Geändert
 - Das Repository auf Forgejo heißt jetzt `Bamberger-IT-Services/Git-Runner-Monitor-Self-Hosted` (#162, E-33) – der
   Monitor überwacht auch Forgejo-, Gitea- und GitLab-Runner. Das eingefrorene GitHub-Repository behält

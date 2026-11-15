@@ -1,6 +1,6 @@
 # Update und Rückweg
 
-**Stand: 30.10.2026 · Version 0.8.2**
+**Stand: 15.11.2026 · Version 0.8.3**
 
 Der Monitor prüft alle 6 Stunden, ob es in der Update-Quelle (Vorgabe GitHub, wählbar Forgejo –
 siehe [Quelle](#quelle-github-oder-forgejo)) ein neueres Release gibt – sofort geht es mit
@@ -82,10 +82,12 @@ Zurück zu GitHub: `einrichten.sh quelle`, „1“ – Adresse und http-Freigabe
 
 **Nach der Umbenennung auf Forgejo (#162):** Versionen bis 0.8.2 bilden den Pfad auf Forgejo noch aus
 `MONITOR_RELEASE_REPO` (alter Name) und finden nach der Umbenennung kein Update mehr („Forgejo leitet
-weiter“). Solche VMs zuerst auf die Version mit `MONITOR_UPDATE_FORGEJO_REPO` bringen – vor der
+weiter“). Solche VMs zuerst auf 0.8.3 bringen (erste Version mit `MONITOR_UPDATE_FORGEJO_REPO`) – vor der
 Umbenennung über Forgejo, danach über GitHub (`einrichten.sh quelle`, „1“, nach dem Update wieder
 „2“) oder per Paket von Hand. `MONITOR_RELEASE_REPO` **nicht** auf den neuen Namen setzen: Damit
-scheitert die Herkunftsprüfung gegen GitHub.
+scheitert die Herkunftsprüfung gegen GitHub. Umgekehrt sucht 0.8.3 schon unter dem neuen Namen: Bis
+zur Umbenennung meldet eine VM mit Forgejo-Quelle „Repository oder Release auf Forgejo nicht gefunden
+(404)“ – das verschwindet mit der Umbenennung von selbst.
 
 **Erst ab der Version, die Forgejo kennt:** Das Update installiert immer der Hilfsdienst der gerade
 laufenden Version. Eine VM mit 0.8.1 oder älter holt die erste Version mit Forgejo-Quelle deshalb noch
