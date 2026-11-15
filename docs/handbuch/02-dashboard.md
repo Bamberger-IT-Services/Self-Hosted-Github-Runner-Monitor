@@ -149,6 +149,13 @@ der Schwelle wird orange.
 ## Live-Log
 
 - Oben die letzten **Ereignisse** (Job gestartet, beendet mit Ergebnis und Dauer, Dienst gestoppt). Das Log gehört zum gewählten Runner; bei Grundüberwachung zeigt es das Journal seiner Unit.
+- **Forgejo und Gitea:** Ohne Job zeigt das Live-Log das Journal der Unit (Chip „Journal · forgejo-runner.service“).
+  Läuft ein Job dieses Runners, schaltet es nach wenigen Sekunden auf die **Ausgabe des Jobs** um – mit
+  „Schritt 3/5 · Tests“ und Trennzeilen wie beim GitHub-Runner (Gitea ohne Trennzeilen) – und nach dem Job wieder
+  aufs Journal. Der Monitor holt die Ausgabe nur, solange jemand das Live-Log offen hat, alle 3 Sekunden; beim
+  Öffnen mitten im Schritt steht zuerst nur dessen Ende („… frühere Ausgabe ausgelassen“). Kann er sie nicht
+  lesen (Token ohne Rechte, älterer Server), bleibt es still beim Journal; den Grund nennt Info & Hilfe ›
+  Verbindungen in der Zeile „Job-Log“.
 - Darunter die **Ausgabe des laufenden Schritts** mit den Farben aus dem Workflow. Jeder neue
   Schritt bekommt eine Trennzeile „Schritt 4/8 · Name“ (ohne Schrittliste von GitHub „Schritt 4/–“). Karte, Schritt-Pille über dem Log und Trennzeilen zeigen immer denselben Schritt. Fehlerzeilen sind rot hinterlegt.
 - Die neueste Zeile steht immer unten. **Anhalten** friert die Ansicht ein (neue Zeilen werden

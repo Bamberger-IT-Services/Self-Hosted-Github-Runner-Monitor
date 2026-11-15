@@ -766,6 +766,11 @@ def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: di
         org_jobs = _org_jobs(klient, org, laufend, runde)
         modus = "org" if org_modus and not meine else "eigen"
         _letzte_jobs(klient, org, [job_fuer(lauf, repo, job, None) for repo, lauf, job, _ in org_jobs] if modus == "org" else meine, speicher, jetzt, modus)
+        # Job-Log fürs Live-Log (#176): welchen Job der Sammler nachliest, solange ein Browser zusieht. Nur aus
+        # „meine“ (diesem Runner zugeordnet), nie aus den Organisations-Jobs des org_modus – sonst stünde im Live-Log
+        # die Ausgabe eines fremden Runners.
+        speicher["jobLogZiel"] = {"id": meine[0]["_id"], "repo": meine[0]["repo"], "art": ergebnis["art"]} \
+            if meine and meine[0].get("_id") else None
         ergebnis["letzteJobs"] = list(speicher.get("letzte") or [])
         _sicht(klient, org, ergebnis, wartend, org_jobs, meine, not org_modus, namen[0] if namen else None, speicher, runde, jetzt, not luecken)
         if not mein:
@@ -1084,6 +1089,7 @@ class Forgejo(Anbieter):
     FAEHIG = {"status": True, "jobs": True, "schritte": True, "logs": True, "updates": False}
     ANBINDUNG = True
     BRAUCHT_ORG = True
+    JOB_LOG = True  # Live-Log: Ausgabe des laufenden Jobs über die API (#176, runner_monitor.joblog)
 
     def __init__(self, konfig: RunnerKonfig) -> None:
         super().__init__(konfig)

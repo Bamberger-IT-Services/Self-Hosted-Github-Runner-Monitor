@@ -24,7 +24,7 @@ import time
 from collections import deque
 from pathlib import Path
 
-from . import VERSION, anbieter, aufraeumen, erkennung, journal, quelle, runner, system
+from . import VERSION, anbieter, aufraeumen, erkennung, joblog, journal, quelle, runner, system
 from .anbieter import github as gh_adapter
 from .konfig import Konfig
 
@@ -121,6 +121,8 @@ class Zustand:
         self._zuordnung: dict[str, dict] = {}  # runner.json (Log-Pfade, E-18), neu gelesen bei Änderung
         self._grund_status: dict[str, tuple[float, dict]] = {}  # Unit → (Zeit, Dienststatus)
         self.journale = journal.Journale()  # Journal je Unit fürs Live-Log, nur solange jemand zusieht (#95)
+        # Job-Log laufender Forgejo-/Gitea-Jobs (#176): Zeilen vom Sammler (joblog.json), Bedarf als Auftrag
+        self.joblogs = joblog.JobLogs(konfig.lauf_verz, konfig.auftraege_verz)
         self.messer: system.SystemMesser | None = None
         try:
             self.messer = system.SystemMesser(schwelle_frei_gb=konfig.schwelle_frei_gb)
@@ -506,8 +508,33 @@ class Zustand:
 
     def _runner_bereiche(self, status: dict) -> None:
         liste = self._runner_liste(status)
+        self._joblog_hinweise(liste)
         self._setze_wenn_neu("runner", liste)
         self._setze_wenn_neu("meldungen", self._meldungen(liste))
+
+    def _joblog_hinweise(self, liste: list[dict]) -> None:
+        """``jobLog`` (#176, additiv) nur bei Runnern mit Job-Log-Fähigkeit, deren Job-Log der Sammler nicht lesen
+        kann: ``{"hinweis": "keine-rechte" | "nicht-unterstuetzt" | "zu-gross"}`` (Info › Verbindungen); sonst fehlt
+        das Feld."""
+        for r in liste:
+            if anbieter.klasse_fuer(str(r.get("dienst"))).JOB_LOG and (r.get("faehig") or {}).get("jobs"):
+                h = self.joblogs.hinweis(r["id"])
+                if h:
+                    r["jobLog"] = {"hinweis": h}
+
+    def joblog_ziel(self, runner_id: object) -> str | None:
+        """Runner, dessen Job-Log ein Fenster mit ``/events?journal=<id>`` bekommt (#176): nur aus ``runner[]``
+        des Servers, nur angebunden und mit einem Adapter, der das Job-Log kann (Forgejo, Gitea)."""
+        if not isinstance(runner_id, str) or not runner_id:
+            return None
+        with self._sperre:
+            liste = self.bereiche.get("runner")
+        for r in liste if isinstance(liste, list) else []:
+            if isinstance(r, dict) and r.get("id") == runner_id:
+                ok = (anbieter.klasse_fuer(str(r.get("dienst"))).JOB_LOG and r.get("stand") == "angebunden"
+                      and (r.get("faehig") or {}).get("jobs") is True)
+                return runner_id if ok else None
+        return None
 
     def journal_unit(self, runner_id: object) -> str | None:
         """Unit, deren Journal das Live-Log des Runners zeigt – nur aus ``runner[]`` (Server), nie aus der
@@ -629,6 +656,10 @@ class Zustand:
             if takt % 10 == 0:
                 self._setze("platten", self.messer.platten())
         self._github_dateien()
+        try:
+            self.joblogs.takt()  # neue Zeilen vom Sammler verteilen, Bedarf melden (#176)
+        except Exception:  # noqa: BLE001 – das Job-Log darf die Messung nie aufhalten
+            LOG.exception("Fehler beim Job-Log")
         if takt % 2 == 0:
             status = self._status()
             self._setze("status", status)

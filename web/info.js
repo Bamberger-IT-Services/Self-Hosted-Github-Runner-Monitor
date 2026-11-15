@@ -132,6 +132,10 @@ const INFO = (() => {
   /* ------------------------------------------------------------ Verbindungen */
 
   /* Eine Gruppe je angebundenem Dienst (Runner mit Fähigkeit „jobs“). Nur, was der Zustand hergibt – sonst „–“. */
+  /* Warum der Sammler das Job-Log (#176) nicht liest (runner[].jobLog.hinweis) – sonst ''. */
+  const jobLogHinweis = (h, t) => (h === 'keine-rechte' ? t('nicht lesbar – das Token darf die Job-Logs nicht lesen; das Live-Log zeigt das Journal')
+    : h === 'nicht-unterstuetzt' ? t('vom Server nicht angeboten (ältere Version?); das Live-Log zeigt das Journal')
+      : h === 'zu-gross' ? t('zu groß zum Nachlesen (Server beachtet Range nicht); das Live-Log zeigt das Journal') : '');
   function verbindungen(runner, f) {
     const { t, RM, jetzt } = f;
     return (Array.isArray(runner) ? runner : []).filter((r) => r && r.faehig && r.faehig.jobs && r.jobsJeRepository).map((r) => {
@@ -156,6 +160,9 @@ const INFO = (() => {
         [t('API-Kontingent'), kontingent],
         [t('Token-Datei'), tokenDatei(r.id)],
       ];
+      // Job-Log fürs Live-Log (#176): nur, wenn der Sammler es nicht lesen kann – das Live-Log bleibt dann beim Journal
+      const jl = r.jobLog ? jobLogHinweis(r.jobLog.hinweis, t) : '';
+      if (jl) kv.push([t('Job-Log'), jl, 'warn']);
       return { id: r.id, dienst: dienstName(r.dienst) || t('unbekannt'), titel: r.org || ohneSchema(server) || r.name, runner: r.name, kv };
     });
   }

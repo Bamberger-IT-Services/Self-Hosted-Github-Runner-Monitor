@@ -86,6 +86,21 @@ const RUNNER = (() => {
   const journalZiel = (r) => (logQuelle(r) === 'journal' ? r.id : null);
   const journalUrl = (id) => (id ? `/events?journal=${encodeURIComponent(id)}` : '/events');
 
+  /* Job-Log (#176): Liefert der Sammler für diesen Runner die Ausgabe des laufenden Jobs (Ereignis „joblog“ mit
+     aktiv), zeigt das Live-Log sie statt des Journals – wie die Ausgabe der Schritte beim GitHub-Runner; endet der
+     Job (aktiv false) oder kann der Sammler nicht lesen, wieder das Journal. Nur, wenn das Live-Log sonst das
+     Journal ist (angebundene Forgejo-/Gitea-Runner); jobLog = {runner, aktiv, schritt, hinweis} oder null. */
+  const mitJobLog = (quelle, jobLog, id) => (quelle === 'journal' && !!jobLog && !!id && jobLog.runner === id && jobLog.aktiv === true ? 'joblog' : quelle);
+  /* Puffer einer Quelle, die gerade nicht angezeigt wird (Journal bzw. Job-Log), damit beim Umschalten der Stand
+     sofort da ist: „neu“ ersetzt ihn, sonst wird angehängt; höchstens max Zeilen. */
+  function puffer(alt, d, max = 1500) {
+    const zeilen = d && Array.isArray(d.zeilen) ? d.zeilen.filter((z) => z && typeof z === 'object') : [];
+    const basis = d && d.neu ? [] : (Array.isArray(alt) ? alt : []);
+    return basis.concat(zeilen).slice(-max);
+  }
+  /* Schritt für den Chip im Job-Log: aus dem Job-Log (alle paar Sekunden), sonst aus der Abfrage (30 s). */
+  const jobLogSchritt = (jobLog, job) => (jobLog && jobLog.schritt && typeof jobLog.schritt === 'object' ? jobLog.schritt : (job && job.schritt) || null);
+
   /* Zeilen fürs Log: ohne Schritte (faehig.schritte false) und im Journal gibt es keine Schritt-Trenner. */
   const logZeilen = (zeilen, mitTrennern) => (Array.isArray(zeilen) ? zeilen : []).filter((z) => z && (mitTrennern || z.art !== 'schritt'));
 
@@ -147,7 +162,7 @@ const RUNNER = (() => {
   const ms = (z) => (z == null ? NaN : (typeof z === 'number' ? (z < 1e12 ? z * 1000 : z) : Date.parse(z)));
 
   return { ALT_HINWEIS, ALT_VERALTET, alter, SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd,
-    logQuelle, journalZiel, journalUrl, logZeilen, neustarts };
+    logQuelle, journalZiel, journalUrl, logZeilen, neustarts, mitJobLog, puffer, jobLogSchritt };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = RUNNER;
