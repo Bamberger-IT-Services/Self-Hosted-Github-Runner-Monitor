@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "30.10.2026 00:29",
+  stand: "15.11.2026 08:09",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -266,6 +266,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "15.11.2026 08:09", text: "#163 umgesetzt (PR offen, Opus): Forgejo 17 beachtet limit bei /actions/runs nur mit page und lieferte alle Läufe (über 4 MB) – die ganze Runde wurde „nicht erreichbar“. Jetzt status=running&status=waiting&status=blocked seitenweise (gemessen: status mehrfach = Oder, unbekannter Wert = 400), Gitea bzw. Server mit 400 auf den Filter ohne Filter (page=1, limit=30, eine Stunde gemerkt); zu große oder ungültige Antwort eines Repositorys zählt nur dieses als laeufeNichtLesbar. Tests mit nachgebautem Forgejo-17-Server (159 Läufe). Offen: Gitea-Verhalten nicht an echtem Server geprüft." },
     { datum: "30.10.2026 00:30", text: "Release 0.8.2 vorbereitet: #132, #133, #138, #144, #145 gemergt; E-29, E-31, E-32 von Tobias entschieden; CLAUDE.md shellcheck-Zeile um die Aufräum-Skripte ergänzt. Folge-Issues #151, #152." },
     { datum: "30.10.2026 00:11", text: "Review PR #150 (#144, Opus): E-31 von Tobias entschieden – runner-aufraeumen entfernt während eines Jobs auch Images, aber nur unbenutzte, seit ≥ 30 Min. bekannte und nicht frisch gebaute/geladene/gezogene (/var/lib/runner-aufraeumen/images, LastTagTime, Docker-Ereignisse; image prune --filter until bezieht sich auf die Bauzeit). Dazu: systemd-run für den Runner-Neustart bricht das Einrichten nicht mehr ab (reset-failed), volume prune mit Rückfall für Docker < 23, Unit gehärtet, runner-neustart in den Ausnahmen der Erkennung, Tests auch unter dash. shellcheck 0.11 sauber." },
     { datum: "29.10.2026 23:45", text: "#144 umgesetzt (PR offen): Aufräumen der Platte für jeden Runner. einrichten.sh aufraeumen (deploy/aufraeumen-einrichten.sh, auch aus runner-einrichten.sh, von der Erstinstallation angeboten) richtet /usr/local/bin/runner-aufraeumen, /etc/cron.daily mit fstrim, neu runner-aufraeumen.timer (alle 15 Min. unter 25 GB) und beim GitHub-Runner den Hook vor dem Job ein; idempotent, Dateien atomar ersetzt, Hook und .env schreibt der Runner-Benutzer. Forgejo-Runner hat keinen Hook vor Jobs (config.example.yaml geprüft) → Timer. Skript: läuft ein Job (Runner.Worker, FORGEJO-/GITEA-ACTIONS-TASK-, GitLab-Container), nur schonend. Sammler prüft jede Minute ohne Symlinks (runner_monitor/aufraeumen.py) → aufraeumen.json → Bereich aufraeumen; Info › „Platte knapp“ zeigt sudo /usr/local/bin/runner-aufraeumen nur, wenn eingerichtet, sonst den Einrichtungsbefehl; Meldungstext nach Stand. E-31 (offen, bitte bestätigen), S-AUFR-01, Doku RUNNER 6a, Runbook, FUNKTIONSWEISE, EINRICHTUNG, Handbuch, Design-Abgleich; Tests test_aufraeumen.py (auch Skripte mit Attrappen, dash), info/demo.test.mjs. Offen: auf einer echten VM prüfen (Timer, cron, Hook-Neustart, docker-Filter)." },

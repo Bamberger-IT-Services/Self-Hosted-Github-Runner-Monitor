@@ -4,6 +4,14 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Behoben
+- Forgejo: „Forgejo nicht erreichbar“, obwohl der Server antwortet (#163). Forgejo 17 beachtet `limit` bei
+  `/actions/runs` nur zusammen mit `page` und lieferte alle Läufe eines Repositorys (über 4 MB), die Antwort
+  wurde verworfen und die ganze Abfrage galt als Fehler. Der Monitor fragt jetzt nur nach laufenden und
+  wartenden Läufen (`status=running&status=waiting&status=blocked`, seitenweise); Gitea und Server, die den
+  Filter ablehnen, wie bisher ohne Filter (erste Seite). Eine zu große oder ungültige Antwort eines einzelnen
+  Repositorys zählt nur dieses als „Läufe nicht lesbar“, die übrige Abfrage bleibt gültig.
+
 ## [0.8.2] – 30.10.2026
 
 ### Behoben (vor dem Release)

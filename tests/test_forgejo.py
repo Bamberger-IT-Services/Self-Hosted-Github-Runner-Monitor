@@ -14,6 +14,7 @@ import threading
 import time
 import unittest
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from unittest import mock
@@ -621,6 +622,223 @@ class FakeServerTest(unittest.TestCase):
         e = a.eintrag(dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
         self.assertEqual(e["status"]["zustand"], "job")
         self.assertIs(e["status"]["beimDienst"]["sichtbar"], False)
+
+
+# ---------------------------------------------------------------- Lauf-Liste (#163)
+
+FILTER = {"status": ["running", "waiting", "blocked"], "page": 1, "limit": 50}
+LAEUFE_API = "/repos/beispiel-org/api-dienst/actions/runs"
+LAEUFE_WEB = "/repos/beispiel-org/web-portal/actions/runs"
+FORGEJO_STATUS = {"unknown", "waiting", "running", "success", "failure", "cancelled", "skipped", "blocked"}
+
+
+def forgejo17_laeufe(alle: list[dict], abfrage: str) -> tuple[int, dict]:
+    """Wie Forgejo 17.0.1 (gemessen): ``status`` mehrfach = Oder, unbekannter Wert → 400, ``limit`` nur mit
+    ``page`` – ohne ``page`` kommen alle Läufe."""
+    qs = urllib.parse.parse_qs(abfrage)
+    werte = qs.get("status", [])
+    for wert in werte:
+        if wert not in FORGEJO_STATUS:
+            return 400, {"message": f"unknown status: {wert}"}
+    liste = [lauf for lauf in alle if not werte or lauf["status"] in werte]
+    if "page" in qs:
+        seite, limit = int(qs["page"][0]), min(int(qs.get("limit", ["30"])[0]), 50)
+        liste = liste[(seite - 1) * limit:seite * limit]
+    return 200, {"workflow_runs": liste, "total_count": len(liste)}
+
+
+def viele_laeufe(vorlage: list[dict], anzahl: int = 159) -> list[dict]:
+    """``anzahl`` Läufe mit großem ``event_payload`` (wie Forgejo, je Lauf rund 27 KB); die Vorlage bleibt vorn."""
+    laeufe = copy.deepcopy(vorlage)
+    for i in range(anzahl - len(laeufe)):
+        laeufe.append({**copy.deepcopy(vorlage[0]), "id": 1000 + i, "status": ("success", "failure", "cancelled")[i % 3],
+                       "event_payload": "x" * 22000, "repository": {"beschreibung": "y" * 5000}})
+    return laeufe
+
+
+class Filterlos400(Attrappe):
+    """Ein Server, der den Statusfilter mit 400 ablehnt (z. B. Gitea mit Forgejo-Werten)."""
+
+    def hole(self, pfad, parameter=None, *, text=False):
+        if pfad.endswith("/actions/runs") and parameter and "status" in parameter:
+            self.zaehler["anfragen"] += 1
+            self.pfade.append((pfad, parameter, text))
+            raise fj.ForgejoFehler("fehler", "Server antwortet mit 400", code=400)
+        return super().hole(pfad, parameter, text=text)
+
+
+class Blaetternd(Attrappe):
+    """Läufe seitenweise; ``blaettert=False``: der Server liefert immer dieselbe erste Seite."""
+
+    def __init__(self, antworten, laeufe, blaettert=True):
+        super().__init__(antworten)
+        self.laeufe, self.blaettert = laeufe, blaettert
+
+    def hole(self, pfad, parameter=None, *, text=False):
+        if pfad == LAEUFE_API:
+            self.zaehler["anfragen"] += 1
+            self.pfade.append((pfad, parameter, text))
+            seite = parameter["page"] if self.blaettert else 1
+            return fj.Antwort({"workflow_runs": copy.deepcopy(self.laeufe[(seite - 1) * 50:seite * 50])}, {})
+        return super().hole(pfad, parameter, text=text)
+
+
+class LaufListeTest(unittest.TestCase):
+    """#163: Forgejo übergeht ``limit`` ohne ``page`` und liefert alle Läufe (mehr als 4 MB) – nur nach den gezählten
+    Status fragen, und ein Repository mit zu großer oder ungültiger Antwort kostet nicht die ganze Runde."""
+
+    def setUp(self):
+        self.antworten = lade("forgejo-17.json")
+
+    def laeufe_anfragen(self, k):
+        return [(p, par) for p, par, _ in k.pfade if p.endswith("/actions/runs")]
+
+    def test_statusfilter_wird_gesendet(self):
+        k = Attrappe(self.antworten)
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(self.laeufe_anfragen(k), [(LAEUFE_WEB, FILTER), (LAEUFE_API, FILTER)])
+        # die Attrappe übergeht den Filter (wie ein älterer Server): gezählt wird trotzdem nur, was läuft/wartet
+        self.assertEqual([(r["laeuft"], r["wartet"]) for r in erg["repos"]], [(1, 0), (1, 1)])
+
+    def test_gitea_ohne_statusfilter(self):
+        k = Attrappe(lade("gitea.json"))
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-04", {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(self.laeufe_anfragen(k), [("/repos/beispiel-org/web-portal/actions/runs", {"page": 1, "limit": 30})])
+
+    def test_filter_abgelehnt_dann_ohne_filter_fuer_eine_stunde(self):
+        speicher = {}
+        k = Filterlos400(self.antworten)
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", speicher)
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual((erg["laeufeNichtLesbar"], erg["job"]["name"]), (0, "build"))
+        ohne = {"page": 1, "limit": 30}
+        self.assertEqual(self.laeufe_anfragen(k), [(LAEUFE_WEB, FILTER), (LAEUFE_WEB, ohne), (LAEUFE_API, ohne)])
+        self.assertGreater(speicher["filterAb"], time.time() + fj.FILTER_ERNEUT - 60)
+        k2 = Filterlos400(self.antworten)
+        fj.abfrage(k2, "beispiel-org", "runner-vm-02", speicher)
+        self.assertFalse([par for _, par in self.laeufe_anfragen(k2) if "status" in par])
+        speicher["filterAb"] = time.time() - 1  # nach einer Stunde wieder mit Filter
+        k3 = Attrappe(self.antworten)
+        fj.abfrage(k3, "beispiel-org", "runner-vm-02", speicher)
+        self.assertEqual(self.laeufe_anfragen(k3)[0], (LAEUFE_WEB, FILTER))
+
+    def test_blaettern(self):
+        vorlage = self.antworten[LAEUFE_API]["workflow_runs"]
+        laeufe = [{**vorlage[i % 2], "id": 500 + i} for i in range(60)]  # 30 laufen, 30 warten
+        k = Blaetternd(self.antworten, laeufe)
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["repos"][1], {"name": "api-dienst", "privat": True, "laeuft": 30, "wartet": 30})
+        self.assertEqual([par["page"] for p, par in self.laeufe_anfragen(k) if p == LAEUFE_API], [1, 2])
+        # ein Server, der nicht blättert: nach der ersten Wiederholung aufhören, nichts doppelt zählen
+        k = Blaetternd(self.antworten, laeufe, blaettert=False)
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        self.assertEqual((erg["repos"][1]["laeuft"], erg["repos"][1]["wartet"]), (25, 25))
+        self.assertEqual(len([p for p, _ in self.laeufe_anfragen(k) if p == LAEUFE_API]), 2)
+        # höchstens LAUF_SEITEN Seiten
+        k = Blaetternd(self.antworten, [{**vorlage[0], "id": 900 + i} for i in range(400)])
+        erg = fj.abfrage(k, "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["repos"][1]["laeuft"], fj.LAUF_SEITEN * 50)
+
+    def test_zu_grosse_oder_ungueltige_antwort_nur_dieses_repository(self):
+        for fehler in (fj.ForgejoFehler("fehler", f"Antwort auf {LAEUFE_API} zu groß"),
+                       fj.ForgejoFehler("fehler", f"Keine gültige JSON-Antwort auf {LAEUFE_API}", ursache="kein-dienst"),
+                       fj.ForgejoFehler("fehler", "Server antwortet mit 418", code=418)):
+            erg = fj.abfrage(Attrappe(self.antworten, fehler={LAEUFE_API: fehler}), "beispiel-org", "runner-vm-02", {})
+            self.assertEqual((erg["abfrage"], erg["fehler"]), ("ok", ""), str(fehler))
+            self.assertEqual(erg["laeufeNichtLesbar"], 1)
+            self.assertEqual([r["name"] for r in erg["repos"]], ["web-portal"])
+            self.assertEqual(erg["job"]["name"], "build")  # der Job im anderen Repository wird weiter gefunden
+            self.assertNotIn("ursache", erg)
+            e = fj.Forgejo(anbieter.RunnerKonfig(id="runner-vm-02", name="runner-vm-02", dienst="forgejo", unit="forgejo-runner.service",
+                                                 server="https://git.example.org", org="beispiel-org")).eintrag(
+                dienst={"zustand": "aktiv", "seit": 1, "grund": None}, ergebnis=erg, stand="angebunden")
+            self.assertEqual(e["status"]["zustand"], "job")
+
+    def test_token_rechte_und_erreichbarkeit_weiter_fuer_die_ganze_runde(self):
+        for fehler, art in ((nicht_erreichbar(), "nicht-erreichbar"),
+                            (fj.ForgejoFehler("token-ungueltig", "401"), "token-ungueltig"),
+                            (fj.ForgejoFehler("keine-rechte", "403"), "keine-rechte"),
+                            (fj.ForgejoFehler("kontingent", "429"), "kontingent")):
+            erg = fj.abfrage(Attrappe(self.antworten, fehler={LAEUFE_API: fehler}), "beispiel-org", "runner-vm-02", {})
+            self.assertEqual(erg["abfrage"], art)
+
+
+class LaufListeHttpTest(unittest.TestCase):
+    """Ende zu Ende über HTTP gegen einen Server, der sich wie Forgejo 17 verhält (159 Läufe, über 4 MB)."""
+
+    def setUp(self):
+        daten = lade("forgejo-17.json")
+        self.alle = viele_laeufe(daten[LAEUFE_API]["workflow_runs"])
+        self.assertGreater(len(json.dumps({"workflow_runs": self.alle})), fj.MAX_ANTWORT)
+        self.laeufe = {f"/api/v1{LAEUFE_WEB}": daten[LAEUFE_WEB]["workflow_runs"], f"/api/v1{LAEUFE_API}": self.alle}
+        self.modus = "forgejo-17"
+        test = self
+
+        class Handler(_Handler):
+            def do_GET(self):  # noqa: N802
+                pfad, _, abfrage = self.path.partition("?")
+                if pfad not in test.laeufe:
+                    return super().do_GET()
+                type(self).gesehen.append((self.path, dict(self.headers)))
+                if test.modus == "forgejo-17":
+                    code, daten = forgejo17_laeufe(test.laeufe[pfad], abfrage)
+                else:  # alter Server: übergeht status, page und limit
+                    code, daten = 200, {"workflow_runs": test.laeufe[pfad]}
+                rumpf = json.dumps(daten).encode()
+                self.send_response(code)
+                self.send_header("Content-Length", str(len(rumpf)))
+                self.end_headers()
+                self.wfile.write(rumpf)
+
+        antworten = {f"/api/v1{p}": (200, {"Content-Type": "application/json"}, json.dumps(v).encode())
+                     for p, v in daten.items() if not p.endswith("/logs")}
+        antworten.update({f"/api/v1{p}": (200, {"Content-Type": "text/plain"}, v.encode())
+                          for p, v in daten.items() if p.endswith("/logs")})
+        Handler.antworten, Handler.gesehen = antworten, []
+        self.handler = Handler
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+    def klient(self):
+        return fj.Klient(f"http://127.0.0.1:{self.server.server_port}", TOKEN, http_erlaubt=True)
+
+    def test_vorher_zu_gross(self):
+        """So hat der Monitor bisher gefragt: ``limit`` ohne ``page`` – Forgejo liefert alles."""
+        with self.assertRaises(fj.ForgejoFehler) as f:
+            self.klient().hole(LAEUFE_API, {"limit": 30})
+        self.assertEqual(f.exception.art, "fehler")
+        self.assertIn("zu groß", str(f.exception))
+
+    def test_forgejo_17_mit_statusfilter(self):
+        erg = fj.abfrage(self.klient(), "beispiel-org", "runner-vm-02", {})
+        self.assertEqual(erg["abfrage"], "ok", erg["fehler"])
+        self.assertEqual(erg["laeufeNichtLesbar"], 0)
+        self.assertEqual([(r["name"], r["laeuft"], r["wartet"]) for r in erg["repos"]],
+                         [("web-portal", 1, 0), ("api-dienst", 1, 1)])
+        self.assertEqual(erg["job"]["name"], "build")
+        gesehen = [p for p, _ in self.handler.gesehen]
+        self.assertIn(f"/api/v1{LAEUFE_API}?status=running&status=waiting&status=blocked&page=1&limit=50", gesehen)
+        self.assertFalse([p for p in gesehen if p.startswith(f"/api/v1{LAEUFE_API}?") and "status=" not in p])
+
+    def test_alter_server_ohne_filter_nur_dieses_repository_nicht_lesbar(self):
+        self.modus = "alt"
+        erg = fj.abfrage(self.klient(), "beispiel-org", "runner-vm-02", {})
+        self.assertEqual((erg["abfrage"], erg["fehler"]), ("ok", ""))
+        self.assertEqual(erg["laeufeNichtLesbar"], 1)
+        self.assertEqual([r["name"] for r in erg["repos"]], ["web-portal"])
+        self.assertEqual(erg["job"]["name"], "build")
+
+    def test_unbekannter_status_gibt_400(self):
+        """Gemessen an Forgejo 17: ein unbekannter Statuswert (etwa Gitea/GitHub ``in_progress``) gibt 400."""
+        with self.assertRaises(fj.ForgejoFehler) as f:
+            self.klient().hole(LAEUFE_API, {"status": "in_progress", "page": 1, "limit": 50})
+        self.assertEqual((f.exception.art, f.exception.code), ("fehler", 400))
 
 
 # ---------------------------------------------------------------- Klient (nur 127.0.0.1)

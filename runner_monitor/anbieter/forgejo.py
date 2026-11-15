@@ -14,7 +14,11 @@ Forgejo und Gitea nur unterscheiden, wenn der Server ohne Anmeldung antwortet):
   Repositories (#145). Zugeordnet wird über UUID bzw. Name aus der ``.runner``-Datei (Fund der Erkennung),
   sonst über den Namen aus der Konfiguration bzw. der Unit – nie über die Monitor-ID allein.
 * Läufe: ``/repos/{o}/{r}/actions/runs`` – Forgejo ``status: running|waiting|blocked|success|…``,
-  Gitea wie GitHub (``in_progress``, ``queued`` …).
+  Gitea wie GitHub (``in_progress``, ``queued`` …). Forgejo (gemessen an 17.0.1) beachtet ``limit`` nur
+  zusammen mit ``page`` und liefert sonst **alle** Läufe (je Lauf rund 27 KB); ``status`` filtert serverseitig,
+  mehrfach angegeben als Oder, ein unbekannter Wert gibt 400 (#163). Gefragt wird deshalb nur nach
+  ``running``, ``waiting`` und ``blocked``, seitenweise; Gitea (und ein Server, der den Filter mit 400
+  ablehnt) ohne Filter, erste Seite.
 * Jobs eines Laufs: Forgejo eine Liste ohne Runner und ohne Schritte – welcher Runner den Job hat,
   steht nur in der ersten Zeile seines Logs („Runner <uuid> (version:…) received task …“, Forgejo
   Runner; act_runner schreibt dort den Namen). Die Schritte kommen aus ``/actions/jobs/{id}``
@@ -58,6 +62,11 @@ SUCHE_TAKT = 600              # Runner nicht in der eigenen Liste: Admin- und Re
 ADMIN_ERNEUT = 3600           # /admin/actions/runners nach 403/404 erst nach einer Stunde wieder versuchen
 MAX_REPO_SUCHE = 10           # so viele Repositories (zuletzt geändert zuerst) je Suche
 SUCHE_MIN_REST = 12.0         # die erweiterte Suche nur, wenn von der Runde noch so viele Sekunden übrig sind
+LAUF_STATUS = ("running", "waiting", "blocked")  # Forgejo-Werte aus LAEUFT/WARTET (Forgejo kennt unknown, waiting,
+#                                                  running, success, failure, cancelled, skipped, blocked)
+LAUF_SEITEN = 4               # mit Statusfilter höchstens 200 laufende/wartende Läufe je Repository
+LAUF_OHNE_FILTER = 30         # ohne Filter (Gitea): nur die neuesten Läufe
+FILTER_ERNEUT = 3600          # lehnt der Server den Statusfilter ab (400), erst nach einer Stunde wieder versuchen
 LAEUFT = {"running", "in_progress"}
 WARTET = {"waiting", "queued", "pending", "requested", "blocked"}
 ERLEDIGT = {"success", "failure", "cancelled", "canceled", "skipped", "completed"}
@@ -71,8 +80,9 @@ LOG_KOPF = re.compile(r"^(?:\S+Z\s+)?(?:Runner\s+)?(?P<wer>[^\s(]{1,128})\s*\(ve
 
 
 class ForgejoFehler(Exception):
-    def __init__(self, art: str, text: str = "", ursache: str | None = None) -> None:
+    def __init__(self, art: str, text: str = "", ursache: str | None = None, code: int | None = None) -> None:
         super().__init__(text or art)
+        self.code = code  # HTTP-Status, wenn der Server mit einem Fehlercode antwortete
         self.art = art  # nicht-erreichbar | token-ungueltig | keine-rechte | fehlt | kontingent | fehler
         # Warum die Adresse nicht passt (für „Server nicht gefunden“ in einrichten.sh zugang, #120):
         # kein-dienst (antwortet nicht wie Forgejo/Gitea) | weiterleitung (3xx) | None
@@ -132,7 +142,7 @@ class Klient:
             raise ForgejoFehler("nicht-erreichbar", "Frist für die Abfrage überschritten")
         url = f"{self.server}/api/v1{pfad}"
         if parameter:
-            url += "?" + urllib.parse.urlencode(parameter)
+            url += "?" + urllib.parse.urlencode(parameter, doseq=True)  # Listen: ?status=a&status=b
         anfrage = urllib.request.Request(url, headers={"Accept": "text/plain" if text else "application/json",
                                                        "User-Agent": "runner-monitor"})
         if self.token:
@@ -177,7 +187,7 @@ class Klient:
             raise ForgejoFehler("fehler", f"Weiterleitung ({code}) – Adresse in runner.json prüfen", ursache="weiterleitung")
         if code >= 500:  # Dienst startet neu, Proxy ohne Ziel: vorübergehend
             raise ForgejoFehler("nicht-erreichbar", f"Server antwortet mit {code}")
-        raise ForgejoFehler("fehler", f"Server antwortet mit {code}")
+        raise ForgejoFehler("fehler", f"Server antwortet mit {code}", code=code)
 
     def _hole(self, anfrage: urllib.request.Request, frist: float, grenze: int, text: bool, ergebnis: list) -> None:
         try:
@@ -483,6 +493,28 @@ def ende_aus(job: dict, schritte: list[dict] | None) -> tuple[str | None, float 
     return ERGEBNIS.get(zustand, "abgebrochen"), ende
 
 
+def _laeufe(klient: Klient, pfad: str, filtern: bool) -> list[dict]:
+    """Läufe eines Repositorys, die gezählt werden (läuft/wartet). Mit ``filtern`` (Forgejo) serverseitig nach
+    :data:`LAUF_STATUS` gefiltert und seitenweise – ``page`` muss mit, sonst beachtet Forgejo ``limit`` nicht
+    (#163). Ohne Filter (Gitea) die neuesten Läufe der ersten Seite. Gezählt wird in jedem Fall mit
+    :func:`zaehle` auf dem Client – ein Server, der den Filter übergeht, zählt so trotzdem richtig."""
+    if not filtern:
+        return liste_aus(klient.hole(pfad, {"page": 1, "limit": LAUF_OHNE_FILTER}).daten, "workflow_runs")
+    laeufe: dict = {}
+    for seite in range(1, LAUF_SEITEN + 1):
+        liste = liste_aus(klient.hole(pfad, {"status": list(LAUF_STATUS), "page": seite, "limit": SEITE}).daten, "workflow_runs")
+        neu = 0
+        for lauf in liste:
+            schluessel = ganzzahl(lauf.get("id")) or f"ohne-id-{len(laeufe)}"
+            if schluessel not in laeufe:
+                laeufe[schluessel] = lauf
+                neu += 1
+        # letzte Seite, Server blättert nicht (nichts Neues) oder filtert nicht (Erledigtes dabei): aufhören
+        if len(liste) < SEITE or not neu or any(status(lauf) not in LAEUFT | WARTET for lauf in liste):
+            break
+    return list(laeufe.values())
+
+
 def _repos(klient: Klient, org: str, besitzer: str) -> list[dict]:
     pfad = f"/orgs/{q(org)}/repos" if besitzer == "org" else f"/users/{q(org)}/repos"
     repos: list[dict] = []
@@ -562,22 +594,32 @@ def abfrage(klient: Klient, org: str, runner_name: "Kennung | str", speicher: di
 
         ruhige = speicher.setdefault("ruhig", {})
         laufend: list[tuple[dict, dict]] = []
+        filtern = ergebnis["art"] != "gitea" and jetzt >= (speicher.get("filterAb") or 0)
         for repo in repos:
             alt = ruhige.get(repo["name"])
             if (alt and not alt["laeuft"] and not alt["wartet"] and jetzt - repo["geaendert"] > gh_adapter.RUHIG_AB
                     and jetzt - alt["zeit"] < gh_adapter.RUHIG_TAKT):
                 ergebnis["repos"].append({"name": repo["name"], "privat": repo["privat"], "laeuft": 0, "wartet": 0})
                 continue
+            pfad = f"/repos/{q(org)}/{q(repo['name'])}/actions/runs"
             try:
-                daten = klient.hole(f"/repos/{q(org)}/{q(repo['name'])}/actions/runs", {"limit": 30}).daten
+                try:
+                    laeufe = _laeufe(klient, pfad, filtern)
+                except ForgejoFehler as fehler:
+                    if not (filtern and fehler.code == 400):
+                        raise
+                    # Server kennt den Statusfilter nicht (z. B. Gitea): ohne Filter, eine Stunde lang
+                    filtern = False
+                    speicher["filterAb"] = jetzt + FILTER_ERNEUT
+                    laeufe = _laeufe(klient, pfad, False)
             except ForgejoFehler as fehler:
-                if fehler.art != "fehlt":
-                    raise
-                # 404 trotz has_actions (z. B. Gitea vor 1.24 ohne /actions/runs): Läufe nicht lesbar –
-                # das Repository fehlt in der Liste, und „bereit“ wird nicht behauptet
+                if fehler.art not in ("fehlt", "fehler"):
+                    raise  # Token, Rechte, Erreichbarkeit, Kontingent: die ganze Runde wie bisher
+                # 404 trotz has_actions (z. B. Gitea vor 1.24 ohne /actions/runs), Antwort zu groß oder ungültig
+                # (#163): nur die Läufe dieses Repositorys sind nicht lesbar – es fehlt in der Liste, die übrige
+                # Runde bleibt „ok“, und „bereit“ wird nicht behauptet
                 ergebnis["laeufeNichtLesbar"] += 1
                 continue
-            laeufe = liste_aus(daten, "workflow_runs")
             laeuft, wartet = zaehle(laeufe)
             ruhige[repo["name"]] = {"zeit": jetzt, "laeuft": laeuft, "wartet": wartet}
             ergebnis["repos"].append({"name": repo["name"], "privat": repo["privat"], "laeuft": laeuft, "wartet": wartet})
