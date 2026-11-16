@@ -9,7 +9,8 @@ Wer was darf (E-22, Sicherheitsbericht S-EINR-01):
   streng (regulär, ohne Symlink, begrenzt), prüft jeden Eintrag **noch einmal** mit denselben Regeln
   und schreibt ``/etc/runner-monitor/runner.json`` atomar (root, Gruppe des Ordners, 0640).
 * Über die Oberfläche lassen sich je Runner nur ``stand`` (``grund``, ``ignoriert`` oder „wie
-  erkannt“), ``dienst``, ``name``, ``unit`` und ``log`` setzen. **Nie** ``server``, ``org``,
+  erkannt“), ``dienst``, ``name``, ``unit``, ``log`` und ``name_beim_dienst`` (Name des Runners beim
+  Server, nur zum Vergleich mit dessen Runner-Listen, #172) setzen. **Nie** ``server``, ``org``,
   ``http_erlaubt`` oder Zugangsdaten – die gehören auf die VM (``einrichten.sh zugang <runner>``,
   E-18, E-21, E-22). Alle anderen Felder in ``runner.json`` bleiben beim Schreiben unberührt.
 * ``unit``: gültiger Name einer ``.service``-Unit, keine Systemdienste (Liste :data:`GESPERRTE_UNITS`).
@@ -45,7 +46,7 @@ MAX_AUFTRAG = 64 * 1024          # so groß darf ein Auftrag höchstens sein
 MAX_JE_ANFRAGE = 20              # Einträge je POST
 MAX_EINTRAEGE = 100              # Einträge in runner.json (mehr liest erkennung.lies_zuordnung nicht)
 MAX_FUNDE = 50                   # so viele Funde zeigt die Einrichtung
-WEB_SCHLUESSEL = ("stand", "dienst", "name", "unit", "log")
+WEB_SCHLUESSEL = ("stand", "dienst", "name", "unit", "log", "name_beim_dienst")
 WEB_STAENDE = ("grund", "ignoriert")   # dazu None: „wie erkannt“ (Feld wird entfernt)
 LOG_WURZELN = ("/var/log/", "/opt/", "/srv/")
 LOG_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.log")
@@ -129,8 +130,9 @@ def bekannte_units(lauf_verz: Path) -> set[str]:
 
 def pruefe_eintrag(roh: object) -> dict:
     """Eine Zuordnung aus der Oberfläche prüfen. ``stand`` muss da sein (``grund``, ``ignoriert``
-    oder ``null`` = wie erkannt); ``dienst``, ``name``, ``unit``, ``log`` sind freiwillig, ``null`` bzw.
-    leer entfernt das Feld. Unbekannte Felder (``server``, ``http_erlaubt`` …) sind ein Fehler."""
+    oder ``null`` = wie erkannt); ``dienst``, ``name``, ``unit``, ``log``, ``name_beim_dienst`` sind
+    freiwillig, ``null`` bzw. leer entfernt das Feld. Unbekannte Felder (``server``, ``http_erlaubt`` …) sind
+    ein Fehler."""
     if not isinstance(roh, dict):
         raise EingabeFehler("Ungültige Zuordnung.")
     rid = pruefe_id(roh.get("id"))
@@ -154,6 +156,14 @@ def pruefe_eintrag(roh: object) -> dict:
             raise EingabeFehler("Der Anzeigename darf nur Buchstaben, Ziffern und . _ @ + - enthalten (höchstens 64 Zeichen).")
         else:
             eintrag["name"] = name
+    if "name_beim_dienst" in roh:
+        name = roh["name_beim_dienst"]
+        if name in (None, ""):
+            eintrag["name_beim_dienst"] = None
+        elif not (isinstance(name, str) and erkennung.pruefe_name(name) == name):
+            raise EingabeFehler("Der Name beim Server darf nur Buchstaben, Ziffern und . _ @ + - enthalten (höchstens 64 Zeichen).")
+        else:
+            eintrag["name_beim_dienst"] = name
     if "unit" in roh:
         unit = roh["unit"]
         if unit in (None, ""):

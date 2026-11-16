@@ -582,6 +582,40 @@ class GlobalerRunnerTest(unittest.TestCase):
         erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", k, {})
         self.assertEqual(erg["runner"]["zustand"], "online")
 
+    def test_name_beim_server_von_hand_trifft_in_admin(self):
+        """#172: Ohne gefundene Registrierung (keine UUID, kein Name aus .runner) zählt ein von Hand in runner.json
+        eingetragener Name beim Server wie der aus .runner – auch in /admin und Repository-Listen. Unit-Name und
+        Anzeigename bleiben dort Ersatznamen (#152)."""
+        fund = {"id": "forgejo-runner", "name": "forgejo-runner", "dienst": "forgejo", "unit": "forgejo-runner.service", "kennung": None}
+        eintrag = {"server": "https://git.example.org", "org": "beispiel-org", "name_beim_dienst": "anderer-name"}
+        k = anbieter.konfig_aus(fund, eintrag, None)
+        self.assertEqual((k.name, k.name_beim_dienst, k.uuid), ("forgejo-runner", "anderer-name", None))
+        kenn = fj.Forgejo(k).kennung()
+        self.assertEqual((kenn.name_aus_datei, kenn.namen), ("anderer-name", ("anderer-name", "forgejo-runner")))
+        ohne_uuid = [dict(self.global_liste[0], uuid="")]
+        # in /admin: Name von Hand trifft, Job über die UUID aus der Liste
+        self.antworten["/admin/actions/runners"] = ohne_uuid
+        speicher = {}
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", kenn, speicher)
+        self.assertEqual((erg["runner"]["zustand"], speicher["runnerOrt"]), ("online", "admin"))
+        # Repository-Liste ebenso
+        del self.antworten["/admin/actions/runners"]
+        self.antworten["/repos/beispiel-org/api-dienst/actions/runners"] = ohne_uuid
+        erg = fj.abfrage(Attrappe(self.antworten, fehler={"/admin/actions/runners": fj.ForgejoFehler("keine-rechte", "403")}),
+                         "beispiel-org", kenn, {})
+        self.assertEqual(erg["runner"]["zustand"], "online")
+        del self.antworten["/repos/beispiel-org/api-dienst/actions/runners"]
+        # ohne Namen von Hand: der Unit-Name trifft in /admin weiterhin nicht (#152)
+        ohne = fj.Forgejo(anbieter.konfig_aus(fund, {k2: v for k2, v in eintrag.items() if k2 != "name_beim_dienst"}, None)).kennung()
+        self.assertIsNone(ohne.name_aus_datei)
+        self.antworten["/admin/actions/runners"] = [dict(ohne_uuid[0], name="forgejo-runner")]
+        erg = fj.abfrage(Attrappe(self.antworten), "beispiel-org", ohne, {})
+        self.assertEqual(erg["runner"]["zustand"], "unbekannt")
+        # Name von Hand geht dem aus .runner vor; ungültiger Name von Hand zählt nicht
+        mit_datei = dict(fund, kennung={"name": "alter-name", "uuid": UUID_02})
+        self.assertEqual(anbieter.konfig_aus(mit_datei, eintrag, None).name_beim_dienst, "anderer-name")
+        self.assertEqual(anbieter.konfig_aus(mit_datei, {"name_beim_dienst": "a b"}, None).name_beim_dienst, "alter-name")
+
     def test_gemerkter_ort_admin_ist_streng_und_runner_wer_ohne_ersatzname(self):
         """#152: Der in /admin gemerkte Ort bleibt streng (Ersatzname eines Fremden passt nicht), und
         ``runnerWer`` hält den Namen aus .runner, nie einen Ersatznamen."""

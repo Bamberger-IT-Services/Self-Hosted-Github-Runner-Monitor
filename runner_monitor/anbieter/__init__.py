@@ -65,7 +65,8 @@ class RunnerKonfig:
     token_rueckfall: Path | None = None    # alter Ort (/etc/runner-monitor/github-token) bis #94/#96
     runner_verz: Path | None = None        # GitHub: Verzeichnis des Runners (MONITOR_RUNNER_VERZ)
     http_erlaubt: bool = False             # nur aus runner.json: Token darf über http:// gehen (E-21)
-    # Forgejo/Gitea (#145): Name und UUID beim Dienst aus der .runner-Datei der Unit (Fund der Erkennung).
+    # Forgejo/Gitea (#145): Name und UUID beim Dienst aus der .runner-Datei der Unit (Fund der Erkennung);
+    # der Name auch von Hand aus runner.json › name_beim_dienst (#172, hat Vorrang).
     # Nur zum Vergleich mit Runner-Listen und Job-Logs (Anzeige), nie Ziel einer Anfrage (E-18).
     name_beim_dienst: str | None = None
     uuid: str | None = None
@@ -225,7 +226,8 @@ def adapter(konfig: RunnerKonfig) -> Anbieter:
 
 def konfig_aus(fund: dict, eintrag: dict | None, zugang_verz: Path | None) -> RunnerKonfig:
     """Konfiguration eines erkannten Runners (E-18): Anzeige (ID, Name, Dienst, Unit) aus dem geprüften
-    Fund, **Server, Organisation und Log-Pfad nur aus** ``runner.json`` (``eintrag``, schon geprüft von
+    Fund, Name beim Server aus ``runner.json`` › ``name_beim_dienst`` (#172) bzw. der Kennung des Funds,
+    **Server, Organisation und Log-Pfad nur aus** ``runner.json`` (``eintrag``, schon geprüft von
     ``erkennung.lies_zuordnung``), Token-Datei ``zugang/<id>.token``. Der vom Fund gemeldete Server
     wird nie übernommen – er ist nur ein Vorschlag für die Einrichtung."""
     from .token import pruefe_id, token_pfad  # spät: token importiert erkennung und runner
@@ -240,7 +242,9 @@ def konfig_aus(fund: dict, eintrag: dict | None, zugang_verz: Path | None) -> Ru
         server=erkennung.pruefe_url(eintrag.get("server")), org=erkennung.pruefe_org(eintrag.get("org")) or "",
         token_datei=token_pfad(zugang_verz, rid) if zugang_verz and pruefe_id(rid) else None,
         http_erlaubt=eintrag.get("http_erlaubt") is True,  # E-21: nur ein ausdrückliches true zählt
-        name_beim_dienst=kennung.get("name"), uuid=kennung.get("uuid"))
+        # #172: ein von Hand in runner.json eingetragener Name beim Server geht dem aus .runner vor
+        name_beim_dienst=erkennung.pruefe_name(eintrag.get("name_beim_dienst")) or kennung.get("name"),
+        uuid=kennung.get("uuid"))
 
 
 def angebunden(k: RunnerKonfig, stand: str | None = None) -> bool:

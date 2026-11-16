@@ -191,7 +191,7 @@ window.RM_DEMO = (() => {
     for (const e of eintraege) {
       const z = zuordn[e.id] || (zuordn[e.id] = {});
       if ('stand' in e) { if (e.stand === null) delete z.stand; else z.stand = e.stand; }
-      for (const k of ['dienst', 'name', 'unit', 'log']) if (k in e) { if (e[k] === null) delete z[k]; else z[k] = e[k]; }
+      for (const k of ['dienst', 'name', 'unit', 'log', 'name_beim_dienst']) if (k in e) { if (e[k] === null) delete z[k]; else z[k] = e[k]; }
     }
     if (api) runnerSenden();
   }
