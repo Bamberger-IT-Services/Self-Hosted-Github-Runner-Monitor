@@ -1,6 +1,6 @@
 # Wie der Runner-Monitor funktioniert
 
-**Stand: 15.11.2026 · Version 0.8.4**
+**Stand: 16.11.2026 · Version 0.9.0**
 
 Diese Seite erklärt den Aufbau: welche Teile es gibt, woher jede Zahl im Dashboard kommt,
 welche Dateien wo liegen und wer was lesen und schreiben darf. Bedienung: [Handbuch](handbuch/README.md).
@@ -44,7 +44,7 @@ Drei systemd-Dienste, alle in Python 3 nur mit der Standardbibliothek ([ADR-0001
 | Dienst | Läuft als | Aufgabe |
 |---|---|---|
 | `runner-monitor` | `runner-monitor` (ohne Anmeldung, Gruppe `systemd-journal`) | Webserver auf Port 8090: Seiten, Anmeldung, Server-Sent Events. Misst die VM, liest Journal und Schritt-Logs des Runners. |
-| `runner-monitor-sammler` | root | Fragt GitHub (mit dem Token, das nur root lesen kann) und Docker ab, prüft auf neue Releases, erkennt die Runner auf der VM (beim Start und alle 6 h), übernimmt Aufträge der Oberfläche. |
+| `runner-monitor-sammler` | root | Fragt GitHub (mit dem Token, das nur root lesen kann) und Docker ab, prüft auf neue Releases, erkennt die Runner auf der VM (beim Start und alle 6 h), übernimmt Aufträge der Oberfläche; liest bei Bedarf das Job-Log laufender Forgejo-/Gitea-Jobs (#176). |
 | `runner-monitor-update` | root, nur bei Bedarf | Installiert ein Update ([ADR-0004](adr/0004-update-hilfsdienst.md)). Startet über `runner-monitor-update.path`, sobald ein Auftrag liegt. |
 
 **Warum zwei Benutzer?** Der Webserver ist das, was aus dem Netz erreichbar ist. Er läuft
@@ -322,7 +322,7 @@ dahintersteht ([ADR-0006](adr/0006-anbieter-adapter-und-zustand.md), E-19). Pake
 | `__init__.py` | Basisklasse `Anbieter` (zugleich Grundüberwachung), `RunnerKonfig`, Registry (`registriere`, `klasse_fuer`, `faehigkeiten_tabelle`) |
 | `github.py` | GitHub-Adapter: Abfrage einer Runde (bisher `github.abfrage`), Jobs je Repository, aktueller Job mit Schritten, Online-Status, Log-Quelle `_diag/pages` |
 | `gitlab.py` | GitLab-Adapter (#99): REST-Klient (`/api/v4`, nur lesend, ohne Weiterleitungen), Runner-Status, aktueller Job, letzte Jobs, Jobs je Projekt; ohne Schritte |
-| `forgejo.py` | Forgejo- und Gitea-Adapter (#93): eigener REST-Klient (nur GET, ohne Weiterleitungen), Online-Status, Jobs je Repository, aktueller Job mit Schritten, letzte Jobs; Log aus dem Journal der Unit |
+| `forgejo.py` | Forgejo- und Gitea-Adapter (#93): eigener REST-Klient (nur GET, ohne Weiterleitungen), Online-Status, Jobs je Repository, aktueller Job mit Schritten, letzte Jobs; Live-Log aus dem Journal der Unit, während eines Jobs dessen Log über die API (`forgejo_log.py`, #176) |
 | `token.py` | Zugangsdaten je Runner, Übernahme des alten Tokens, Kommandozeile für `einrichten.sh` |
 
 Schnittstelle je Runner: `faehig()`, `abfrage(speicher, …)` (nur im Sammler, root, mit Token),
@@ -337,7 +337,7 @@ REST-Klient (auch für Releases und die Prüfung in der Einrichtung) und reicht 
 | Dienst | Adapter | status | jobs | schritte | logs | updates |
 |---|---|---|---|---|---|---|
 | GitHub | `GitHub` | ✓ | ✓ | ✓ | ✓ | – |
-| Forgejo | `Forgejo` (#93), ausgeliefert „voll“ seit #126 (E-27) | ✓ | ✓ | ✓ ab Forgejo 17 | ✓ (Journal) | – |
+| Forgejo | `Forgejo` (#93), ausgeliefert „voll“ seit #126 (E-27) | ✓ | ✓ | ✓ ab Forgejo 17 | ✓ (Journal; im Job das Job-Log, #176) | – |
 | Gitea | `Gitea` (#93, nur nach OpenAPI), ausgeliefert als Grundüberwachung bis zur Prüfung an einem echten Server (E-23, E-27) | ✓ | ✓ (ausgeliefert: –) | ✓ (ausgeliefert: –) | ✓ (Journal) | – |
 | GitLab | `GitLab` (#99, im Sammler seit #115), ausgeliefert „voll“ ohne Schritte seit #126 (E-20, E-27) | ✓ | ✓ | – | ✓ | – |
 | unbekannt | Grundüberwachung | ✓ | – | – | ✓ | – |
@@ -378,7 +378,7 @@ einen laufenden Server geprüft. Alle Pfade unter `/api/v1`, Anmeldung `Authoriz
 | Jobs eines Laufs | `/repos/{o}/{r}/actions/runs/{id}/jobs` → `[{id, name, status, task_id, attempt, html_url}]` – **ohne Runner, ohne Schritte, ohne Zeiten** | `{jobs: [{id, name, status, conclusion, runner_name, runner_id, started_at, completed_at, steps}]}` | aktueller Job dieses Runners |
 | Welcher Runner hat den Job? | nur in der **ersten Log-Zeile**: „Runner <uuid> (version:…) received task …“ (Forgejo Runner) bzw. „<name>(version:…) received task …“ (act_runner) | `runner_name` im Job | Forgejo: Log-Anfang (`Range: bytes=0-4095`), Vergleich mit der UUID aus `.runner` bzw. der Runner-Liste, je Job einmal |
 | Schritte | `/repos/{o}/{r}/actions/jobs/{id}` (**ab Forgejo 17**) → `steps: [{number, name, status: success/failure/running/waiting/skipped/cancelled, started, stopped}]`, von Anfang an vollständig von „Set up job“ bis „Complete job“; Forgejo 16 hat den Pfad nicht | `steps` im Job (`status` + `conclusion`) | Schritt `{nr, von, name}`; ohne Pfad `faehig.schritte: false` |
-| Logs | `/repos/{o}/{r}/actions/jobs/{id}/logs` – Text, ab 17 mit `?step=N`, `?format=ndjson`, `Range`; `/runs/{id}/logs` als ZIP | `/repos/{o}/{r}/actions/jobs/{id}/logs` (Text) | nur der Anfang (Runner-Zuordnung). Live-Log weiter aus dem Journal der Unit; ein Log über die API mit Schritt-Trennern wäre möglich (eigenes Issue) |
+| Logs | `/repos/{o}/{r}/actions/jobs/{id}/logs` – Text, eine Zeile je Ausgabezeile mit Zeitstempel davor (`2026-11-15T20:29:41.0510739Z …`), `Range` (206; ab dem Ende 416 mit `bytes */n`; leeres Log 200), ab 17 mit `?step=N` (`number` aus `/actions/jobs/{id}`, Range im Ausschnitt; außerhalb 404), `?format=ndjson` und `?q=` (beide ohne Range); `/runs/{id}/logs` als ZIP (gemessen an 17.0.1, #176). Das Log enthält **keine** Schrittmarken | `/repos/{o}/{r}/actions/jobs/{id}/logs` (Text, ab 1.24, ohne `?step=`) | der Anfang (Runner-Zuordnung) und – solange ein Browser zusieht – das Job-Log des laufenden Jobs im Live-Log (#176, siehe „Job-Log im Live-Log“) |
 | Letzte Jobs | `/actions/jobs/{id}` (Ergebnis, Ende des letzten Schritts); vor 17 nur `status` in der Job-Liste | `/actions/jobs/{id}` (`conclusion`, `completed_at`) | Jobs, die der Sammler laufen sah (bis 5); kurze Jobs zwischen zwei Runden (30 s) fehlen |
 | Kontingent, Token-Ablauf | keine Kopfzeilen (ohne eigene Einstellung kein Kontingent; Ablauf nicht abfragbar) | ebenso | `kontingent: {}`, `tokenAblauf: null`; 429 → „Kontingent“ |
 | Updates des Runners | – | – | `updates: false` |
@@ -409,6 +409,7 @@ Benutzer (einmal je Token) → Repositories (ohne archivierte und ohne Actions, 
 eigene Runner-Liste → Läufe je Repository (ruhige
 Repositories nur alle 5 Min., wie bei GitHub) → Jobs der laufenden Läufe → bei Forgejo Log-Anfang je
 neuem Job → Schritte des eigenen Jobs → Ergebnis der Jobs, die seit der letzten Runde fertig sind →
+laufende und wartende Jobs der Organisation mit Schritten und Vergleichsdauern (#171, nächster Abschnitt) →
 erst jetzt (#151) die erweiterte Suche: der gemerkte Ort des letzten Funds (z. B. `/admin`, jede Runde),
 fehlt der Runner, höchstens alle 10 Min. und nur mit mindestens 6 s Rest der Runde `/admin/actions/runners`
 und die Listen der 10 zuletzt geänderten Repositories (scheitert `/admin`, geht es mit den Repositories
@@ -561,6 +562,60 @@ bei Forgejo: ist der Runner bei GitLab nicht zu finden oder schlug die Abfrage f
 der kein Text ist (Liste, Objekt), kostet nur diesen Job, nicht die Runde. Die Server-Eingabe der
 Einrichtung folgt mit #96; erst dann hebt `erkennung.FAEHIG["gitlab"]` an (E-20).
 
+### Laufende und wartende Jobs (#171, Design 0.9.0)
+
+Das Dashboard zeigt je Repository, was dort läuft und wartet (Karte „Jobs je Repository“, aufklappbar), dazu im Runner-Status
+die geschätzte Restzeit. Die Daten stehen im Bereich `jobsJeRepository` (`workflows`) neben `repos[]`; `runner[].job` bekommt
+`schritt.start` und `vergleich`. Die Auswertung ohne Netz liegt in `runner_monitor/anbieter/jobsicht.py`, die Abfrage in
+`anbieter/forgejo.py` (Abschnitt „Laufende und wartende Jobs“), die Anzeige in `web/jobs.js` (mit `node --test` geprüft).
+
+```json
+"laufende": [{ "repo": "web-portal", "privat": true, "workflow": "ci", "name": "build",
+               "ref": { "art": "PR", "name": "#142", "titel": "…" },
+               "runner": "runner-vm-01", "eigener": true, "start": 1793264401.0,
+               "schritt": { "nr": 3, "von": 5, "name": "Tests", "start": 1793264404.0 },
+               "vergleich": { "median": 660.0, "anzahl": 5 } }],
+"wartende": [{ "repo": "api-dienst", "privat": true, "workflow": "ci",
+               "ref": { "art": "Branch", "name": "main", "titel": "…" },
+               "seit": 1793263800.0, "pos": 1, "blockiert": false }]
+```
+
+- `laufende` (höchstens 12): `eigener` = `true` (Job dieses Runners), `false` (anderer Runner) oder `null` (der Runner ist beim Dienst nicht
+  erkennbar, dann steht auch kein „anderer Runner“ da); `runner` nur beim eigenen Job; `schritt` = `null`, wenn der Dienst keine Schritte
+  liefert oder sie in dieser Runde nicht gelesen wurden; `vergleich` = `null`: keine Schätzung. `start` ist bei Forgejo der Beginn
+  des Jobs (sonst des ersten Schritts, sonst des Laufs).
+- `wartende` (höchstens 30, ältester zuerst): `pos` zählt nur Läufe, die auf einen Runner warten, und nur, wenn alle Repositories der
+  Runde lesbar waren **und keine Lauf-Liste abgeschnitten wurde** (Gitea ohne Statusfilter und GitHub sehen nur die 30 neuesten Läufe je
+  Repository, Forgejo höchstens 200; ist die Liste voll, fehlen vielleicht ältere wartende Läufe) und der Lauf eine Erstellzeit hat; sonst `null`.
+  Die Warteschlange besteht aus **Läufen**, nicht aus Jobs: Hat ein Lauf mehrere Jobs mit `needs:`, steht er einmal da, auch wenn sein
+  zweiter Job später wartet; und ein Lauf mit anderen Labels, die dieser Runner gar nicht bedient, zählt mit. `blockiert` (Forgejo `blocked`, GitHub `waiting`): wartet auf Freigabe oder einen anderen Job.
+  Die Position ist die Reihenfolge der Läufe, die der Monitor in der Organisation sieht; bedient der Runner weitere Organisationen,
+  stehen dort eigene Läufe davor, die der Monitor nicht kennt.
+- **Restzeit:** Der Server liefert nur `vergleich = {median, anzahl}` – den Median der Dauern der letzten höchstens 5 **erfolgreichen**
+  Läufe desselben Workflows und Jobs (Sekunden; unbrauchbare Dauern zählen nicht, ohne eine brauchbare ist es `null`). Die Oberfläche rechnet
+  daraus live: `noch ca. {Median − Laufzeit}` und `ca. HH:MM fertig`, ab dem Median `länger als üblich`, ohne Werte `keine Schätzung`.
+
+**Forgejo und Gitea** (eine Runde; alles Freiwillige läuft nur, wenn von der Rundenfrist noch mindestens 12 s übrig sind, endet 2 s vor deren Ende
+und lässt die Suche nach dem Runner (#151) den Vorrang; Zeitüberschreitung und 429 kosten die Runde nichts):
+
+| Was | Anfrage | Grenze |
+|---|---|---|
+| wartende Läufe | schon da: die Läufe mit Statusfilter (`created` je Lauf) | keine zusätzliche |
+| laufende Jobs der Organisation | `/actions/runs/{id}/jobs` der ersten 8 laufenden Läufe (je Runde einmal, auch für die Zuordnung des Runners) | 8 Läufe |
+| Schritte der Jobs anderer Runner | `/actions/jobs/{id}` (Forgejo ab 17; Gitea liefert sie in der Job-Liste) | 6 Jobs je Runde; der eigene Job immer |
+| Vergleichsdauern | `/actions/runs?status=success&page=1&limit=20` je Repository, bei Workflows mit mehreren Jobs je Vergleichslauf `/runs/{id}/jobs` und `/jobs/{id}`; hat der Lauf nur einen Job, genügt die Laufzeit aus der Lauf-Liste | 8 Anfragen je Runde, höchstens alle 10 Min. je Workflow und Job |
+
+Die Dauer je Vergleichslauf merkt der Sammler (`speicher["vergleich"]`, ein beendeter Lauf ändert sich nie; höchstens 40 Workflow/Job-Paare);
+was in einer Runde nicht mehr drankam, folgt in der nächsten. Ein Lauf ohne den Job oder ohne Zeiten zählt als „nicht zu ermitteln“ (0, wird nicht erneut gefragt).
+Zeiten vor dem Jahr 2000 (Forgejo schreibt `0001-01-01` für „nicht gesetzt“) zählen als fehlend.
+
+**Letzte Jobs ohne Zuordnung:** Lässt sich der Runner beim Dienst nicht erkennen (keine UUID, in keiner lesbaren Runner-Liste, #145), zeichnet der
+Monitor die laufenden Jobs der Organisation auf und trägt sie, wenn sie enden, mit Ergebnis und Dauer in „Letzte Jobs“ ein; sonst nur die des Runners.
+
+**GitHub:** `laufende` und `wartende` aus den ohnehin gelesenen Läufen (`run_started_at`, `created_at`, Workflow-Name), ohne zusätzliche Anfrage. Job-Name,
+Runner und Schritt stehen nur für den eigenen Job (aus `job`); `vergleich` ist immer `null`. **GitLab:** `laufende` aus den laufenden Jobs des Runners
+(`/runners/:id/jobs`), ohne Schritt und Schätzung; `wartende` bleibt leer (`wartetUnbekannt`).
+
 ### Momentaufnahme `GET /api/zustand` (E-19, additiv)
 
 Nur angemeldet (sonst 401 bzw. Weiterleitung zur Einrichtung), `no-store`. Bis 0.7 gab es die
@@ -570,7 +625,7 @@ Momentaufnahme nur als ersten Schwall von `/events`; jetzt auch als ein JSON-Obj
 { "format": 2,
   "status": { … wie bisher … }, "system": { …, "verlauf": {…} }, "prozesse": […], "platten": […],
   "container": […], "workflows": { … wie bisher … }, "update": { … },
-  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.8.4",
+  "vm": { "name": "runner-vm", "system": "Ubuntu 24.04.1 LTS, Python 3.12", "monitorVersion": "0.9.0",
           "auslastung": { …Bereich system… }, "verlauf": { "cpu": [], "ram": [], "netz": [], "start": 0 },
           "prozesse": […], "platten": […], "container": […] },
   "runner": [ …Einträge… ],
@@ -621,6 +676,8 @@ Ein Eintrag in `runner[]`:
   `{art, unit}` mit `art` = `seiten` (GitHub, `_diag/pages`, mit Schritt-Trennern), `journal` oder
   `datei` (Pfad nur aus `runner.json`). Pfade der VM stehen bewusst nicht in `/api/zustand` (Review #111);
   der Monitor kennt sie intern (`log_quelle()`).
+- `jobLog` (#176, additiv) gibt es nur bei Runnern mit Job-Log-Fähigkeit (Forgejo, Gitea), deren Job-Log der
+  Sammler nicht lesen kann: `{hinweis: keine-rechte | nicht-unterstuetzt | zu-gross}`; sonst fehlt das Feld.
 - `stand`, `einstufung`, `version` kommen aus der Erkennung. Beim GitHub-Runner gilt `angebunden` nur,
   wenn die letzte Abfrage `ok`, `nicht-erreichbar` oder `kontingent` war (Token gültig, Dienst evtl.
   kurz weg); ohne Token, mit ungültigem Token, ohne Rechte, ohne Organisation oder vor der ersten
@@ -787,6 +844,88 @@ Ereignis `runner` an bzw. um.
 Ereignis `journal`: `{unit, neu?, zeilen[{zeit, text} | {zeit, art: "luecke", n}], ereignisse[{zeit, art}], hinweis?}`
 – `neu` leert die Ansicht (erst der Stand, dann neue Zeilen).
 
+### Job-Log im Live-Log (#176)
+
+Bei angebundenen Forgejo-/Gitea-Runnern zeigt das Live-Log während eines Jobs die **Ausgabe des laufenden
+Schritts** – mit Chip und Trennern „Schritt n/m · Name“ wie beim GitHub-Runner –, sonst das Journal der Unit.
+Das Journal von `forgejo-runner.service` enthält die Ausgabe nicht (dort steht nur „task N repo is …“, auch
+mit `log.job_level: info`, geprüft an forgejo-runner 13.2.1). Gelesen wird das Log über die API; das Token
+kann nur root lesen, also liest der **Sammler**, und der Webdienst bekommt nur Zeilen:
+
+```mermaid
+flowchart LR
+  B["Browser<br/>/events?journal=&lt;id&gt;"] -- "zeigt zu" --> M["runner-monitor<br/>(Webdienst)"]
+  M -- "auftraege/joblog-bedarf<br/>alle 10 s, solange jemand zusieht" --> S["runner-monitor-sammler<br/>(root, Token)"]
+  S -- "alle 3 s: /actions/jobs/{id}<br/>+ /logs?step=N mit Range" --> F["Forgejo / Gitea"]
+  S -- "/run/runner-monitor/joblog.json<br/>0640 root:runner-monitor" --> M
+  M -- "Ereignis joblog<br/>(nur neue Zeilen)" --> B
+```
+
+- **Wann:** nur für Runner mit Adapter-Fähigkeit `JOB_LOG` (Forgejo, Gitea), angebunden, mit Fähigkeit
+  `jobs`, und nur für den einen Job, den die Abfrage (30-s-Runde) dem Runner zuordnet (`speicher.jobLogZiel`).
+  Ist der Runner nicht erkennbar (Organisations-Modus der „Letzten Jobs“, #171), gibt es kein Ziel: Das Job-Log
+  entsteht nie aus den Jobs der Organisation, sonst stünde im Live-Log die Ausgabe eines fremden Runners.
+  Nur solange ein Browser das Live-Log dieses Runners offen hat: Der Webdienst legt dann höchstens alle 10 s
+  den Auftrag `joblog-bedarf` (`{zeit, runner: [IDs]}`, 0600) ab; der Sammler holt ihn ab (umbenennen, streng
+  lesen, löschen), nimmt nur IDs seiner Anbindungen und liest höchstens 30 s nach dem letzten Auftrag (eigene
+  Uhr), höchstens 2 Runner zugleich, je Runner ein eigener Faden. Ohne Browser gibt es keine Anfrage.
+- **Takt** (`anbieter/forgejo_log.py`): alle 3 s `GET …/actions/jobs/{id}` (Schritte, Job beendet?) und
+  `GET …/actions/jobs/{id}/logs?step=N` mit `Range: bytes=<gelesen>-<+256 KiB>`; beim Einstieg in einen
+  Schritt nur dessen letzte 64 KiB (`Range: bytes=-65536`, davor die Zeile „… frühere Ausgabe ausgelassen“).
+  Wechselt der laufende Schritt, liest der Sammler erst den Rest des alten, dann jeden Schritt bis zum
+  laufenden mit Trenner. Ist der Job beendet, liest er bis „Complete job“ und hört auf (`aktiv: false`). Je
+  Takt höchstens 6 Anfragen und 10 s, je Anfrage 5 s (eigener Faden wie `forgejo.Klient`: nur GET, keine
+  Weiterleitung, Token nur über https bzw. `http_erlaubt`). Liegt er mehr als 1 MiB zurück, springt er ans Ende.
+- **Rückfälle:** Beachtet der Server Range nicht (200 statt 206), liest der Sammler höchstens 4 MiB, behält nur
+  die letzten 256 KiB, nimmt davon nur, was hinter dem schon Gelesenen liegt, und fragt nur noch alle 15 s;
+  größer → Ende mit Hinweis `zu-gross`. Wird das Log kürzer (neuer Versuch des Jobs), beginnt er neu. Gitea und
+  Forgejo ohne `/actions/jobs/{id}` (vor 17): das ganze Log ohne `?step=` und ohne Trenner (der Chip zeigt den
+  Schritt aus der Schrittliste, falls es eine gibt). 401/403 → Hinweis `keine-rechte`, eine Stunde Pause – eine
+  geänderte Token-Datei (Inode, Zeit, Größe) hebt sie auf. 404 aufs Log, während das Job-Detail kommt (Schritt
+  übersprungen oder noch nicht geschrieben) → still 10 s Pause, nie ein Hinweis; ohne Job-Detail dreimal 404
+  (je Schritt neu gezählt), ohne je ein Log bekommen zu haben → `nicht-unterstuetzt`, eine Stunde Pause. 429 →
+  60 s warten; nicht erreichbar → 15 s, nach dem vierten Mal Ende. Endet ein Leser, weil ihn der Sammler
+  anhält (kein Browser mehr, anderer Job), gibt es weder Pause noch Hinweis. In allen Fällen bleibt das
+  Live-Log beim Journal, `runner[].jobLog.hinweis` nennt den Grund (Info › Verbindungen, Zeile „Job-Log“).
+- **Zeilen:** Zeitstempel abgetrennt (wird `zeit`). Entfernt werden OSC-, DCS-, SOS-, PM- und APC-Folgen samt
+  Nutzlast (Titel, Hyperlinks, Sixel; auch nicht abgeschlossene bis zum Zeilenende), alle anderen CSI-Folgen
+  außer Farben (SGR), einzelne ESC, Steuerzeichen, C1-Zeichen (U+0080–U+009F, auch 8-Bit-CSI) und
+  Bidi-Steuerzeichen (U+202A–U+202E, U+2066–U+2069); eine beim Kürzen angeschnittene Farbfolge am Zeilenende
+  fällt weg. Bekannte Token-Muster wie im Journal durch `***` ersetzt (auch hier
+  vollständige Commit-SHAs), höchstens 4000 Zeichen; eine Zeile ohne Zeilenende wartet aufs nächste Stück
+  (höchstens 64 KiB). Je Runner die letzten 400 Zeilen bzw. 300 000 Zeichen mit fortlaufender Nummer `seq`.
+- **`joblog.json`** (`/run/runner-monitor`, **0640 root:runner-monitor**, nicht 0644 wie die übrigen
+  Ergebnisse – Job-Logs privater Repositories sollen andere Benutzer der VM nicht lesen; fehlt die Gruppe,
+  0600 und kein Job-Log): `{version: 1, zeit, runner: {<id>: {lauf, job, aktiv, schritt{nr, von, name},
+  seq, zeilen[{seq, zeit, text} | {seq, zeit, art: "schritt", nr, von, name} | {seq, zeit, art: "gekuerzt",
+  bytes}], hinweis}}}`. Der Sammler schreibt sie bei Änderung und – unabhängig davon, ob ein Leser gerade
+  wartet (z. B. 60 s nach 429) – alle 20 s, solange einer läuft, nach seinem Start einmal leer. Beim Beenden
+  des Sammlers (`Sammler.laufe`) hält er die Leser an; es sind Daemon-Fäden, sie enden auch so mit dem Prozess.
+- **Webdienst** (`runner_monitor/joblog.py` › `JobLogs`): liest die Datei jede Sekunde bei Änderung (Inode,
+  mtime in ns und Größe – der Sammler ersetzt sie atomar) streng
+  (regulär, ohne Symlink, höchstens 4 MiB), prüft jede Zeile noch einmal (Typen, Länge, Bereinigung) und
+  schickt Fenstern, die genau diesen Runner zeigen, zuerst den Stand (`neu`), dann nur Zeilen mit höherer
+  `seq`; fehlen dazwischen welche (mehr, als die Datei hält), steht dort `{art: "luecke", n}`. Ein anderer
+  `lauf` (neuer Job, Sammler neu gestartet) geht als neuer Stand hinaus. Ist die Datei älter als 60 s
+  (Sammler steht), gilt kein Job-Log mehr als aktiv. Welcher Runner, steht allein in `runner[]`
+  (`Zustand.joblog_ziel()`); die Anfrage nennt nur die Runner-ID (`/events?journal=<id>`, wie beim Journal).
+- **Browser** (`web/runner.js` › `mitJobLog`, `jobLogEmpfang`, `puffer`): Ist das Live-Log des Runners das
+  Journal und meldet das Job-Log `aktiv`, zeigt es das Job-Log (Chip „Schritt n/m · Name“, Trenner, Farben,
+  Fehlerzeilen rot). Die nicht gezeigte Quelle wird mitgepuffert (höchstens 1 500 Zeilen), beim Umschalten ist
+  ihr Stand sofort da.
+- **Job-Ende (E-35 b):** Endet der Job, bleibt seine Ausgabe im Live-Log stehen – Chip „Job beendet · Schritt
+  n/m · Name“ –, bis ein neuer Job auf diesem Runner startet (dessen Stand ersetzt sie) oder im Dashboard der
+  Runner gewechselt wird (dann das Journal mit allen Zeilen, die inzwischen kamen). Der Webdienst meldet das Ende
+  nicht eigens: Der Leser fehlt danach in `joblog.json`, die Fenster bekommen einen neuen, leeren Stand
+  (`neu`, nicht `aktiv`). Der Browser wertet ihn als Ende, wenn er für diesen Runner gerade ein Job-Log mit
+  Ausgabe hatte, und leert dann weder Anzeige noch Puffer (`jobLogStand`: `beendet`). Mit `hinweis` (Sammler kann
+  nicht lesen) geht es wie bisher zurück aufs Journal. Ein Fenster, das erst nach dem Ende geöffnet oder neu
+  geladen wird, zeigt das Journal; ebenso nach dem Neuverbinden, wenn vorher kein Job-Log da war. Auch wenn der
+  Sammler steht (Datei älter als 60 s), bleibt die letzte Ausgabe als „Job beendet“ stehen.
+
+Ereignis `joblog`: `{runner, neu, aktiv, job, schritt{nr, von, name} | null, hinweis, zeilen[{zeit, text} |
+{zeit, art: "schritt", nr, von, name} | {zeit, art: "gekuerzt", bytes} | {zeit, art: "luecke", n}]}`.
+
 ### Einrichtung im Browser: Runner, Anbinden, Fertig (#96, E-22)
 
 Die Einrichtung hat seit Design 0.8.0 fünf Schritte: **Code → Zugang → Runner → Anbinden → Fertig**
@@ -876,13 +1015,14 @@ eigenes Ereignis und ein eigenes Datenobjekt:
 | `system` | `kerne[]` (%), `cpu`, `last[3]`, `ram{belegt, gesamt}`, `swap{…}`, `netz{empfangen, gesendet, schnittstellen[]}` (B/s), `start`; beim ersten Mal zusätzlich `verlauf{cpu[], ram[], netz[[empfangen, gesendet]], start}` (bis 600 Sekundenwerte, `start` = Zeit des ältesten Werts) |
 | `prozesse` | `[{pid, benutzer, cpu, ram, befehl}]` |
 | `platten` | `[{pfad, gesamt, frei, belegt, schwelleFrei}]` (Bytes; `schwelleFrei` nur für „/“) |
-| `workflows` | `org`, `abfrage: ok\|kein-token\|token-ungueltig\|keine-rechte\|nicht-erreichbar\|kontingent\|fehler`, `abgefragt`, `naechste`, `tokenAblauf`, `kontingent{}`, `repos[{name, privat, laeuft, wartet}]` |
+| `workflows` | `org`, `abfrage: ok\|kein-token\|token-ungueltig\|keine-rechte\|nicht-erreichbar\|kontingent\|fehler`, `abgefragt`, `naechste`, `tokenAblauf`, `kontingent{}`, `repos[{name, privat, laeuft, wartet}]`, `laufende[]`, `wartende[]` (seit #171, siehe „Laufende und wartende Jobs“) |
 | `update` | `installiert`, `neueste{version, veroeffentlicht, notizen[], aenderungen[{version, url, neu[], einmalig}], …}` (`aenderungen`: alle Releases nach der installierten bis zur neuesten, aus den Abschnitten „Was ist neu“ und „Einmalig nach dem Update“ der Release-Notiz), `status{zustand: laeuft\|fehler\|erfolg, schritt, meldung}`, `auto` |
 | `container` | `[{name, image, zustand, seit}]` |
 | `log` | `neu` (Ansicht leeren), `ereignisse[{art, zeit, repo, workflow, name, ergebnis, dauer}]`, `zeilen[{art: zeile\|schritt, zeit, text \| nr, von, name}]` (gebündelt, bis 1500 je Nachricht) |
 | `runner` | seit #92: Liste der Runner wie `runner[]` in `/api/zustand` (siehe „Anbieter-Adapter“), nur bei Änderung; das Dashboard nutzt sie seit #94 |
 | `meldungen` | seit #92: Liste wie `meldungen[]` in `/api/zustand`, nur bei Änderung |
 | `journal` | seit #95, nur mit `/events?journal=<runner-id>`: `unit`, `neu`, `zeilen[]`, `ereignisse[]`, `hinweis` (siehe „Grundüberwachung und ‚teilweise‘“) |
+| `joblog` | seit #176, nur mit `/events?journal=<runner-id>` eines angebundenen Forgejo-/Gitea-Runners: `runner`, `neu`, `aktiv`, `job`, `schritt`, `hinweis`, `zeilen[]` (siehe „Job-Log im Live-Log“) |
 | `aufraeumen` | seit #144: `{skript, nacht, timer, vorDemJob, geprueft}` – Wahrheitswerte, ob `/usr/local/bin/runner-aufraeumen`, der nächtliche Lauf, `runner-aufraeumen.timer` und (nur GitHub-Runner, sonst `null`) der Hook vor dem Job eingerichtet sind; nur bei Änderung. Der Monitor übernimmt nur diese Felder mit diesen Typen (`aufraeumen.pruefe_stand`) |
 
 Zeiten sind Unix-Sekunden. Alle 15 s kommt ein Kommentar `: lebt`, damit Proxys die Verbindung
@@ -1006,6 +1146,8 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `/etc/runner-monitor/runner.json` | root:runner-monitor, 0640 | Zuordnung und Ignorieren erkannter Runner, Server und Organisation für Forgejo/Gitea (siehe „Runner erkennen“) |
 | `/var/lib/runner-monitor/` | runner-monitor, 0750 | `zugang.json` (scrypt-Hash), `sitzungen.json`, `sperren.json`, `einstellungen.json` (Organisation, Auto-Update), `einrichtungscode.json`, `systempruefung.json`, `update-status.json`, `verlauf.json` (Verlauf der letzten 10 Min., alle 10 s gesichert), `auftraege/` |
 | `/run/runner-monitor/` | root, 0755 (Dateien 0644) | `github.json`, `docker.json`, `release.json`, `erkennung.json` (erkannte Runner), `anbieter.json` (Forgejo/Gitea #93, GitLab #115), `aufraeumen.json` (#144) – Ergebnisse des Sammlers, ohne Token |
+| `/run/runner-monitor/joblog.json` | root:runner-monitor, **0640** | Job-Log laufender Forgejo-/Gitea-Jobs (#176), nur solange ein Browser zusieht; ohne Token |
+| `/var/lib/runner-monitor/auftraege/joblog-bedarf` | runner-monitor, 0600 | „Ein Browser sieht zu“ (#176): Runner-IDs, höchstens alle 10 s erneuert; der Sammler holt ihn ab |
 | `/usr/local/bin/runner-aufraeumen`, `/etc/cron.daily/runner-aufraeumen`, `/etc/systemd/system/runner-aufraeumen.{service,timer}` | root, 0755 bzw. 0644 | Aufräumen der Platte für jeden Runner, angelegt von `einrichten.sh aufraeumen` (`deploy/aufraeumen-einrichten.sh`, auch aus `deploy/runner-einrichten.sh`; [RUNNER.md](RUNNER.md), Abschnitt 6a). Beim GitHub-Runner zusätzlich `vor-dem-job.sh` und eine Zeile in `.env` im Runner-Ordner – geschrieben als Runner-Benutzer, nie als root |
 | `/var/lib/runner-aufraeumen/images` | root, Ordner 0755, Datei 0644 | Je Image-ID die Unix-Zeit, seit der `runner-aufraeumen` es kennt (E-31): Während eines Jobs entfernt das Skript nur Images, die es seit mindestens 30 Minuten kennt. Jeder Lauf als root schreibt sie neu (atomar); der Hook vor dem Job (Runner-Benutzer) liest sie nur |
 | `/etc/systemd/system/runner-monitor*.{service,path}` | root | Dienste ([deploy/systemd](../deploy/systemd/)) |
@@ -1017,8 +1159,9 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 - Kein HTTPS von sich aus – gedacht für das lokale Netz. Wer von außen zugreifen will, setzt
   einen Reverse-Proxy mit TLS davor ([Sicherheitsbericht](sicherheit/bericht.md), S-01).
 - Das Dashboard zeigt alle Runner der VM als Reiter (ab #94); das Live-Log zeigt beim GitHub-Runner die
-  Ausgabe der Schritte, bei den anderen das Journal ihrer Unit (#95). Eine Log-Datei aus `runner.json`
-  zeigt es noch nicht an.
+  Ausgabe der Schritte, bei angebundenen Forgejo-/Gitea-Runnern während eines Jobs dessen Ausgabe über die
+  API (#176), sonst das Journal ihrer Unit (#95). GitLab-Jobs kommen weiter nur aus dem Journal. Eine
+  Log-Datei aus `runner.json` zeigt es noch nicht an.
 
 ## Quellcode
 
@@ -1032,6 +1175,8 @@ Update selbst (#77). Das Update startet nur die Monitor-Dienste neu, der Runner 
 | `runner_monitor/github.py` | GitHub-REST-Klient (ETag, Fehlerarten), Releases, Versionen; alte Namen der Runner-Auswertung leiten an den Adapter weiter |
 | `runner_monitor/anbieter/` | Anbieter-Adapter: Basisklasse, Grundüberwachung, Registry und Fähigkeiten (`__init__.py`), GitHub-Adapter (`github.py`), Forgejo-/Gitea-Adapter (`forgejo.py`), Zugangsdaten je Runner und Token-Übernahme (`token.py`) |
 | `runner_monitor/journal.py` | Journal je Unit fürs Live-Log (ein `journalctl` je Unit, Grenzen, Token-Filter) |
+| `runner_monitor/joblog.py` | Job-Log laufender Forgejo-/Gitea-Jobs (#176): Bedarf, Leser-Fäden und `joblog.json` im Sammler (`Verwaltung`), Verteilung an die Fenster im Webdienst (`JobLogs`) |
+| `runner_monitor/anbieter/forgejo_log.py` | Job-Log beim Dienst lesen (#176): `LogKlient` (Range, Fristen), `LogFolger` (Schritte, Grenzen, Bereinigung) |
 | `runner_monitor/zustand.py` | Gesamtstand, Verlauf, `runner[]` und `meldungen[]`, Momentaufnahme, Verteilung an alle Browserfenster |
 | `runner_monitor/server.py` | HTTP, Anmeldung, Einrichtung, SSE, `GET /api/zustand` |
 | `runner_monitor/zugang.py` | Passwörter, Sitzungen, Sperren, Einrichtungscode |

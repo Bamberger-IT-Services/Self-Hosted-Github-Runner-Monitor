@@ -17,7 +17,7 @@ import re
 import time
 
 from .. import github as gh
-from . import Anbieter, RunnerKonfig, registriere
+from . import Anbieter, RunnerKonfig, jobsicht, registriere
 from . import token as zugangsdaten
 
 SERVER = "https://github.com"
@@ -26,6 +26,7 @@ RUHIG_AB = 3600              # Repository gilt als ruhig, wenn der letzte Push l
 RUHIG_TAKT = 300             # … und nichts läuft oder wartet: Läufe dann nur alle 5 Minuten abfragen
 LAEUFT = {"in_progress"}
 WARTET = {"queued", "waiting", "pending", "requested"}
+LAUF_SEITE = 30              # Läufe je Repository und Abfrage
 TAKT = 30                    # Sekunden zwischen zwei Abfragen (Sammler)
 
 
@@ -77,13 +78,42 @@ def job_fuer_runner(lauf: dict, jobs: list[dict], runner_name: str) -> dict | No
     return None
 
 
+def laufend_aus_lauf(lauf: dict, repo: str, privat: bool) -> dict:
+    """Laufender Lauf für „Jobs je Repository“ (#171). Der Job-Name und die Schritte stehen nur in der Job-Liste –
+    sie wird (ohne zusätzliche Anfragen) nur für den eigenen Job gelesen; Vergleichsdauern fragt GitHub nicht ab."""
+    return {"repo": repo, "privat": privat, "workflow": str(lauf.get("name") or "")[:100], "name": "", "ref": ref_aus_lauf(lauf),
+            "runner": None, "eigener": None,
+            "start": gh.iso_zu_unix(lauf.get("run_started_at")) or gh.iso_zu_unix(lauf.get("created_at")),
+            "schritt": None, "vergleich": None}
+
+
+def wartend_aus_lauf(lauf: dict, repo: str, privat: bool, nr: int | None) -> dict:
+    """Wartender Lauf; ``waiting`` heißt bei GitHub: wartet auf Freigabe (Umgebung), nicht auf einen Runner."""
+    return {"repo": repo, "privat": privat, "workflow": str(lauf.get("name") or "")[:100], "ref": ref_aus_lauf(lauf),
+            "seit": gh.iso_zu_unix(lauf.get("created_at")), "blockiert": lauf.get("status") == "waiting", "_id": nr}
+
+
+def eigenen_job_eintragen(laufende: list[dict], job: dict | None, runner_name: str) -> None:
+    """Der Lauf des eigenen Jobs (gleiches Repository und gleicher Workflow) bekommt dessen Job-Namen und Schritt."""
+    if not job:
+        return
+    treffer = next((e for e in laufende if e["repo"] == job.get("repo") and e["workflow"] == job.get("workflow") and not e["eigener"]), None)
+    if treffer is None:
+        return
+    schritte = job.get("schritte") or []
+    nr = job.get("schritt") if isinstance(job.get("schritt"), int) and not isinstance(job.get("schritt"), bool) else None
+    treffer.update(name=job.get("name", ""), eigener=True, runner=runner_name or None, start=job.get("start") or treffer["start"],
+                   schritt={"nr": nr, "von": len(schritte), "name": schritte[nr - 1] if nr and nr <= len(schritte) else "", "start": None}
+                   if nr and schritte else None)
+
+
 def abfrage(klient: gh.Klient, org: str, runner_name: str, letzter_erfolg: float | None = None) -> dict:
     """Ein Durchlauf: Repos der Organisation, Läufe je Repo, Runner-Status, aktueller Job."""
     jetzt = time.time()
     ergebnis: dict = {
         "org": org, "abfrage": "ok", "abgefragt": jetzt, "letzterErfolg": letzter_erfolg,
         "tokenAblauf": None, "kontingent": {}, "repos": [], "runner": {"zustand": "unbekannt"},
-        "job": None, "fehler": "",
+        "job": None, "fehler": "", "laufende": [], "wartende": [],
     }
     if not klient.token:
         ergebnis["abfrage"] = "kein-token"
@@ -104,6 +134,8 @@ def abfrage(klient: gh.Klient, org: str, runner_name: str, letzter_erfolg: float
                 break
             seite += 1
 
+        wartend: list[dict] = []
+        luecken = False
         ruhige = klient.speicher.setdefault("ruhig", {})  # Repo → {"zeit", "laeuft", "wartet"} der letzten Abfrage
         for repo in repos:
             name = repo.get("name", "")
@@ -113,11 +145,17 @@ def abfrage(klient: gh.Klient, org: str, runner_name: str, letzter_erfolg: float
                 # ruhig: letzten Stand übernehmen, erst nach RUHIG_TAKT wieder fragen
                 ergebnis["repos"].append({"name": name, "privat": bool(repo.get("private")), "laeuft": 0, "wartet": 0})
                 continue
-            laeufe = klient.hole(f"/repos/{org}/{name}/actions/runs", {"per_page": 30}).daten
+            laeufe = klient.hole(f"/repos/{org}/{name}/actions/runs", {"per_page": LAUF_SEITE}).daten
             runs = laeufe.get("workflow_runs", []) if isinstance(laeufe, dict) else []
+            luecken = luecken or len(runs) >= LAUF_SEITE  # mehr Läufe, als die Seite zeigt: Position unsicher (#171)
             laeuft, wartet = zaehle_laeufe(runs)
             ruhige[name] = {"zeit": jetzt, "laeuft": laeuft, "wartet": wartet}
             ergebnis["repos"].append({"name": name, "privat": bool(repo.get("private")), "laeuft": laeuft, "wartet": wartet})
+            for lauf in runs:
+                if lauf.get("status") in LAEUFT:
+                    ergebnis["laufende"].append(laufend_aus_lauf(lauf, name, bool(repo.get("private"))))
+                elif lauf.get("status") in WARTET:
+                    wartend.append(wartend_aus_lauf(lauf, name, bool(repo.get("private")), lauf.get("id") if isinstance(lauf.get("id"), int) else None))
             if ergebnis["job"] is None and laeuft:
                 for lauf in runs:
                     if lauf.get("status") not in LAEUFT:
@@ -127,6 +165,10 @@ def abfrage(klient: gh.Klient, org: str, runner_name: str, letzter_erfolg: float
                     if gefunden:
                         ergebnis["job"] = gefunden
                         break
+
+        ergebnis["wartende"] = jobsicht.positionen(wartend, not luecken)
+        ergebnis["laufende"] = ergebnis["laufende"][:jobsicht.MAX_LAUFENDE]
+        eigenen_job_eintragen(ergebnis["laufende"], ergebnis["job"], runner_name)
 
         # Online-Status des Runners: braucht das Recht „Self-hosted runners: read“ (optional).
         try:
@@ -168,6 +210,8 @@ def workflows_aus(ergebnis: dict | None) -> dict:
         "tokenAblauf": erg.get("tokenAblauf"),
         "kontingent": erg.get("kontingent") or {},
         "repos": erg.get("repos") or [],
+        "laufende": erg.get("laufende") or [],
+        "wartende": erg.get("wartende") or [],
         "fehler": erg.get("fehler", ""),
         "runnerGrund": (erg.get("runner") or {}).get("grund", ""),
     }

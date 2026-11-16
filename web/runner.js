@@ -86,6 +86,44 @@ const RUNNER = (() => {
   const journalZiel = (r) => (logQuelle(r) === 'journal' ? r.id : null);
   const journalUrl = (id) => (id ? `/events?journal=${encodeURIComponent(id)}` : '/events');
 
+  /* Job-Log (#176): Liefert der Sammler für diesen Runner die Ausgabe des laufenden Jobs (Ereignis „joblog“ mit
+     aktiv), zeigt das Live-Log sie statt des Journals – wie die Ausgabe der Schritte beim GitHub-Runner. Endet der
+     Job, bleibt seine Ausgabe stehen (beendet, E-35 b), bis ein neuer Job startet oder im Dashboard der Runner
+     wechselt; kann der Sammler nicht lesen (hinweis), wieder das Journal. Nur, wenn das Live-Log sonst das Journal
+     ist (angebundene Forgejo-/Gitea-Runner); jobLog = {runner, aktiv, beendet, job, schritt, hinweis} oder null. */
+  const mitJobLog = (quelle, jobLog, id) => (quelle === 'journal' && !!jobLog && !!id && jobLog.runner === id
+    && (jobLog.aktiv === true || jobLog.beendet === true) ? 'joblog' : quelle);
+  /* Puffer einer Quelle, die gerade nicht angezeigt wird (Journal bzw. Job-Log), damit beim Umschalten der Stand
+     sofort da ist: „neu“ ersetzt ihn, sonst wird angehängt; höchstens max Zeilen. */
+  function puffer(alt, d, max = 1500) {
+    const zeilen = d && Array.isArray(d.zeilen) ? d.zeilen.filter((z) => z && typeof z === 'object') : [];
+    const basis = d && d.neu ? [] : (Array.isArray(alt) ? alt : []);
+    return basis.concat(zeilen).slice(-max);
+  }
+  /* Stand des Job-Logs nach einem Ereignis „joblog“ (E-35 b). Beendet heißt: Dieser Runner hatte gerade ein Job-Log
+     (aktiv oder schon beendet) mit Ausgabe, jetzt ist keins mehr aktiv, und der Sammler meldet keinen Hinweis. Der
+     Webdienst meldet das Ende als neuen, leeren Stand (der Leser fehlt in joblog.json) – Job und Schritt bleiben
+     dann die des beendeten Jobs. */
+  function jobLogStand(alt, d, hatZeilen = true) {
+    const s = { runner: d.runner, aktiv: d.aktiv === true, beendet: false, job: d.job ?? null, schritt: d.schritt || null, hinweis: d.hinweis || null };
+    if (s.aktiv || s.hinweis) return s;
+    const vorher = !!alt && alt.runner === d.runner && (alt.aktiv === true || alt.beendet === true);
+    if (!vorher || !hatZeilen) return s;
+    return { ...s, beendet: true, job: s.job ?? alt.job ?? null, schritt: s.schritt || alt.schritt || null };
+  }
+  /* Ein Ereignis „joblog“ verarbeiten: neuer Stand, neuer Puffer, ob die Anzeige geleert wird, und die Zeilen zum
+     Anhängen. Das Ende (beendet, „neu“ ohne Zeilen) leert weder Puffer noch Anzeige – die Ausgabe bleibt stehen;
+     ein neuer Job („neu“ mit aktiv) ersetzt sie. */
+  function jobLogEmpfang(alt, pufferAlt, d, max = 1500) {
+    const zeilen = d && Array.isArray(d.zeilen) ? d.zeilen.filter((z) => z && typeof z === 'object') : [];
+    const bisher = Array.isArray(pufferAlt) ? pufferAlt : [];
+    const stand = jobLogStand(alt, d, bisher.length > 0 || zeilen.length > 0);
+    const behalten = stand.beendet && !!d.neu && !zeilen.length;
+    return { jobLog: stand, puffer: behalten ? bisher : puffer(bisher, d, max), leeren: !!d.neu && !behalten, zeilen };
+  }
+  /* Schritt für den Chip im Job-Log: aus dem Job-Log (alle paar Sekunden), sonst aus der Abfrage (30 s). */
+  const jobLogSchritt = (jobLog, job) => (jobLog && jobLog.schritt && typeof jobLog.schritt === 'object' ? jobLog.schritt : (job && job.schritt) || null);
+
   /* Zeilen fürs Log: ohne Schritte (faehig.schritte false) und im Journal gibt es keine Schritt-Trenner. */
   const logZeilen = (zeilen, mitTrennern) => (Array.isArray(zeilen) ? zeilen : []).filter((z) => z && (mitTrennern || z.art !== 'schritt'));
 
@@ -147,7 +185,7 @@ const RUNNER = (() => {
   const ms = (z) => (z == null ? NaN : (typeof z === 'number' ? (z < 1e12 ? z * 1000 : z) : Date.parse(z)));
 
   return { ALT_HINWEIS, ALT_VERALTET, alter, SCHLUESSEL, MAX_REITER, laden, speichern, waehle, wahl, reiter, zustand, dienstName, ansicht, fremd,
-    logQuelle, journalZiel, journalUrl, logZeilen, neustarts };
+    logQuelle, journalZiel, journalUrl, logZeilen, neustarts, mitJobLog, puffer, jobLogStand, jobLogEmpfang, jobLogSchritt };
 })();
 
 if (typeof module !== 'undefined' && module.exports) module.exports = RUNNER;

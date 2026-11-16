@@ -38,7 +38,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 from .. import erkennung, github as gh
-from . import Anbieter, RunnerKonfig, registriere
+from . import Anbieter, RunnerKonfig, jobsicht, registriere
 from . import token as zugangsdaten
 
 TAKT = 30                        # Sekunden zwischen zwei Abfragen (Sammler)
@@ -277,6 +277,14 @@ def letzter_job_aus(job: dict) -> dict:
     }
 
 
+def laufender_aus(job: dict) -> dict:
+    """Laufender Job für „Jobs je Repository“ (#171): GitLab kennt keine Schritte und keine Vergleichsdauern, der
+    Job stammt immer von diesem Runner (``/runners/:id/jobs``)."""
+    j = job_aus(job)
+    return {"repo": j["repo"], "privat": False, "workflow": j["workflow"], "name": j["name"], "ref": j["ref"], "runner": None,
+            "eigener": True, "start": j["start"], "schritt": None, "vergleich": None}
+
+
 def zaehle_laufende(jobs: list[dict]) -> list[dict]:
     """Laufende Jobs je Projekt: ``[{name, privat, laeuft, wartet}]`` (wartend ist per API nicht zu erfahren)."""
     je: dict[str, int] = {}
@@ -316,7 +324,7 @@ def abfrage(klient: Klient, name: str, letzter_erfolg: float | None = None, spei
     ergebnis: dict = {
         "org": "", "abfrage": "ok", "abgefragt": jetzt, "letzterErfolg": letzter_erfolg,
         "tokenAblauf": None, "kontingent": {}, "repos": [], "runner": {"zustand": "unbekannt"},
-        "job": None, "letzteJobs": [], "fehler": "", "wartetUnbekannt": True,
+        "job": None, "letzteJobs": [], "fehler": "", "wartetUnbekannt": True, "laufende": [], "wartende": [],
     }
     if not klient.token:
         ergebnis["abfrage"] = "kein-token"
@@ -341,6 +349,7 @@ def abfrage(klient: Klient, name: str, letzter_erfolg: float | None = None, spei
             ergebnis["runner"]["beschaeftigt"] = bool(laeuft)
             ergebnis["repos"] = zaehle_laufende(laeuft)
             ergebnis["job"] = job_aus(laeuft[0]) if laeuft else None
+            ergebnis["laufende"] = [laufender_aus(j) for j in laeuft if projekt_aus(j)][:jobsicht.MAX_LAUFENDE]
             letzte = _liste(klient.hole(f"/runners/{rid}/jobs", {"order_by": "id", "sort": "desc", "per_page": 20}).daten)
             # nur ein Text zählt: ein nicht hashbarer status (Liste, Objekt) wäre bei „in“ ein TypeError und
             # ließe die ganze Runde ausfallen – so fehlt nur dieser eine Job (#115)
@@ -449,6 +458,8 @@ def workflows_aus(ergebnis: dict | None) -> dict:
         "tokenAblauf": erg.get("tokenAblauf"),
         "kontingent": erg.get("kontingent") or {},
         "repos": erg.get("repos") or [],
+        "laufende": erg.get("laufende") or [],
+        "wartende": [],
         "fehler": erg.get("fehler", ""),
         "runnerGrund": (erg.get("runner") or {}).get("grund", ""),
         "wartetUnbekannt": True,

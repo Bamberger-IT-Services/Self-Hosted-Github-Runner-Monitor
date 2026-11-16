@@ -42,12 +42,19 @@ class Basis(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(self.faeden_abwarten)  # läuft vor tmp.cleanup (LIFO): kein Faden schreibt mehr in das Verzeichnis (#177)
         self.d = Path(self.tmp.name)
         self.k = lade_konfig(self.d)
         (self.d / "lauf").mkdir()
         self.k.token_datei.parent.mkdir(parents=True)
         registriere_runner(self.d)
         self.antworten = lade("forgejo-17.json")
+
+    @staticmethod
+    def faeden_abwarten() -> None:
+        for f in threading.enumerate():
+            if f.name.startswith("anbieter-") and f is not threading.current_thread():
+                f.join(15)
 
     def runner(self, eintraege: dict[str, dict], dienst: str = "forgejo") -> None:
         """Funde mit Unit, runner.json und Token je Runner."""
@@ -108,6 +115,7 @@ class FaedenTest(Basis):
         self.runner({f"runner-vm-{i:02d}": {"server": "https://git.example.org", "org": "beispiel-org"} for i in range(2, 9)})
         s = sammler.Sammler(self.k)
         frei = threading.Event()
+        self.addCleanup(frei.set)  # auch bei einem Fehlschlag: wartende Fäden freigeben, bevor aufgeräumt wird
         zaehler = {"jetzt": 0, "hoechst": 0}
         sperre = threading.Lock()
 

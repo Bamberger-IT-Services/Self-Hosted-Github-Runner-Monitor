@@ -376,6 +376,16 @@ class Handler(BaseHTTPRequestHandler):
         q = z.verteiler.anmelden()
         wunsch = self._journal_wunsch()
         journal = {"folger": None, "unit": None}
+        joblog = {"ziel": None}  # Runner, dessen Job-Log dieses Fenster bekommt (#176)
+
+        def joblog_abgleich() -> None:
+            # Nur aus runner[]: angebundener Forgejo-/Gitea-Runner; ändert sich das, wird umgehängt.
+            ziel = z.joblog_ziel(wunsch) if wunsch else None
+            if ziel == joblog["ziel"]:
+                return
+            z.joblogs.abmelden(joblog["ziel"], q)
+            joblog["ziel"] = ziel
+            z.joblogs.anmelden(ziel, q)
 
         def journal_abgleich() -> None:
             # Unit aus runner[]; ändert sie sich (Runner neu erkannt, Unit weg), wird umgehängt.
@@ -396,6 +406,7 @@ class Handler(BaseHTTPRequestHandler):
                 self._sse(bereich, json.dumps(daten, ensure_ascii=False, separators=(",", ":")))
             if wunsch:
                 journal_abgleich()
+                joblog_abgleich()
             while True:
                 try:
                     bereich, text = q.get(timeout=15)
@@ -410,11 +421,13 @@ class Handler(BaseHTTPRequestHandler):
                 self._sse(bereich, text)
                 if wunsch and bereich == "runner":
                     journal_abgleich()
+                    joblog_abgleich()
         except (BrokenPipeError, ConnectionResetError, OSError):
             pass
         finally:
             z.verteiler.abmelden(q)
             z.journale.abmelden(journal["folger"], q)
+            z.joblogs.abmelden(joblog["ziel"], q)
 
     def _sse(self, bereich: str, text: str) -> None:
         self.wfile.write(f"event: {bereich}\ndata: {text}\n\n".encode("utf-8"))

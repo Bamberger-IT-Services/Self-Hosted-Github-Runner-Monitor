@@ -7,7 +7,7 @@ Dienstes (README › „Nicht verfügbar“ ehrlich zeigen). Jeder Dienst hat ei
 * ``gitlab``     – :class:`runner_monitor.anbieter.gitlab.GitLab` (Status, Jobs, Log; ohne Schritte;
   im Sammler seit #115) – nur, wenn ``runner.json`` den Server nennt (keine Organisation nötig)
 * ``forgejo``, ``gitea`` – :class:`runner_monitor.anbieter.forgejo.Forgejo` bzw. ``Gitea`` (#93: Status
-  beim Dienst, Jobs, Schritte; Log aus dem Journal der Unit) – nur, wenn ``runner.json`` Server und
+  beim Dienst, Jobs, Schritte; Log aus dem Journal der Unit, im Job das Job-Log über die API, #176) – nur, wenn ``runner.json`` Server und
   Organisation nennt; sonst Grundüberwachung
 * alle anderen   – :class:`Grundueberwachung` (nur Dienst und Journal)
 
@@ -81,6 +81,8 @@ class Anbieter:
     # runner.json (E-18); ohne sie gilt für den Runner die Grundüberwachung.
     ANBINDUNG: ClassVar[bool] = False
     BRAUCHT_ORG: ClassVar[bool] = False  # Forgejo/Gitea: ohne Organisation keine Abfrage; GitLab braucht keine
+    # Liest der Sammler das Log des laufenden Jobs über die API, solange ein Browser zusieht (#176)?
+    JOB_LOG: ClassVar[bool] = False
 
     def __init__(self, konfig: RunnerKonfig) -> None:
         self.k = konfig

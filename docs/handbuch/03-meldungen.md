@@ -1,6 +1,6 @@
 # 3 Meldungen und „Was tun?“
 
-**Stand: 15.11.2026 · Version 0.8.4**
+**Stand: 16.11.2026 · Version 0.9.0**
 
 Probleme erscheinen oben in der Mitte der Kopfzeile. Es steht immer nur die wichtigste da,
 „+n weitere“ zeigt, dass es mehr gibt. **„Was tun?“** öffnet Info & Hilfe genau bei der
