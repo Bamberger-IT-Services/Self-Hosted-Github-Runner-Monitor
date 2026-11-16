@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "16.11.2026 22:07",
+  stand: "16.11.2026 23:05",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -270,6 +270,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "16.11.2026 23:05", text: "#181: Forgejo-Workflows nach .forgejo/workflows (Kopie von ci.yml, Test auf Gleichheit), release.yml nur für GitHub – kein roter Forgejo-Lauf je Tag mehr. Branch ohne PR, kommt mit dem nächsten Release (CI-Takt)." },
     { datum: "16.11.2026 22:07", text: "Releases 0.8.4 und 0.9.0 veröffentlicht (Forgejo und GitHub, volle CI, Attestierung), VM auf 0.9.0 und am echten Forgejo-Runner geprüft: Online bei Forgejo, laufender Job mit Schritt und Restzeit, Jobs je Repository aufklappbar, Job-Ausgabe im Live-Log. Branches aufgeräumt (nur develop und main). E-36 entschieden (Pakete an Forgejo-Releases weglassen)." },
     { datum: "16.11.2026 19:13", text: "Handbuch-Bildschirmfotos für 0.9.0 neu aufgenommen (node werkzeuge/bilder.mjs, nur Demo-Daten, Playwright nur lokal im Scratchpad): alle 21 Bilder im Layout 0.9.0, neu dashboard-jobs-laufend und dashboard-log-gross (in 02-dashboard.md verlinkt); Hinweis „Bilder zeigen noch das alte Layout“ aus der Release-Notiz entfernt." },
     { datum: "16.11.2026 07:24", text: "E-35 von Tobias entschieden (b) und auf release/0.9.0 umgesetzt: Nach dem Ende eines Forgejo-/Gitea-Jobs bleibt dessen Ausgabe im Live-Log stehen (Chip „Job beendet · Schritt n/m · Name“), bis ein neuer Job startet oder der Runner gewechselt wird; das Journal puffert in der Zeit weiter. Nur Browser (web/runner.js jobLogStand/jobLogEmpfang, dashboard.js), der Webdienst meldet das Ende schon als neuen leeren Stand. JS-Tests: Ende bleibt, neuer Job ersetzt, Runner-Wechsel führt aufs Journal, Hinweis führt aufs Journal. Doku FUNKTIONSWEISE, Handbuch 02, CHANGELOG, Release-Notiz, DECISIONS.md. Paket neu gebaut." },
