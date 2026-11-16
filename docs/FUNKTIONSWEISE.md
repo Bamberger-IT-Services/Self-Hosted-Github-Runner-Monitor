@@ -909,10 +909,19 @@ flowchart LR
   `lauf` (neuer Job, Sammler neu gestartet) geht als neuer Stand hinaus. Ist die Datei älter als 60 s
   (Sammler steht), gilt kein Job-Log mehr als aktiv. Welcher Runner, steht allein in `runner[]`
   (`Zustand.joblog_ziel()`); die Anfrage nennt nur die Runner-ID (`/events?journal=<id>`, wie beim Journal).
-- **Browser** (`web/runner.js` › `mitJobLog`, `puffer`): Ist das Live-Log des Runners das Journal und meldet
-  das Job-Log `aktiv`, zeigt es das Job-Log (Chip „Schritt n/m · Name“, Trenner, Farben, Fehlerzeilen rot);
-  wird es inaktiv, wieder das Journal. Die nicht gezeigte Quelle wird mitgepuffert, beim Umschalten ist ihr
-  Stand sofort da.
+- **Browser** (`web/runner.js` › `mitJobLog`, `jobLogEmpfang`, `puffer`): Ist das Live-Log des Runners das
+  Journal und meldet das Job-Log `aktiv`, zeigt es das Job-Log (Chip „Schritt n/m · Name“, Trenner, Farben,
+  Fehlerzeilen rot). Die nicht gezeigte Quelle wird mitgepuffert (höchstens 1 500 Zeilen), beim Umschalten ist
+  ihr Stand sofort da.
+- **Job-Ende (E-35 b):** Endet der Job, bleibt seine Ausgabe im Live-Log stehen – Chip „Job beendet · Schritt
+  n/m · Name“ –, bis ein neuer Job auf diesem Runner startet (dessen Stand ersetzt sie) oder im Dashboard der
+  Runner gewechselt wird (dann das Journal mit allen Zeilen, die inzwischen kamen). Der Webdienst meldet das Ende
+  nicht eigens: Der Leser fehlt danach in `joblog.json`, die Fenster bekommen einen neuen, leeren Stand
+  (`neu`, nicht `aktiv`). Der Browser wertet ihn als Ende, wenn er für diesen Runner gerade ein Job-Log mit
+  Ausgabe hatte, und leert dann weder Anzeige noch Puffer (`jobLogStand`: `beendet`). Mit `hinweis` (Sammler kann
+  nicht lesen) geht es wie bisher zurück aufs Journal. Ein Fenster, das erst nach dem Ende geöffnet oder neu
+  geladen wird, zeigt das Journal; ebenso nach dem Neuverbinden, wenn vorher kein Job-Log da war. Auch wenn der
+  Sammler steht (Datei älter als 60 s), bleibt die letzte Ausgabe als „Job beendet“ stehen.
 
 Ereignis `joblog`: `{runner, neu, aktiv, job, schritt{nr, von, name} | null, hinweis, zeilen[{zeit, text} |
 {zeit, art: "schritt", nr, von, name} | {zeit, art: "gekuerzt", bytes} | {zeit, art: "luecke", n}]}`.

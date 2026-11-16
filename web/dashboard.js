@@ -283,14 +283,15 @@
       case 'joblog': {
         // Ausgabe des laufenden Forgejo-/Gitea-Jobs (#176), nur für den Runner dieses Live-Stroms. Umschalten
         // Journal ↔ Job-Log entscheidet abgleich() (RUNNER.mitJobLog); dabei zeigt setzeLogQuelle() den Puffer.
+        // Endet der Job, bleibt seine Ausgabe stehen (E-35 b), bis ein neuer Job startet oder der Runner wechselt.
         if (!d || typeof d !== 'object' || d.runner !== S.stromJournal) break;
-        S.nebenPuffer.joblog = RUNNER.puffer(S.nebenPuffer.joblog, d, MAX_ZEILEN);
-        S.jobLog = { runner: d.runner, aktiv: d.aktiv === true, schritt: d.schritt || null, hinweis: d.hinweis || null };
+        const e = RUNNER.jobLogEmpfang(S.jobLog, S.nebenPuffer.joblog, d, MAX_ZEILEN);
+        S.nebenPuffer.joblog = e.puffer; S.jobLog = e.jobLog;
         const vorher = S.logQuelle;
         if (Array.isArray(S.runner) && S.runner.length) abgleich();
         if (vorher === 'joblog' && S.logQuelle === 'joblog') {
-          if (d.neu) leereLog();
-          zeilenAn(RUNNER.logZeilen(d.zeilen, !(S.status && S.status.ohneSchritte)));
+          if (e.leeren) leereLog();
+          zeilenAn(RUNNER.logZeilen(e.zeilen, !(S.status && S.status.ohneSchritte)));
         }
         renderLogKopf(); break;
       }
@@ -752,10 +753,15 @@
       // Journal der Unit (Grundüberwachung, „teilweise“): Chip nennt die Quelle, keine Schritte
       chip.hidden = false; chip.textContent = t('Journal · {unit}', { unit: S.journalUnit });
     } else if (S.logQuelle === 'joblog') {
-      // Job-Log (#176): Schritt aus dem Job-Log (alle paar Sekunden), sonst aus der Abfrage
-      const s = RUNNER.jobLogSchritt(S.jobLog, j);
-      chip.hidden = !s || !!(st && st.ohneSchritte);
-      if (s) { const { nr, von, name } = schrittVon({ schritt: s }); chip.textContent = t('Schritt {nr}/{von}', { nr, von: von || '–' }) + (name ? ' · ' + name : ''); }
+      // Job-Log (#176): Schritt aus dem Job-Log (alle paar Sekunden), sonst aus der Abfrage. Nach dem Ende (E-35 b)
+      // „Job beendet“ mit dem letzten Schritt – nie der Schritt eines anderen Jobs aus der Abfrage.
+      const beendet = !!(S.jobLog && S.jobLog.beendet);
+      const s = beendet ? (S.jobLog.schritt || null) : RUNNER.jobLogSchritt(S.jobLog, j);
+      const mitSchritt = !!s && !(st && st.ohneSchritte);
+      chip.hidden = !beendet && !mitSchritt;
+      const schrittText = mitSchritt ? (() => { const { nr, von, name } = schrittVon({ schritt: s }); return t('Schritt {nr}/{von}', { nr, von: von || '–' }) + (name ? ' · ' + name : ''); })() : '';
+      if (beendet) chip.textContent = t('Job beendet') + (schrittText ? ' · ' + schrittText : '');
+      else if (mitSchritt) chip.textContent = schrittText;
     } else if (j && j.zuordenbar !== false && st.dienst.zustand === 'aktiv' && !S.logFremd && !st.ohneSchritte) {
       const { nr, von, name } = schrittVon(j);
       chip.hidden = false; chip.textContent = t('Schritt {nr}/{von}', { nr, von: von || '–' }) + (name ? ' · ' + name : '');
