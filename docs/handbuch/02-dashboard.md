@@ -103,6 +103,8 @@ Was dabei vom Anbieter abhängt: **Forgejo und Gitea** liefern Schritte (Forgejo
 wartende Läufe, Schritte aber nur für den eigenen Job und keine Schätzung (sie würde das API-Kontingent belasten), **GitLab** nennt die laufenden Jobs des
 Runners ohne Schritte und Schätzung und keine wartenden Läufe. Was fehlt, bleibt leer oder steht als „nicht verfügbar“ da.
 
+![Zwei laufende Jobs (der zweite „länger als üblich“, auf einem anderen Runner), wartende Läufe](bilder/dashboard-jobs-laufend.png)
+
 Ohne Token zeigt die Karte, wie man eines einrichtet:
 
 ![Kein Token](bilder/dashboard-kein-token.png)
@@ -171,6 +173,8 @@ der Schwelle wird orange.
 - **Größer / Kleiner** (Knopf neben „Anhalten“): Das Live-Log ist standardmäßig klein (feste Höhe mit dem letzten Ereignis und etwa vier Zeilen Ausgabe), damit
   Runner-Status und Jobs Platz haben; „Größer“ gibt ihm den Rest der Fläche, die Jobs werden dafür kleiner. Die Wahl merkt der Browser
   (`runner-monitor.log-hoehe`).
+
+![Live-Log groß: Die Jobs je Repository werden kleiner und scrollen](bilder/dashboard-log-gross.png)
 - Ältere Ausgaben stehen im Runner (`_diag/pages`) und bei GitHub („Download log archive“).
 
 ## Sprache

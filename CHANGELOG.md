@@ -36,6 +36,7 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
   älteren Servern bleibt das Live-Log beim Journal, Info › Verbindungen nennt den Grund („Job-Log“).
   Sicherheitsbericht S-JOBLOG-01. Das Job-Log zeigt nur Jobs, die diesem Runner zugeordnet sind – ist er nicht
   erkennbar, bleibt das Live-Log beim Journal, auch wenn „Letzte Jobs“ die Jobs der Organisation zeigt.
+- Handbuch (#171): alle Bildschirmfotos im Layout 0.9.0 neu aufgenommen (`node werkzeuge/bilder.mjs`, nur Demo-Daten); neu `dashboard-jobs-laufend` (laufende und wartende Jobs, Restzeit) und `dashboard-log-gross` (Live-Log „Größer“).
 
 ## [0.8.4] – 15.11.2026
 

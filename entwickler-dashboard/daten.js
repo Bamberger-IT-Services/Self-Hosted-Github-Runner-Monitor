@@ -13,7 +13,7 @@
  *               Entscheidungen: "entschieden", "zurückgestellt", sonst offen.
  */
 window.RUNNER_MONITOR = {
-  stand: "16.11.2026 07:24",
+  stand: "16.11.2026 19:13",
 
   dienste: [
     { name: "Runner-Monitor lokal (Demo)", url: "http://127.0.0.1:8090/?demo", pruefen: "http://127.0.0.1:8090/api/health", gruppe: "Runner-Monitor" },
@@ -269,6 +269,7 @@ window.RUNNER_MONITOR = {
   ],
 
   verlauf: [
+    { datum: "16.11.2026 19:13", text: "Handbuch-Bildschirmfotos für 0.9.0 neu aufgenommen (node werkzeuge/bilder.mjs, nur Demo-Daten, Playwright nur lokal im Scratchpad): alle 21 Bilder im Layout 0.9.0, neu dashboard-jobs-laufend und dashboard-log-gross (in 02-dashboard.md verlinkt); Hinweis „Bilder zeigen noch das alte Layout“ aus der Release-Notiz entfernt." },
     { datum: "16.11.2026 07:24", text: "E-35 von Tobias entschieden (b) und auf release/0.9.0 umgesetzt: Nach dem Ende eines Forgejo-/Gitea-Jobs bleibt dessen Ausgabe im Live-Log stehen (Chip „Job beendet · Schritt n/m · Name“), bis ein neuer Job startet oder der Runner gewechselt wird; das Journal puffert in der Zeit weiter. Nur Browser (web/runner.js jobLogStand/jobLogEmpfang, dashboard.js), der Webdienst meldet das Ende schon als neuen leeren Stand. JS-Tests: Ende bleibt, neuer Job ersetzt, Runner-Wechsel führt aufs Journal, Hinweis führt aufs Journal. Doku FUNKTIONSWEISE, Handbuch 02, CHANGELOG, Release-Notiz, DECISIONS.md. Paket neu gebaut." },
     { datum: "16.11.2026 00:06", text: "Release 0.9.0 vorbereitet (Branch release/0.9.0 von develop mit 0.8.4, noch kein PR – CI kurz vor dem Veröffentlichen; Freigabe von Tobias grundsätzlich erteilt): Merge-Commits von #171 (laufende und wartende Jobs, Restzeit, kleineres Live-Log), #176 (Job-Log im Live-Log) und #177 (wackelige Tests). Konflikt forgejo.py: Organisations-Modus aus #171 übernommen, jobLogZiel aus #176 danach – nur aus den diesem Runner zugeordneten Jobs, nie aus Organisations-Jobs (neuer Test, Doku FUNKTIONSWEISE und S-JOBLOG-01); CHANGELOG und Verlauf zusammengeführt, dashboard.js (Log-Höhe und Job-Log-Chip) ohne Konflikt. VERSION, CHANGELOG [0.9.0] – 16.11.2026, Release-Notiz, Stand der Dokus, README-Versionstabelle. Offen: E-34 (Layout), E-35 (Live-Log beim Job-Ende), Handbuchbilder im alten Layout, Abnahme an einer echten VM mit laufendem Job." },
     { datum: "15.11.2026 23:44", text: "#176 Architekt-Review eingearbeitet (gleicher Branch): OSC/DCS/SOS/PM/APC samt Nutzlast, C1- und Bidi-Steuerzeichen und angeschnittene Farbfolgen am Zeilenende entfernt; joblog.json-Änderung an (Inode, mtime_ns, Größe) erkannt; Lebenszeichen der Datei im Verwaltungstakt (kein „veraltet“ nach 429); 404 aufs Log bei vorhandenem Job-Detail nur kurze Pause statt „nicht unterstützt“, Zähler je Schritt; neue Token-Datei hebt die Pause nach 401/403 auf; angehaltene Leser setzen weder Pause noch Hinweis; Sammler hält die Leser beim Beenden an. Entscheidung jetzt E-35 (E-34 = Layout aus #171)." },
