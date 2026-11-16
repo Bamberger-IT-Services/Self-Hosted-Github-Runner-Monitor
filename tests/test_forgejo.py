@@ -89,7 +89,7 @@ class ForgejoAbfrageTest(unittest.TestCase):
                                         {"name": "api-dienst", "privat": True, "laeuft": 1, "wartet": 1}])
         job = erg["job"]
         self.assertEqual((job["repo"], job["workflow"], job["name"]), ("web-portal", "ci", "build"))
-        self.assertEqual(job["schritt"], {"nr": 3, "von": 5, "name": "Tests"})
+        self.assertEqual(job["schritt"], {"nr": 3, "von": 5, "name": "Tests", "start": 1793264404.0})  # 10:00:04+01:00
         self.assertEqual(job["schritte"], ["Set up job", "actions/checkout@v7", "Tests", "Paket bauen", "Complete job"])
         self.assertEqual(job["ref"], {"art": "Branch", "name": "main", "titel": "Abhängigkeiten aktualisieren"})
         self.assertEqual(job["start"], 1793264401.0)  # erster Schritt, 10:00:01+01:00
@@ -102,9 +102,10 @@ class ForgejoAbfrageTest(unittest.TestCase):
         self.assertFalse([p for p in pfade if any(w in p for w in ("rerun", "cancel", "registration-token", "dispatches"))])
         self.assertNotIn("/repos/beispiel-org/altes-archiv/actions/runs", pfade)
         self.assertFalse([p for p in pfade if ".." in p])
-        # der fremde Job (runner-vm-03) wurde nur am Log-Anfang erkannt, nicht im Detail geholt
+        # der fremde Job (runner-vm-03) wurde am Log-Anfang erkannt; seine Schritte (#171) holt die Sicht auf
+        # Laufendes genau einmal, nicht mehr als MAX_SCHRITT_JOBS Jobs je Runde
         self.assertIn(("/repos/beispiel-org/api-dienst/actions/jobs/120/logs", None, True), self.k.pfade)
-        self.assertNotIn("/repos/beispiel-org/api-dienst/actions/jobs/120", pfade)
+        self.assertEqual(pfade.count("/repos/beispiel-org/api-dienst/actions/jobs/120"), 1)
         json.dumps(erg)  # wird so nach anbieter.json geschrieben
         self.assertNotIn(TOKEN, json.dumps(erg))
 
@@ -241,7 +242,7 @@ class GiteaAbfrageTest(unittest.TestCase):
         self.assertEqual(erg["runner"], {"zustand": "online", "beschaeftigt": True, "labels": ["ubuntu-latest", "self-hosted"]})
         self.assertEqual(erg["repos"], [{"name": "web-portal", "privat": True, "laeuft": 1, "wartet": 1}])
         job = erg["job"]
-        self.assertEqual((job["name"], job["workflow"], job["schritt"]), ("test", "ci", {"nr": 2, "von": 3, "name": "Tests"}))
+        self.assertEqual((job["name"], job["workflow"], job["schritt"]), ("test", "ci", {"nr": 2, "von": 3, "name": "Tests", "start": 1793264407.0}))
         self.assertEqual(job["ref"], {"art": "PR", "name": "#7", "titel": "Anmeldung überarbeiten"})
         self.assertEqual(job["start"], 1793264405.0)
         self.assertFalse([p for p, _, text in k.pfade if text])  # Gitea nennt runner_name: kein Log nötig
@@ -879,7 +880,8 @@ class LaufListeTest(unittest.TestCase):
         self.antworten = lade("forgejo-17.json")
 
     def laeufe_anfragen(self, k):
-        return [(p, par) for p, par, _ in k.pfade if p.endswith("/actions/runs")]
+        # ohne die Anfragen nach erfolgreichen Läufen für die Vergleichsdauern (#171, eigene Tests unten)
+        return [(p, par) for p, par, _ in k.pfade if p.endswith("/actions/runs") and (par or {}).get("status") != "success"]
 
     def test_statusfilter_wird_gesendet(self):
         k = Attrappe(self.antworten)
@@ -1388,7 +1390,7 @@ class SammlerZustandTest(unittest.TestCase):
         self.assertEqual(fj02["faehig"], fj.Forgejo.FAEHIG)  # von Hand angebunden: was der Adapter liefert
         self.assertEqual(fj02["status"]["zustand"], "job")
         self.assertEqual(fj02["status"]["beimDienst"], {"zustand": "online", "seit": None})
-        self.assertEqual(fj02["job"]["schritt"], {"nr": 3, "von": 5, "name": "Tests"})
+        self.assertEqual(fj02["job"]["schritt"], {"nr": 3, "von": 5, "name": "Tests", "start": 1793264404.0})
         self.assertEqual(fj02["labels"], ["linux-amd64", "ubuntu-latest"])
         self.assertEqual(fj02["jobsJeRepository"]["abfrage"], "ok")
         self.assertEqual(fj02["log"], {"art": "journal", "unit": "forgejo-runner.service"})

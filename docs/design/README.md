@@ -29,6 +29,16 @@ Farben und Maße: [TOKENS.md](TOKENS.md).
 
 Planung nach Anweisung 08: Epic #100 „Design 0.8.0 umsetzen“ (Teil-Issues #89–#99, #101).
 
+## Was 0.9.0 gegenüber 0.8.x ändert (Vorschlag, #171)
+
+Entwurf als Seite [`v0.9.0/Main 0.9.0 Laufende Jobs.dc.html`](v0.9.0/) (aus dem Claude-Design-Projekt, auf Grundlage von Main 0.8.3; lädt `support.js` und `i18n-0.8.3.js` aus demselben Ordner):
+
+1. **Jobs je Repository** aufklappbar: ein Repository mit „läuft“ zeigt je Job Workflow und Job, Branch/PR, Runner, **läuft seit** (live),
+   **Schritt „n von m“** mit Namen, Schrittdauer und Balken sowie die **geschätzte Restzeit**; wartende Läufe darunter mit Position und „wartet seit“.
+2. **Runner-Status** mit Block „Geschätzte Restzeit“ (noch ca. …, ca. HH:MM fertig, länger als üblich, keine Schätzung).
+3. **Live-Log klein** (feste Höhe, „Größer/Kleiner“, Wahl im Browser); die Karte „Jobs je Repository“ wandert dafür
+   unter die Auslastung, der Runner-Status füllt die linke Spalte.
+
 ## Was 0.8.0 gegenüber 0.4.0 ändert
 
 1. **Verlauf mit festen Zeitfenstern** (#89): Zeitraum-Umschalter 30 s / 2 / 5 / 10 Min., Eimer an der absoluten Sekunde.
@@ -89,6 +99,14 @@ Was 0.3.0 gegenüber v1 geändert hat, steht unten und gilt weiter.
 | Auslastung: Verlauf über die volle Breite, „seit hh:mm“, Sicherung | `runner_monitor/zustand.py`, `web/dashboard.js` | umgesetzt | #43 (PR #47) |
 | Job: Schritt aus einer Quelle, „3 von –“, gestrichelter Rest, Log „Schritt 3/–“ | `runner_monitor/zustand.py`, `web/dashboard.js` | umgesetzt | #44 (PR #48) |
 | Versionsnummern | Doku, Release | umgesetzt | #45 |
+
+Abgleich mit Design 0.9.0 (Vorschlag „Main 0.9.0 Laufende Jobs“, Stand 15.11.2026):
+
+| Bildschirm (0.9.0) | Code | Stand | Bemerkung |
+|---|---|---|---|
+| Jobs je Repository: Zeile aufklappbar (Pfeil, Name, Pillen), laufender Job (Workflow › Job, Branch/PR, Runner · Schritt „n von m“ mit Schrittdauer und Balken · läuft seit und Restzeit), wartende Läufe (Position, Workflow, seit wann); Karte unter der Auslastung | `web/jobs.js`, `web/dashboard.*`, `web/stil.css`, `web/demo.js` (`?zustand=volllast`, `?schaetzung=laenger\|keine`), `web/i18n.js`, `runner_monitor/anbieter/` (`jobsicht.py`, `forgejo.py`, `github.py`, `gitlab.py`), `tests/js/jobs.test.mjs`, `tests/test_jobsicht.py` | umgesetzt | #171. Abweichungen: wartende Läufe zeigen nur den Workflow, nicht „Workflow › Job“ (die Lauf-Liste nennt keine Jobs; je wartendem Lauf eine Anfrage mehr wäre unbegrenzt); der Entwurf hat die Position als „Pos. n“, bei nicht ableitbarer Stelle „–“, bei blockierten Läufen „blockiert“ (neu); „anderer Runner“ nur, wenn der eigene Runner erkennbar ist; Wahl des Aufklappens nicht gemerkt (nur je Sitzung) |
+| Runner-Status: Block „Geschätzte Restzeit“ mit Balken (Median der letzten 5 erfolgreichen Läufe) | `web/jobs.js`, `web/dashboard.js`, `web/stil.css` | umgesetzt | #171; Tooltip nennt die Grundlage; ohne Vergleichswerte „keine Schätzung“, über dem Median „länger als üblich“ (Warnfarbe), nie negativ |
+| Live-Log klein (feste Höhe 176 px statt 232 px im Entwurf, ein Ereignis), Knopf „Größer/Kleiner“ | `web/dashboard.html`, `web/dashboard.js`, `web/stil.css`, `web/jobs.js` (`logHoeheLaden`) | umgesetzt | #171; Wahl in `localStorage["runner-monitor.log-hoehe"]`; 176 statt 232 px, damit bei 900 px Höhe genug von der Jobs-Karte sichtbar bleibt; die englischen Texte stehen in `i18n.js` (nicht im Entwurf) |
 
 Abgleich mit Design 0.8.0 (alle Bildschirme; Stand 29.10.2026, alle Teil-Issues #89–#99, #101 umgesetzt):
 

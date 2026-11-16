@@ -19,7 +19,7 @@ from runner_monitor.anbieter import token as zugangsdaten
 
 # Bestand bis 0.7: Bereich „status“ (FUNKTIONSWEISE.md) – muss unverändert bleiben (E-19, additiv)
 STATUS_SCHLUESSEL = {"vm", "runner", "eingerichtet", "labels", "version", "monitorVersion", "system", "dienst", "github", "job", "letzteJobs"}
-WORKFLOWS_SCHLUESSEL = {"org", "abfrage", "abgefragt", "versucht", "naechste", "tokenAblauf", "kontingent", "repos", "fehler", "runnerGrund"}
+WORKFLOWS_SCHLUESSEL = {"org", "abfrage", "abgefragt", "versucht", "naechste", "tokenAblauf", "kontingent", "repos", "laufende", "wartende", "fehler", "runnerGrund"}
 EINTRAG_SCHLUESSEL = {"id", "name", "dienst", "server", "org", "unit", "stand", "einstufung", "version", "labels", "faehig",
                       "status", "job", "letzteJobs", "jobsJeRepository", "log"}
 

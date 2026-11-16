@@ -61,6 +61,13 @@ try {
   let p = await seite();
   await p.goto(D); await p.waitForTimeout(5000); await bild(p, 'dashboard-job.png');
   await p.click('#k-info'); await p.waitForTimeout(600); await bild(p, 'info-hilfe.png');
+  // Design 0.9.0: mehrere laufende Jobs (zweiter Job „länger als üblich“, wartende Läufe) und das große Live-Log
+  p = await seite();
+  await p.goto(`${D}&zustand=volllast&schaetzung=laenger&kerne=16`); await p.waitForTimeout(6000);
+  await p.evaluate(() => document.querySelectorAll('.repo-block')[1].scrollIntoView({ block: 'start' }));
+  await bild(p, 'dashboard-jobs-laufend.png');
+  await p.goto(`${D}&zustand=job`); await p.waitForTimeout(4500);
+  await p.click('#k-log-hoehe'); await p.waitForTimeout(800); await bild(p, 'dashboard-log-gross.png');
   // Design 0.8.0: mehrere Runner (Reiter), Zeitfenster der Auslastung, Grundüberwachung, Info › Runner, Englisch
   p = await seite();
   await p.goto(`${D}&runner=3&gewaehlt=1`); await p.waitForTimeout(4000);

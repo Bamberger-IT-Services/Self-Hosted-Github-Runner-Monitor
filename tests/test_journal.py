@@ -247,8 +247,15 @@ class FolgerTest(unittest.TestCase):
             self.assertLessEqual(len(f._neu), journal.STAPEL + 1)  # noqa: SLF001
         dauer = time.monotonic() - beginn
         p.ende()
-        self.assertTrue(warte(lambda: not f._neu and f._luecke == 0, 5))  # noqa: SLF001
-        alle = nachrichten(q)
+        # Warten, bis alle n Zeilen verbucht sind (gezeigt oder als Lücke): „_neu leer“ allein stimmt auch dann, wenn
+        # der Lesefaden noch Daten in der Pipe hat (#177). Die letzte Nachricht kommt nach dem Ende von journalctl.
+        alle = []
+
+        def verbucht():
+            alle.extend(nachrichten(q))
+            return sum((1 if "text" in z else z.get("n", 0)) for m in alle if "zeilen" in m for z in m["zeilen"]) >= n
+
+        self.assertTrue(warte(verbucht, 15))
         self.assertNotIn({"_bereich": zustand.ENDE[0]}, alle)
         neu = [m for m in alle[1:] if "zeilen" in m]
         # je Takt eine Nachricht, dazu höchstens eine nach dem Ende von journalctl

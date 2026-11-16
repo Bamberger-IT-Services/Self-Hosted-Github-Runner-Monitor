@@ -4,6 +4,40 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+## [0.9.0] – 16.11.2026
+
+### Neu
+- Dashboard (#171): **Laufende und wartende Jobs je Repository** auf einen Blick. Ein Repository in „Jobs je Repository“ lässt
+  sich aufklappen: je laufendem Job Workflow und Job, Branch/PR, Runner, **läuft seit** (live), **aktueller Schritt „n von m“**
+  mit Namen, Schrittdauer und Fortschrittsbalken; wartende Läufe mit „wartet seit“ und **Position** in der Warteschlange,
+  wenn sie ableitbar ist („blockiert“ ohne Position). Runner-Status und Jobs zeigen die **geschätzte Restzeit** (Median der
+  letzten 5 erfolgreichen Läufe desselben Workflows und Jobs: „noch ca. 12 Min.“ mit „ca. 18:40 fertig“, „länger als üblich“,
+  „keine Schätzung“). Das **Live-Log** ist kleiner (aufklappbar mit „Größer“, Wahl im Browser gemerkt), die Karte „Jobs je
+  Repository“ liegt dafür unter der Auslastung und der Runner-Status füllt die linke Spalte.
+- Forgejo/Gitea (#171): Der Sammler liest dafür die Job-Listen der ersten 8 laufenden Läufe, die Schritte von höchstens 6 Jobs je Runde
+  (`/actions/jobs/{id}`, Forgejo ab 17) und die Vergleichsdauern (je Workflow und Job höchstens alle 10 Minuten, höchstens 8 Anfragen je Runde,
+  gemerkt). Zeitüberschreitung oder 429 dabei kosten die Runde nichts. GitHub liefert laufende und wartende Läufe aus den ohnehin
+  gelesenen Daten (Schritte nur für den eigenen Job, keine Schätzung), GitLab die laufenden Jobs seines Runners.
+- „Letzte Jobs“ (#171): Lässt sich der Runner beim Forgejo-/Gitea-Server nicht erkennen („nicht sichtbar“), zeigt die Liste Ergebnis und Dauer der
+  Jobs, die der Monitor in der Organisation laufen und enden sah.
+- Gitea (#171): Vergleichsdauern auch für Gitea-Läufe (`completed` mit `conclusion: success`, `started_at`/`completed_at`). Fokus auf einem
+  Repository-Knopf bleibt beim Aktualisieren der Karte erhalten; die Entwurfsdatei liegt unter `docs/design/v0.9.0/`.
+- `/api/zustand` und Ereignis `workflows`: neue Felder `laufende[]` und `wartende[]` in `jobsJeRepository`, `schritt.start` und `vergleich` im
+  Job (nur additiv; FUNKTIONSWEISE › „Laufende und wartende Jobs“). Demo: `?zustand=volllast` zeigt mehrere Jobs, `?schaetzung=laenger|keine` die
+  Restzeit-Zustände.
+- Live-Log bei Forgejo/Gitea (#176): Läuft ein Job eines angebundenen Forgejo-/Gitea-Runners, zeigt das
+  Live-Log nach wenigen Sekunden die **Ausgabe des Jobs** statt des Journals – mit „Schritt n/m · Name“ und
+  Trennzeilen wie beim GitHub-Runner (Gitea ohne Trennzeilen). Nach dem Job bleibt seine Ausgabe stehen („Job
+  beendet“), bis ein neuer Job startet oder ein anderer Runner gewählt wird; dann wieder das Journal, ohne dass
+  dessen Zeilen aus der Zwischenzeit fehlen (E-35). Der Sammler liest das
+  Job-Log über die API (`/actions/jobs/{id}/logs`, Forgejo mit `?step=N`) nur, solange ein Browser zusieht, alle
+  3 s ab dem zuletzt gelesenen Byte (Range), mit harten Grenzen; das Token bleibt beim Sammler, der Webdienst
+  bekommt nur Zeilen (`/run/runner-monitor/joblog.json`, 0640 root:runner-monitor). Ohne Rechte oder auf
+  älteren Servern bleibt das Live-Log beim Journal, Info › Verbindungen nennt den Grund („Job-Log“).
+  Sicherheitsbericht S-JOBLOG-01. Das Job-Log zeigt nur Jobs, die diesem Runner zugeordnet sind – ist er nicht
+  erkennbar, bleibt das Live-Log beim Journal, auch wenn „Letzte Jobs“ die Jobs der Organisation zeigt.
+- Handbuch (#171): alle Bildschirmfotos im Layout 0.9.0 neu aufgenommen (`node werkzeuge/bilder.mjs`, nur Demo-Daten); neu `dashboard-jobs-laufend` (laufende und wartende Jobs, Restzeit) und `dashboard-log-gross` (Live-Log „Größer“).
+
 ## [0.8.4] – 15.11.2026
 
 ### Behoben

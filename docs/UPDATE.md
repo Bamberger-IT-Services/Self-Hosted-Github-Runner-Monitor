@@ -1,6 +1,6 @@
 # Update und Rückweg
 
-**Stand: 15.11.2026 · Version 0.8.4**
+**Stand: 16.11.2026 · Version 0.9.0**
 
 Der Monitor prüft alle 6 Stunden, ob es in der Update-Quelle (Vorgabe GitHub, wählbar Forgejo –
 siehe [Quelle](#quelle-github-oder-forgejo)) ein neueres Release gibt – sofort geht es mit
