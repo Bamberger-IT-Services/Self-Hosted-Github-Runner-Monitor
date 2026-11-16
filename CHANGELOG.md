@@ -4,6 +4,9 @@ Format nach [Keep a Changelog](https://keepachangelog.com/de/1.1.0/), Versionen 
 
 ## [Unveröffentlicht]
 
+### Behoben
+- CI (#181): Forgejo liest die Workflows jetzt aus `.forgejo/workflows/` (Kopie von `ci.yml`, ein Test hält beide gleich); `release.yml` bleibt nur für GitHub. Tag-Pushes erzeugen auf Forgejo keinen roten Release-Lauf mehr („YAML Schema validation error“ wegen der GitHub-Rechte `attestations`/`artifact-metadata`).
+
 ## [0.9.0] – 16.11.2026
 
 ### Neu
